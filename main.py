@@ -9,6 +9,8 @@ from rfid_timing.config import (
     MAX_EVENTS,
     WEB_HOST,
     WEB_PORT,
+    RSSI_WINDOW_SEC,
+    MIN_LAP_TIME_SEC,
 )
 from rfid_timing.event_store import EventStore
 from rfid_timing.reader import RFIDReader
@@ -47,6 +49,8 @@ def main():
         port=READER_PORT,
         finish_antennas=FINISH_ANTENNAS,
         on_event=on_new_event,
+        rssi_window_sec=RSSI_WINDOW_SEC,
+        min_lap_time_sec=MIN_LAP_TIME_SEC,
     )
     reader.start()
 

@@ -15,6 +15,8 @@ class RFIDReader:
             port: int,
             finish_antennas: set[int],
             on_event: Callable[[TagEvent], None],
+            rssi_window_sec: float = 2.0,
+            min_lap_time_sec: float = 120.0,
     ) -> None:
         self.ip = ip
         self.port = port
@@ -29,8 +31,8 @@ class RFIDReader:
 
         # Инициализация процессора для фильтрации считываний
         self.processor = TagProcessor(
-            rssi_window_sec=2.0,
-            min_lap_time_sec=120.0,
+            rssi_window_sec=rssi_window_sec,
+            min_lap_time_sec=min_lap_time_sec,
             on_pass=self._on_processor_pass
         )
 
