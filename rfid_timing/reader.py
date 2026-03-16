@@ -5,6 +5,7 @@ from typing import Callable, Optional
 
 from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
 from .models import TagEvent
+from .processor import TagProcessor
 
 
 class RFIDReader:
@@ -26,9 +27,34 @@ class RFIDReader:
 
         self._logger = logging.getLogger(self.__class__.__name__)
 
+        # Инициализация процессора для фильтрации считываний
+        self.processor = TagProcessor(
+            rssi_window_sec=2.0,
+            min_lap_time_sec=120.0,
+            on_pass=self._on_processor_pass
+        )
+
+    def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
+        ts_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
+        epc_short = f"...{epc[-4:]}" if len(epc) >= 4 else epc
+
+        event = TagEvent(
+            timestamp_str=ts_str,
+            epc=epc,
+            epc_short=epc_short,
+            rssi=rssi,
+            antenna=antenna,
+        )
+
+        self._logger.debug(
+            "Processed valid pass: time=%s ant=%s rssi=%s epc=%s",
+            ts_str, antenna, rssi, epc_short,
+        )
+        self.on_event(event)
+
     def _tag_report_cb(self, reader, tag_reports):
+        """Сырой коллбек от ридера."""
         now = time.time()
-        ts_str = time.strftime("%H:%M:%S", time.localtime(now))
 
         for tag in tag_reports:
             epc = tag.get("EPC") or tag.get("EPC-96") or tag.get("EPCData") or b""
@@ -37,27 +63,20 @@ class RFIDReader:
             else:
                 epc = str(epc)
 
-            rssi = tag.get("PeakRSSI", "N/A")
+            rssi_raw = tag.get("PeakRSSI", "N/A")
             ant = tag.get("AntennaID", "N/A")
 
             if isinstance(ant, int) and ant not in self.finish_antennas:
                 continue
 
-            epc_short = f"...{epc[-4:]}" if len(epc) >= 4 else epc
+            # числовое значение RSSI для поиска максимума
+            try:
+                rssi = float(rssi_raw)
+            except (ValueError, TypeError):
+                rssi = -100.0  # дефолтное низкое значение, если ридер не отдал RSSI
 
-            event = TagEvent(
-                timestamp_str=ts_str,
-                epc=epc,
-                epc_short=epc_short,
-                rssi=rssi,
-                antenna=ant,
-            )
-
-            self._logger.debug(
-                "New tag event: time=%s ant=%s rssi=%s epc=%s",
-                ts_str, ant, rssi, epc_short,
-            )
-            self.on_event(event)
+            # сырое считывание в процессор на фильтрацию
+            self.processor.feed(epc, rssi, ant, timestamp=now)
 
     def _reader_loop(self):
         from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
@@ -95,11 +114,17 @@ class RFIDReader:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_flag = False
+        
+        # фоновый тик процессора
+        self.processor.start()
+        
         self._thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop_flag = True
+        self.processor.stop()
+        
         if self._client is not None:
             try:
                 self._client.disconnect()
