@@ -18,3 +18,8 @@ RSSI_WINDOW_SEC = 2.0
 
 # минимальное время круга (в секундах) - антидребезг
 MIN_LAP_TIME_SEC = 120.0
+
+# настройки эмулятора
+USE_EMULATOR = True
+EMULATOR_MIN_LAP_TIME_SEC = 15.0  # короткий круг 15 сек
+EMULATOR_TAGS = ["EMU_RIDER_0001", "EMU_RIDER_0002", "EMU_RIDER_0003"]
