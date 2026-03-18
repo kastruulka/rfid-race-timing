@@ -109,6 +109,10 @@ class Database:
         r = self._exec("SELECT * FROM rider WHERE epc=?", (epc,)).fetchone()
         return dict(r) if r else None
 
+    def get_rider_by_number(self, number: int) -> Optional[Dict]:
+        r = self._exec("SELECT * FROM rider WHERE number=?", (number,)).fetchone()
+        return dict(r) if r else None
+
     def get_epc_map(self) -> Dict[str, Dict]:
         rows = self._exec("SELECT * FROM rider WHERE epc IS NOT NULL AND epc != ''").fetchall()
         return {r["epc"]: dict(r) for r in rows}
@@ -122,6 +126,25 @@ class Database:
         r = self._exec("SELECT * FROM result WHERE rider_id=? ORDER BY id DESC LIMIT 1", (rider_id,)).fetchone()
         return dict(r) if r else None
 
+    def get_results_by_category(self, category_id: int) -> List[Dict]:
+        rows = self._exec(
+            """SELECT r.*, rd.number, rd.last_name, rd.first_name,
+                      rd.club, rd.city, rd.birth_year
+               FROM result r
+               JOIN rider rd ON rd.id = r.rider_id
+               WHERE r.category_id = ?
+               ORDER BY
+                 CASE r.status
+                   WHEN 'FINISHED' THEN 0
+                   WHEN 'RACING'   THEN 1
+                   WHEN 'DNS'      THEN 2
+                   WHEN 'DNF'      THEN 3
+                   WHEN 'DSQ'      THEN 4
+                 END,
+                 r.finish_time ASC NULLS LAST""",
+            (category_id,)).fetchall()
+        return [dict(r) for r in rows]
+    
     def update_result(self, result_id: int, **kw):
         ok = {"start_time", "finish_time", "status", "place"}
         f = {k: v for k, v in kw.items() if k in ok}
@@ -134,6 +157,12 @@ class Database:
         cur = self._exec("INSERT INTO lap (result_id,lap_number,timestamp,lap_time,segment,source) VALUES (?,?,?,?,?,?)", (result_id, lap_number, timestamp, lap_time, segment, source))
         self._commit()
         return cur.lastrowid
+
+    def get_laps(self, result_id: int) -> List[Dict]:
+        rows = self._exec(
+            "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number",
+            (result_id,)).fetchall()
+        return [dict(r) for r in rows]
 
     def count_laps(self, result_id: int) -> int:
         r = self._exec("SELECT COUNT(*) as cnt FROM lap WHERE result_id=? AND lap_number>0", (result_id,)).fetchone()
