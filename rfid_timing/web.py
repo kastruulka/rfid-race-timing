@@ -210,7 +210,7 @@ TIMER_HTML = """
   </div>
 
   <div class="timer-bar">
-    <div class="main-clock" id="main-clock">00:00:00</div>
+    <div class="main-clock" id="main-clock">00:00.0</div>
     <div class="stat-badges">
       <div class="badge racing">
         <div class="badge-num" id="cnt-racing">0</div>
@@ -235,7 +235,7 @@ TIMER_HTML = """
 
     <div class="results-panel">
       <div class="controls-bar">
-        <select id="category-select" class="btn" style="
+        <select id="category-select" style="
           font-family:var(--sans); font-size:12px; font-weight:700;
           padding:7px 16px; border:1px solid var(--border); border-radius:6px;
           background:var(--surface2); color:var(--text); cursor:pointer;
@@ -265,10 +265,8 @@ TIMER_HTML = """
   </div>
 
 <script>
-/* ─── Форматирование времени (миллисекунды → строка) ─── */
 
 function fmtMs(ms) {
-  // Время круга / общее время: mm:ss.d
   if (ms === null || ms === undefined) return '—';
   const totalSec = Math.abs(ms) / 1000;
   const m = Math.floor(totalSec / 60);
@@ -276,37 +274,34 @@ function fmtMs(ms) {
   return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
 }
 
-function fmtClock(ms) {
-  // Главный таймер: HH:MM:SS
-  if (!ms || ms < 0) return '00:00:00';
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-}
-
-/* ─── State ─── */
-let raceStartMs = null;   // start_time в мс (эпоха)
+let serverElapsedMs = null;   // elapsed на момент последнего ответа сервера
+let perfAtSync = null;        // performance.now() в момент синхронизации
 let clockTimer = null;
-let lastFeedHash = '';     // для предотвращения мигания
+let lastFeedIds = '';         // для предотвращения мигания
 
 function updateClock() {
-  if (!raceStartMs) return;
-  const elapsed = Date.now() - raceStartMs;
-  document.getElementById('main-clock').textContent = fmtClock(elapsed);
+  if (serverElapsedMs === null) return;
+  const localDelta = performance.now() - perfAtSync;
+  const elapsed = serverElapsedMs + localDelta;
+  document.getElementById('main-clock').textContent = fmtMs(elapsed);
 }
 
-/* ─── Fetch ─── */
+function getSelectedCategory() {
+  const sel = document.getElementById('category-select');
+  return sel ? sel.value : '';
+}
+
 async function fetchState() {
   try {
-    const resp = await fetch('/api/state');
+    const catId = getSelectedCategory();
+    const qs = catId ? '?category_id=' + encodeURIComponent(catId) : '';
+    const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
 
-    // Таймер
-    if (data.start_time && !raceStartMs) {
-      raceStartMs = data.start_time;
-      if (!clockTimer) clockTimer = setInterval(updateClock, 200);
+    if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
+      serverElapsedMs = data.server_elapsed_ms;
+      perfAtSync = performance.now();
+      if (!clockTimer) clockTimer = setInterval(updateClock, 100);
     }
 
     updateFeed(data.feed);
@@ -318,26 +313,25 @@ async function fetchState() {
   }
 }
 
-/* ─── Feed (без мигания) ─── */
 function updateFeed(feed) {
-  // Проверяем, изменились ли данные
-  const hash = feed.map(f => f.rider_number + '_' + f.lap_number).join('|');
-  if (hash === lastFeedHash) return;  // ничего не изменилось — не трогаем DOM
-  lastFeedHash = hash;
+  const hash = feed.map(f => f.lap_id).join('|');
+  if (hash === lastFeedIds) return;
+  lastFeedIds = hash;
 
   const list = document.getElementById('feed-list');
-  const isNew = list.children.length > 0;  // анимация только для обновлений
+  const hadChildren = list.children.length > 0;
 
   list.innerHTML = feed.map((item, i) => {
-    const isFinish = item.status === 'FINISHED';
+    const isFinishLap = item.is_finish_lap;
     const isWarmup = item.lap_number === 0;
     let cls = 'feed-item';
-    if (isFinish) cls += ' finish-item';
+    if (isFinishLap) cls += ' finish-item';
     if (isWarmup) cls += ' warmup';
-    if (isNew && i === 0) cls += ' new-item';  // анимация только для первого (нового)
+    if (hadChildren && i === 0) cls += ' new-item';
 
     const lapLabel = isWarmup ? 'разгонный' :
-      (isFinish ? 'ФИНИШ' : 'круг ' + item.lap_number + '/' + item.laps_required);
+      (isFinishLap ? 'ФИНИШ · круг ' + item.lap_number + '/' + item.laps_required
+                   : 'круг ' + item.lap_number + '/' + item.laps_required);
 
     return '<div class="' + cls + '">' +
       '<div class="feed-number">' + item.rider_number + '</div>' +
@@ -350,7 +344,6 @@ function updateFeed(feed) {
   }).join('');
 }
 
-/* ─── Results ─── */
 function updateResults(results) {
   const tbody = document.getElementById('results-body');
   let leaderTime = null;
@@ -376,14 +369,12 @@ function updateResults(results) {
   }).join('');
 }
 
-/* ─── Counters ─── */
 function updateCounters(st) {
   document.getElementById('cnt-racing').textContent = st.RACING || 0;
   document.getElementById('cnt-finished').textContent = st.FINISHED || 0;
   document.getElementById('cnt-dnf').textContent = (st.DNF || 0) + (st.DSQ || 0);
 }
 
-/* ─── Categories ─── */
 let catsLoaded = false;
 function updateCategories(cats) {
   if (catsLoaded || !cats || !cats.length) return;
@@ -397,7 +388,9 @@ function updateCategories(cats) {
   catsLoaded = true;
 }
 
-/* ─── Init ─── */
+document.getElementById('category-select').addEventListener('change', () => {
+  fetchState();
+});
 fetchState();
 setInterval(fetchState, 1000);
 </script>
@@ -426,7 +419,10 @@ def create_app(event_store: EventStore, reader_ip: str,
         if not db or not engine:
             return jsonify({"feed": [], "results": [], "status": {
                 "RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0},
-                "categories": [], "start_time": None})
+                "categories": [], "start_time": None,
+                "server_elapsed_ms": None})
+
+        now_ms = int(time.time() * 1000)
 
         categories = db.get_categories()
         cat_id = request.args.get("category_id", type=int)
@@ -439,6 +435,10 @@ def create_app(event_store: EventStore, reader_ip: str,
                     st = int(st)
                     if start_time_ms is None or st < start_time_ms:
                         start_time_ms = st
+
+        server_elapsed_ms = None
+        if start_time_ms is not None:
+            server_elapsed_ms = now_ms - start_time_ms
 
         all_results = []
         target_cats = [c for c in categories if c["id"] == cat_id] if cat_id else categories
@@ -482,21 +482,26 @@ def create_app(event_store: EventStore, reader_ip: str,
         all_results.sort(key=sort_key)
 
         feed = []
-        db_history = db.get_feed_history(limit=50)
+        db_history = db.get_feed_history(limit=50, category_id=cat_id)
         for item in db_history:
             ts_sec = item["timestamp"] / 1000.0
             time_str = time.strftime('%H:%M:%S', time.localtime(ts_sec))
 
+            lap_number = item["lap_number"]
+            laps_required = item["laps_required"] if item.get("laps_required") else 1
+            is_finish_lap = (lap_number > 0 and lap_number >= laps_required)
+
             feed.append({
+                "lap_id": item["lap_id"],
                 "rider_number": item["rider_number"],
                 "rider_name": f"{item['last_name']} {item.get('first_name', '')}".strip(),
-                "lap_number": item["lap_number"],
+                "lap_number": lap_number,
                 "lap_time": int(item["lap_time"]) if item.get("lap_time") else None,
-                "laps_required": item["laps_required"] if item.get("laps_required") else "?",
-                "time_str": time_str, 
-                "status": item["status"],
+                "laps_required": laps_required,
+                "time_str": time_str,
+                "is_finish_lap": is_finish_lap,
             })
-          
+
         status = engine.get_race_status(cat_id)
 
         return jsonify({
@@ -506,6 +511,7 @@ def create_app(event_store: EventStore, reader_ip: str,
             "categories": [{"id": c["id"], "name": c["name"],
                             "laps": c["laps"]} for c in categories],
             "start_time": start_time_ms,
+            "server_elapsed_ms": server_elapsed_ms,
         })
 
     @app.route("/api/events")

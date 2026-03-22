@@ -30,6 +30,9 @@ engine = RaceEngine(db=db, raw_logger=raw_logger)
 
 
 def setup_dummy_data():
+    race_id = db.new_race(label="auto")
+    logging.info("Новая гоночная сессия: race_id=%d", race_id)
+    
     cats = db.get_categories()
     if not cats:
         cat_id = db.add_category(name="М18-29", laps=TARGET_LAPS,

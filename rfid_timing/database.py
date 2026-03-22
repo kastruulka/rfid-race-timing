@@ -49,10 +49,17 @@ class Database:
                 epc         TEXT    UNIQUE
             );
 
+            CREATE TABLE IF NOT EXISTS race (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at  REAL    NOT NULL,
+                label       TEXT    DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS result (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 rider_id    INTEGER NOT NULL REFERENCES rider(id),
                 category_id INTEGER REFERENCES category(id),
+                race_id     INTEGER REFERENCES race(id),
                 start_time  REAL,
                 finish_time REAL,
                 status      TEXT    NOT NULL DEFAULT 'DNS',
@@ -69,11 +76,45 @@ class Database:
                 source      TEXT    NOT NULL DEFAULT 'RFID'
             );
 
-            CREATE INDEX IF NOT EXISTS idx_rider_epc  ON rider(epc);
-            CREATE INDEX IF NOT EXISTS idx_result_rider ON result(rider_id);
-            CREATE INDEX IF NOT EXISTS idx_lap_result   ON lap(result_id);
+            CREATE INDEX IF NOT EXISTS idx_rider_epc    ON rider(epc);
+            CREATE INDEX IF NOT EXISTS idx_result_rider  ON result(rider_id);
+            CREATE INDEX IF NOT EXISTS idx_lap_result    ON lap(result_id);
         """)
         self._commit()
+        self._migrate()
+
+    def _migrate(self):
+        cols = [row[1] for row in
+                self._exec("PRAGMA table_info(result)").fetchall()]
+        if "race_id" not in cols:
+            self._exec(
+                "ALTER TABLE result ADD COLUMN race_id INTEGER"
+                " REFERENCES race(id)")
+            self._commit()
+
+        self._exec(
+            "CREATE INDEX IF NOT EXISTS idx_result_race"
+            " ON result(race_id)")
+        self._commit()
+
+
+    def create_race(self, label: str = "") -> int:
+        cur = self._exec(
+            "INSERT INTO race (created_at, label) VALUES (?, ?)",
+            (time.time(), label),
+        )
+        self._commit()
+        return cur.lastrowid
+
+    def get_current_race_id(self) -> Optional[int]:
+        r = self._exec(
+            "SELECT id FROM race ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return r["id"] if r else None
+
+    def new_race(self, label: str = "") -> int:
+        return self.create_race(label)
+
 
     def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
         cur = self._exec("INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)", (name, laps, distance_km))
@@ -87,10 +128,17 @@ class Database:
         r = self._exec("SELECT * FROM category WHERE id=?", (cid,)).fetchone()
         return dict(r) if r else None
 
-    def add_rider(self, number: int, last_name: str, first_name: str = "", birth_year: int = None, city: str = "", club: str = "", model: str = "", category_id: int = None, epc: str = None) -> int:
+
+    def add_rider(self, number: int, last_name: str, first_name: str = "",
+                  birth_year: int = None, city: str = "", club: str = "",
+                  model: str = "", category_id: int = None,
+                  epc: str = None) -> int:
         cur = self._exec(
-            """INSERT INTO rider (number, last_name, first_name, birth_year, city, club, model, category_id, epc) VALUES (?,?,?,?,?,?,?,?,?)""",
-            (number, last_name, first_name, birth_year, city, club, model, category_id, epc))
+            """INSERT INTO rider (number, last_name, first_name, birth_year,
+               city, club, model, category_id, epc)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (number, last_name, first_name, birth_year,
+             city, club, model, category_id, epc))
         self._commit()
         return cur.lastrowid
 
@@ -100,9 +148,12 @@ class Database:
 
     def get_riders(self, category_id: int = None) -> List[Dict]:
         if category_id:
-            rows = self._exec("SELECT * FROM rider WHERE category_id=? ORDER BY number", (category_id,)).fetchall()
+            rows = self._exec(
+                "SELECT * FROM rider WHERE category_id=? ORDER BY number",
+                (category_id,)).fetchall()
         else:
-            rows = self._exec("SELECT * FROM rider ORDER BY number").fetchall()
+            rows = self._exec(
+                "SELECT * FROM rider ORDER BY number").fetchall()
         return [dict(r) for r in rows]
 
     def get_rider_by_epc(self, epc: str) -> Optional[Dict]:
@@ -110,29 +161,55 @@ class Database:
         return dict(r) if r else None
 
     def get_rider_by_number(self, number: int) -> Optional[Dict]:
-        r = self._exec("SELECT * FROM rider WHERE number=?", (number,)).fetchone()
+        r = self._exec("SELECT * FROM rider WHERE number=?",
+                        (number,)).fetchone()
         return dict(r) if r else None
 
     def get_epc_map(self) -> Dict[str, Dict]:
-        rows = self._exec("SELECT * FROM rider WHERE epc IS NOT NULL AND epc != ''").fetchall()
+        rows = self._exec(
+            "SELECT * FROM rider WHERE epc IS NOT NULL AND epc != ''"
+        ).fetchall()
         return {r["epc"]: dict(r) for r in rows}
 
-    def create_result(self, rider_id: int, category_id: int, start_time: float = None, status: str = "DNS") -> int:
-        cur = self._exec("INSERT INTO result (rider_id,category_id,start_time,status) VALUES (?,?,?,?)", (rider_id, category_id, start_time, status))
+
+    def create_result(self, rider_id: int, category_id: int,
+                      start_time: float = None, status: str = "DNS",
+                      race_id: int = None) -> int:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        cur = self._exec(
+            """INSERT INTO result
+               (rider_id, category_id, race_id, start_time, status)
+               VALUES (?,?,?,?,?)""",
+            (rider_id, category_id, race_id, start_time, status))
         self._commit()
         return cur.lastrowid
 
-    def get_result_by_rider(self, rider_id: int) -> Optional[Dict]:
-        r = self._exec("SELECT * FROM result WHERE rider_id=? ORDER BY id DESC LIMIT 1", (rider_id,)).fetchone()
+    def get_result_by_rider(self, rider_id: int,
+                            race_id: int = None) -> Optional[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return None
+        r = self._exec(
+            """SELECT * FROM result
+               WHERE rider_id=? AND race_id=?
+               ORDER BY id DESC LIMIT 1""",
+            (rider_id, race_id)).fetchone()
         return dict(r) if r else None
 
-    def get_results_by_category(self, category_id: int) -> List[Dict]:
+    def get_results_by_category(self, category_id: int,
+                                race_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
         rows = self._exec(
             """SELECT r.*, rd.number, rd.last_name, rd.first_name,
                       rd.club, rd.city, rd.birth_year
                FROM result r
                JOIN rider rd ON rd.id = r.rider_id
-               WHERE r.category_id = ?
+               WHERE r.category_id = ? AND r.race_id = ?
                ORDER BY
                  CASE r.status
                    WHEN 'FINISHED' THEN 0
@@ -142,19 +219,29 @@ class Database:
                    WHEN 'DSQ'      THEN 4
                  END,
                  r.finish_time ASC NULLS LAST""",
-            (category_id,)).fetchall()
+            (category_id, race_id)).fetchall()
         return [dict(r) for r in rows]
-    
+
     def update_result(self, result_id: int, **kw):
         ok = {"start_time", "finish_time", "status", "place"}
         f = {k: v for k, v in kw.items() if k in ok}
-        if not f: return
-        sql = "UPDATE result SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
+        if not f:
+            return
+        sql = ("UPDATE result SET "
+               + ",".join(f"{k}=?" for k in f)
+               + " WHERE id=?")
         self._exec(sql, (*f.values(), result_id))
         self._commit()
 
-    def record_lap(self, result_id: int, lap_number: int, timestamp: float, lap_time: float = None, segment: str = '{}', source: str = "RFID") -> int:
-        cur = self._exec("INSERT INTO lap (result_id,lap_number,timestamp,lap_time,segment,source) VALUES (?,?,?,?,?,?)", (result_id, lap_number, timestamp, lap_time, segment, source))
+
+    def record_lap(self, result_id: int, lap_number: int,
+                   timestamp: float, lap_time: float = None,
+                   segment: str = '{}', source: str = "RFID") -> int:
+        cur = self._exec(
+            """INSERT INTO lap
+               (result_id, lap_number, timestamp, lap_time, segment, source)
+               VALUES (?,?,?,?,?,?)""",
+            (result_id, lap_number, timestamp, lap_time, segment, source))
         self._commit()
         return cur.lastrowid
 
@@ -165,44 +252,82 @@ class Database:
         return [dict(r) for r in rows]
 
     def count_laps(self, result_id: int) -> int:
-        r = self._exec("SELECT COUNT(*) as cnt FROM lap WHERE result_id=? AND lap_number>0", (result_id,)).fetchone()
+        r = self._exec(
+            "SELECT COUNT(*) as cnt FROM lap WHERE result_id=? AND lap_number>0",
+            (result_id,)).fetchone()
         return r["cnt"] if r else 0
 
     def get_last_lap(self, result_id: int) -> Optional[Dict]:
-        r = self._exec("SELECT * FROM lap WHERE result_id=? ORDER BY lap_number DESC LIMIT 1", (result_id,)).fetchone()
+        r = self._exec(
+            "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number DESC LIMIT 1",
+            (result_id,)).fetchone()
         return dict(r) if r else None
+
 
     def get_flat_results(self) -> List[Dict]:
         rows = self._exec("""
-            SELECT r.rider_id as user_id, r.category_id, rd.number, rd.club, rd.city, rd.model, r.start_time
+            SELECT r.rider_id as user_id, r.category_id, rd.number,
+                   rd.club, rd.city, rd.model, r.start_time
             FROM result r JOIN rider rd ON r.rider_id = rd.id
         """).fetchall()
         return [dict(r) for r in rows]
 
     def get_flat_laps(self) -> List[Dict]:
         rows = self._exec("""
-            SELECT r.rider_id as user_id, r.category_id, l.lap_number as lap, l.timestamp as time, l.segment
+            SELECT r.rider_id as user_id, r.category_id,
+                   l.lap_number as lap, l.timestamp as time, l.segment
             FROM lap l JOIN result r ON l.result_id = r.id
         """).fetchall()
         return [dict(r) for r in rows]
-    
-    def get_feed_history(self, limit: int = 50) -> List[Dict]:
-        rows = self._exec("""
-            SELECT 
-                l.lap_number, 
-                l.lap_time, 
-                l.timestamp,
-                rd.number as rider_number,
-                rd.last_name,
-                rd.first_name,
-                c.laps as laps_required,
-                r.status
-            FROM lap l
-            JOIN result r ON l.result_id = r.id
-            JOIN rider rd ON r.rider_id = rd.id
-            LEFT JOIN category c ON r.category_id = c.id
-            ORDER BY l.timestamp DESC
-            LIMIT ?
-        """, (limit,)).fetchall()
-        
+
+
+    def get_feed_history(self, limit: int = 50,
+                         race_id: int = None,
+                         category_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
+
+        if category_id:
+            rows = self._exec("""
+                SELECT
+                    l.id as lap_id,
+                    l.lap_number,
+                    l.lap_time,
+                    l.timestamp,
+                    rd.number as rider_number,
+                    rd.last_name,
+                    rd.first_name,
+                    c.laps as laps_required,
+                    r.status
+                FROM lap l
+                JOIN result r ON l.result_id = r.id
+                JOIN rider rd ON r.rider_id = rd.id
+                LEFT JOIN category c ON r.category_id = c.id
+                WHERE r.race_id = ? AND r.category_id = ?
+                ORDER BY l.timestamp DESC
+                LIMIT ?
+            """, (race_id, category_id, limit)).fetchall()
+        else:
+            rows = self._exec("""
+                SELECT
+                    l.id as lap_id,
+                    l.lap_number,
+                    l.lap_time,
+                    l.timestamp,
+                    rd.number as rider_number,
+                    rd.last_name,
+                    rd.first_name,
+                    c.laps as laps_required,
+                    r.status
+                FROM lap l
+                JOIN result r ON l.result_id = r.id
+                JOIN rider rd ON r.rider_id = rd.id
+                LEFT JOIN category c ON r.category_id = c.id
+                WHERE r.race_id = ?
+                ORDER BY l.timestamp DESC
+                LIMIT ?
+            """, (race_id, limit)).fetchall()
+
         return [dict(r) for r in rows]
