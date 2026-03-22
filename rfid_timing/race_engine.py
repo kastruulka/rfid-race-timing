@@ -37,7 +37,7 @@ class RaceEngine:
     def mass_start(self, category_id: int,
                    start_time: float = None) -> Dict[str, Any]:
         if start_time is None:
-            start_time = time.time()
+            start_time = time.time() * 1000
 
         category = self.db.get_category(category_id)
         if not category:
@@ -145,7 +145,7 @@ class RaceEngine:
         if last_lap:
             lap_time_ms = timestamp_ms - int(last_lap["timestamp"])
         else:
-            lap_time_ms = timestamp_ms - int(result["start_time"])
+            lap_time_ms = timestamp_ms - int(float(result["start_time"]))
 
         lap_number = 0 if last_lap is None else current_laps + 1
 
@@ -196,7 +196,7 @@ class RaceEngine:
     def manual_lap(self, rider_id: int,
                    timestamp: float = None) -> Optional[Dict]:
         if timestamp is None:
-            timestamp = time.time()
+            timestamp = time.time() * 1000
 
         rider = self.db.get_rider(rider_id)
         if not rider:

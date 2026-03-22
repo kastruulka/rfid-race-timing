@@ -185,3 +185,24 @@ class Database:
             FROM lap l JOIN result r ON l.result_id = r.id
         """).fetchall()
         return [dict(r) for r in rows]
+    
+    def get_feed_history(self, limit: int = 50) -> List[Dict]:
+        rows = self._exec("""
+            SELECT 
+                l.lap_number, 
+                l.lap_time, 
+                l.timestamp,
+                rd.number as rider_number,
+                rd.last_name,
+                rd.first_name,
+                c.laps as laps_required,
+                r.status
+            FROM lap l
+            JOIN result r ON l.result_id = r.id
+            JOIN rider rd ON r.rider_id = rd.id
+            LEFT JOIN category c ON r.category_id = c.id
+            ORDER BY l.timestamp DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        
+        return [dict(r) for r in rows]
