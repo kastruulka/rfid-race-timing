@@ -88,8 +88,8 @@ def main():
     if USE_EMULATOR:
         logging.info("Запуск в режиме ЭМУЛЯТОРА")
         reader = EmulatorReader(
-            epc_list=EMULATOR_TAGS,
             on_event=on_new_event,
+            db=db,
             rssi_window_sec=RSSI_WINDOW_SEC,
             min_lap_time_sec=EMULATOR_MIN_LAP_TIME_SEC,
         )

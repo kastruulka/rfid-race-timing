@@ -120,6 +120,28 @@ class Database:
         cur = self._exec("INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)", (name, laps, distance_km))
         self._commit()
         return cur.lastrowid
+    
+    def update_category(self, cid: int, **kw) -> bool:
+        ok = {"name", "laps", "distance_km"}
+        f = {k: v for k, v in kw.items() if k in ok}
+        if not f:
+            return False
+        sql = ("UPDATE category SET "
+               + ",".join(f"{k}=?" for k in f)
+               + " WHERE id=?")
+        self._exec(sql, (*f.values(), cid))
+        self._commit()
+        return True
+ 
+    def delete_category(self, cid: int) -> bool:
+        r = self._exec(
+            "SELECT COUNT(*) as cnt FROM rider WHERE category_id=?",
+            (cid,)).fetchone()
+        if r and r["cnt"] > 0:
+            return False
+        self._exec("DELETE FROM category WHERE id=?", (cid,))
+        self._commit()
+        return True
 
     def get_categories(self) -> List[Dict]:
         return [dict(r) for r in self._exec("SELECT * FROM category ORDER BY id").fetchall()]
@@ -127,7 +149,6 @@ class Database:
     def get_category(self, cid: int) -> Optional[Dict]:
         r = self._exec("SELECT * FROM category WHERE id=?", (cid,)).fetchone()
         return dict(r) if r else None
-
 
     def add_rider(self, number: int, last_name: str, first_name: str = "",
                   birth_year: int = None, city: str = "", club: str = "",
@@ -142,6 +163,34 @@ class Database:
         self._commit()
         return cur.lastrowid
 
+    def update_rider(self, rid: int, **kw) -> bool:
+        ok = {"number", "last_name", "first_name", "birth_year",
+              "city", "club", "model", "category_id", "epc"}
+        f = {k: v for k, v in kw.items() if k in ok}
+        if not f:
+            return False
+        sql = ("UPDATE rider SET "
+               + ",".join(f"{k}=?" for k in f)
+               + " WHERE id=?")
+        self._exec(sql, (*f.values(), rid))
+        self._commit()
+        return True
+ 
+    def delete_rider(self, rid: int) -> bool:
+        try:
+            results = self._exec(
+                "SELECT id FROM result WHERE rider_id=?", (rid,)
+            ).fetchall()
+            for r in results:
+                self._exec("DELETE FROM lap WHERE result_id=?", (r["id"],))
+            self._exec("DELETE FROM result WHERE rider_id=?", (rid,))
+            self._exec("DELETE FROM rider WHERE id=?", (rid,))
+            self._commit()
+            return True
+        except Exception:
+            self._conn().rollback()
+            return False
+
     def get_rider(self, rid: int) -> Optional[Dict]:
         r = self._exec("SELECT * FROM rider WHERE id=?", (rid,)).fetchone()
         return dict(r) if r else None
@@ -154,6 +203,24 @@ class Database:
         else:
             rows = self._exec(
                 "SELECT * FROM rider ORDER BY number").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_riders_with_category(self, category_id: int = None) -> List[Dict]:
+        if category_id:
+            rows = self._exec("""
+                SELECT r.*, c.name as category_name
+                FROM rider r
+                LEFT JOIN category c ON r.category_id = c.id
+                WHERE r.category_id = ?
+                ORDER BY r.number
+            """, (category_id,)).fetchall()
+        else:
+            rows = self._exec("""
+                SELECT r.*, c.name as category_name
+                FROM rider r
+                LEFT JOIN category c ON r.category_id = c.id
+                ORDER BY r.number
+            """).fetchall()
         return [dict(r) for r in rows]
 
     def get_rider_by_epc(self, epc: str) -> Optional[Dict]:

@@ -4,6 +4,7 @@ from flask import Flask, render_template_string, jsonify, request
 from .event_store import EventStore
 from .database import Database
 from .race_engine import RaceEngine
+from .start_list import register_start_list
 
 
 TIMER_HTML = """
@@ -44,32 +45,6 @@ TIMER_HTML = """
       min-height: 100vh;
     }
 
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 24px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-    }
-    .header-title {
-      font-weight: 900; font-size: 18px;
-      letter-spacing: -0.02em; text-transform: uppercase;
-    }
-    .header-title span { color: var(--accent); }
-    .reader-status {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 13px; font-weight: 600; color: var(--text-dim);
-    }
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--green); box-shadow: 0 0 8px var(--green);
-      animation: pulse-dot 2s infinite;
-    }
-    @keyframes pulse-dot {
-      0%,100% { opacity:1; } 50% { opacity:0.5; }
-    }
-
     .timer-bar {
       display: flex; align-items: center; justify-content: center;
       gap: 32px; padding: 20px 24px;
@@ -106,7 +81,6 @@ TIMER_HTML = """
       height: calc(100vh - 160px);
     }
 
-    /* Feed */
     .feed-panel {
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column; overflow: hidden;
@@ -143,7 +117,6 @@ TIMER_HTML = """
     .feed-item.finish-item { background: var(--green-glow); }
     .feed-item.warmup .feed-detail { color: var(--yellow); }
 
-    /* Results */
     .results-panel { display: flex; flex-direction: column; overflow: hidden; }
     .results-scroll { flex: 1; overflow-y: auto; }
     .controls-bar {
@@ -197,17 +170,48 @@ TIMER_HTML = """
       .main-clock { font-size: 36px; min-width: auto; }
       .timer-bar { gap: 16px; flex-wrap: wrap; }
     }
+     
+    .topnav {
+      display: flex; align-items: center; gap: 24px;
+      padding: 0 24px; height: 52px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .topnav-brand { font-weight: 900; font-size: 16px; text-transform: uppercase; letter-spacing: -0.02em; }
+    .topnav-brand span { color: var(--accent); }
+    .topnav a {
+      color: var(--text-dim); text-decoration: none; font-size: 13px;
+      font-weight: 700; padding: 14px 0; border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    .topnav a:hover { color: var(--text); }
+    .topnav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .topnav .nav-spacer { flex: 1; }
+    .reader-status {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600; color: var(--text-dim);
+    }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 8px var(--green);
+      animation: pulse-dot 2s infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { opacity:1; } 50% { opacity:0.5; }
+    }
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <div class="header-title"><span>RFID</span> Хронометраж</div>
+  <nav class="topnav">
+    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+    <a href="/start-list">Стартовый лист</a>
+    <a href="/" class="active">Хронометраж</a>
+    <div class="nav-spacer"></div>
     <div class="reader-status">
       <div class="status-dot"></div>
       <span>{{ reader_ip }} / Антенны: {{ antennas }}</span>
     </div>
-  </div>
+  </nav>
 
   <div class="timer-bar">
     <div class="main-clock" id="main-clock">00:00.0</div>
@@ -543,5 +547,7 @@ def create_app(event_store: EventStore, reader_ip: str,
                 return jsonify({"error": f"Unknown action: {action}"}), 400
         except Exception as e:
             return jsonify({"error": str(e)}), 400
+
+    register_start_list(app, db, engine)
 
     return app
