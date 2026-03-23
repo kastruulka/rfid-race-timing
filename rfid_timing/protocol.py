@@ -419,6 +419,8 @@ PROTOCOL_PAGE_HTML = r"""
     <a href="/start-list">Стартовый лист</a>
     <a href="/">Хронометраж</a>
     <a href="/protocol" class="active">Протокол</a>
+    <a href="/settings">Настройки</a>
+    <a href="/judge">Судья</a>
   </nav>
 
   <div class="page">

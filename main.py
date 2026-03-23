@@ -55,7 +55,7 @@ def setup_dummy_data():
             )
 
     engine.reload_epc_map()
-    engine.mass_start(category_id=cat_id)
+    #engine.mass_start(category_id=cat_id)
 
 
 def on_new_event(event):

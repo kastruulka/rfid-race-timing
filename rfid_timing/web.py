@@ -6,6 +6,8 @@ from .database import Database
 from .race_engine import RaceEngine
 from .start_list import register_start_list
 from .protocol import register_protocol
+from .settings import register_settings, ConfigState
+from .judge import register_judge
 
 
 TIMER_HTML = """
@@ -208,6 +210,8 @@ TIMER_HTML = """
     <a href="/start-list">Стартовый лист</a>
     <a href="/" class="active">Хронометраж</a>
     <a href="/protocol">Протокол</a>
+    <a href="/settings">Настройки</a>
+    <a href="/judge">Судья</a>
     <div class="nav-spacer"></div>
     <div class="reader-status">
       <div class="status-dot"></div>
@@ -408,7 +412,8 @@ setInterval(fetchState, 1000);
 def create_app(event_store: EventStore, reader_ip: str,
                antennas: set[int],
                db: Database = None,
-               engine: RaceEngine = None) -> Flask:
+               engine: RaceEngine = None,
+               config_state: ConfigState = None) -> Flask:
 
     app = Flask(__name__)
 
@@ -553,5 +558,11 @@ def create_app(event_store: EventStore, reader_ip: str,
     register_start_list(app, db, engine)
 
     register_protocol(app, db, engine)
+
+    if config_state is None:
+        config_state = ConfigState()
+    register_settings(app, db, config_state)
+
+    register_judge(app, db, engine)
 
     return app

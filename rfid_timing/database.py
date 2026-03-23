@@ -63,7 +63,10 @@ class Database:
                 start_time  REAL,
                 finish_time REAL,
                 status      TEXT    NOT NULL DEFAULT 'DNS',
-                place       INTEGER
+                place       INTEGER,
+                dnf_reason      TEXT    DEFAULT '',
+                penalty_time_ms INTEGER DEFAULT 0,
+                extra_laps      INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS lap (
@@ -76,9 +79,19 @@ class Database:
                 source      TEXT    NOT NULL DEFAULT 'RFID'
             );
 
-            CREATE INDEX IF NOT EXISTS idx_rider_epc    ON rider(epc);
-            CREATE INDEX IF NOT EXISTS idx_result_rider  ON result(rider_id);
-            CREATE INDEX IF NOT EXISTS idx_lap_result    ON lap(result_id);
+            CREATE TABLE IF NOT EXISTS penalty (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id   INTEGER NOT NULL REFERENCES result(id),
+                type        TEXT    NOT NULL,
+                value       REAL    DEFAULT 0,
+                reason      TEXT    DEFAULT '',
+                created_at  REAL    NOT NULL
+            );
+ 
+            CREATE INDEX IF NOT EXISTS idx_rider_epc      ON rider(epc);
+            CREATE INDEX IF NOT EXISTS idx_result_rider    ON result(rider_id);
+            CREATE INDEX IF NOT EXISTS idx_lap_result      ON lap(result_id);
+            CREATE INDEX IF NOT EXISTS idx_penalty_result  ON penalty(result_id);
         """)
         self._commit()
         self._migrate()
@@ -92,9 +105,42 @@ class Database:
                 " REFERENCES race(id)")
             self._commit()
 
+        
+        if "dnf_reason" not in cols:
+            self._exec(
+                "ALTER TABLE result ADD COLUMN dnf_reason TEXT DEFAULT ''")
+            self._commit()
+ 
+        if "penalty_time_ms" not in cols:
+            self._exec(
+                "ALTER TABLE result ADD COLUMN penalty_time_ms"
+                " INTEGER DEFAULT 0")
+            self._commit()
+ 
+        if "extra_laps" not in cols:
+            self._exec(
+                "ALTER TABLE result ADD COLUMN extra_laps"
+                " INTEGER DEFAULT 0")
+            self._commit()
+
+        self._exec("""
+            CREATE TABLE IF NOT EXISTS penalty (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id   INTEGER NOT NULL REFERENCES result(id),
+                type        TEXT    NOT NULL,
+                value       REAL    DEFAULT 0,
+                reason      TEXT    DEFAULT '',
+                created_at  REAL    NOT NULL
+            )
+        """)
+        self._commit()
+
         self._exec(
             "CREATE INDEX IF NOT EXISTS idx_result_race"
             " ON result(race_id)")
+        self._exec(
+            "CREATE INDEX IF NOT EXISTS idx_penalty_result"
+            " ON penalty(result_id)")
         self._commit()
 
 
@@ -290,7 +336,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def update_result(self, result_id: int, **kw):
-        ok = {"start_time", "finish_time", "status", "place"}
+        ok = {"start_time", "finish_time", "status", "place", "dnf_reason", "penalty_time_ms", "extra_laps"}
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return
@@ -301,6 +347,56 @@ class Database:
         self._commit()
 
 
+    def add_penalty(self, result_id: int, penalty_type: str,
+                    value: float = 0, reason: str = "") -> int:
+        cur = self._exec(
+            """INSERT INTO penalty (result_id, type, value, reason, created_at)
+               VALUES (?,?,?,?,?)""",
+            (result_id, penalty_type, value, reason, time.time()))
+        self._commit()
+        return cur.lastrowid
+ 
+    def get_penalties(self, result_id: int) -> List[Dict]:
+        rows = self._exec(
+            "SELECT * FROM penalty WHERE result_id=? ORDER BY created_at",
+            (result_id,)).fetchall()
+        return [dict(r) for r in rows]
+ 
+    def get_penalties_by_race(self, race_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
+        rows = self._exec("""
+            SELECT p.*, r.rider_id, rd.number as rider_number,
+                   rd.last_name, rd.first_name
+            FROM penalty p
+            JOIN result r ON p.result_id = r.id
+            JOIN rider rd ON r.rider_id = rd.id
+            WHERE r.race_id = ?
+            ORDER BY p.created_at DESC
+        """, (race_id,)).fetchall()
+        return [dict(r) for r in rows]
+ 
+    def delete_penalty(self, penalty_id: int) -> bool:
+        self._exec("DELETE FROM penalty WHERE id=?", (penalty_id,))
+        self._commit()
+        return True
+ 
+    def recalc_penalties(self, result_id: int):
+        penalties = self.get_penalties(result_id)
+        total_time_ms = 0
+        total_extra_laps = 0
+        for p in penalties:
+            if p["type"] == "TIME_PENALTY":
+                total_time_ms += int(p["value"] * 1000)
+            elif p["type"] == "EXTRA_LAP":
+                total_extra_laps += int(p["value"])
+        self.update_result(result_id,
+                           penalty_time_ms=total_time_ms,
+                           extra_laps=total_extra_laps)
+
+    
     def record_lap(self, result_id: int, lap_number: int,
                    timestamp: float, lap_time: float = None,
                    segment: str = '{}', source: str = "RFID") -> int:

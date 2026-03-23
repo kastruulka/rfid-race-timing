@@ -211,6 +211,9 @@ START_LIST_HTML = r"""
     <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
     <a href="/start-list" class="active">Стартовый лист</a>
     <a href="/">Хронометраж</a>
+    <a href="/protocol">Протокол</a>
+    <a href="/settings">Настройки</a>
+    <a href="/judge">Судья</a>
   </nav>
 
   <div class="page">
