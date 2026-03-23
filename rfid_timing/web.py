@@ -5,6 +5,7 @@ from .event_store import EventStore
 from .database import Database
 from .race_engine import RaceEngine
 from .start_list import register_start_list
+from .protocol import register_protocol
 
 
 TIMER_HTML = """
@@ -206,6 +207,7 @@ TIMER_HTML = """
     <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
     <a href="/start-list">Стартовый лист</a>
     <a href="/" class="active">Хронометраж</a>
+    <a href="/protocol">Протокол</a>
     <div class="nav-spacer"></div>
     <div class="reader-status">
       <div class="status-dot"></div>
@@ -549,5 +551,7 @@ def create_app(event_store: EventStore, reader_ip: str,
             return jsonify({"error": str(e)}), 400
 
     register_start_list(app, db, engine)
+
+    register_protocol(app, db, engine)
 
     return app
