@@ -404,18 +404,28 @@ class RaceEngine:
                 "value": 0, "reason": reason}
 
     def remove_penalty(self, penalty_id: int) -> bool:
-        penalties = self.db._exec(
-            "SELECT result_id FROM penalty WHERE id=?",
+        row = self.db._exec(
+            "SELECT result_id, type FROM penalty WHERE id=?",
             (penalty_id,)).fetchone()
-        if not penalties:
+        if not row:
             return False
-
-        result_id = penalties["result_id"]
+ 
+        result_id = row["result_id"]
+        penalty_type = row["type"]
+ 
         self.db.delete_penalty(penalty_id)
         self.db.recalc_penalties(result_id)
 
-        logger.info("Штраф #%d удалён, пересчёт result #%d",
-                    penalty_id, result_id)
+        if penalty_type in ("DNF", "DSQ"):
+            result = self.db._exec(
+                "SELECT status FROM result WHERE id=?",
+                (result_id,)).fetchone()
+            if result and result["status"] == penalty_type:
+                self.db.update_result(result_id, status="RACING",
+                                      dnf_reason="")
+ 
+        logger.info("Штраф #%d (%s) удалён, пересчёт result #%d",
+                    penalty_id, penalty_type, result_id)
         return True
 
     def get_rider_penalties(self, rider_id: int) -> list:

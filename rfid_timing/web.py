@@ -34,6 +34,7 @@ TIMER_HTML = """
       --red: #ef4444;
       --red-glow: rgba(239, 68, 68, 0.15);
       --yellow: #eab308;
+      --orange: #f97316;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Montserrat', system-ui, sans-serif;
       --radius: 10px;
@@ -365,16 +366,32 @@ function updateResults(results) {
     const gap = (r.status === 'FINISHED' && leaderTime !== null && r.total_time !== leaderTime)
       ? '+' + fmtMs(r.total_time - leaderTime) : '';
 
+    let penaltyTag = '';
+    if (r.penalty_time_ms > 0) {
+      penaltyTag = '<span style="color:var(--orange);font-size:11px;margin-left:4px">(+' +
+        (r.penalty_time_ms / 1000).toFixed(0) + 'с)</span>';
+    }
+
+    let lapsStr = r.laps_done + '/' + r.laps_required;
+    if (r.extra_laps > 0) {
+      lapsStr += '<span style="color:var(--orange);font-size:10px;margin-left:2px">+' + r.extra_laps + '</span>';
+    }
+
+    let statusHtml = '<span class="status-tag status-' + r.status + '">' + r.status + '</span>';
+    if (r.status === 'DNF' && r.dnf_reason) {
+      statusHtml += '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">' + r.dnf_reason + '</div>';
+    }
+
     return '<tr>' +
       '<td class="col-pos">' + pos + '</td>' +
       '<td class="col-num">' + r.number + '</td>' +
       '<td class="col-name">' + r.name + '</td>' +
       '<td class="col-club">' + (r.club || '') + '</td>' +
-      '<td class="col-laps">' + r.laps_done + '/' + r.laps_required + '</td>' +
+      '<td class="col-laps">' + lapsStr + '</td>' +
       '<td class="col-lastlap">' + fmtMs(r.last_lap_time) + '</td>' +
-      '<td class="col-time">' + fmtMs(r.total_time) + '</td>' +
+      '<td class="col-time">' + fmtMs(r.total_time) + penaltyTag + '</td>' +
       '<td class="col-gap">' + gap + '</td>' +
-      '<td class="col-status"><span class="status-tag status-' + r.status + '">' + r.status + '</span></td>' +
+      '<td class="col-status">' + statusHtml + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -466,6 +483,12 @@ def create_app(event_store: EventStore, reader_ip: str,
                 elif last and r.get("start_time"):
                     total_time = int(last["timestamp"]) - int(r["start_time"])
 
+                penalty_time_ms = r.get("penalty_time_ms") or 0
+                extra_laps = r.get("extra_laps") or 0
+
+                if total_time is not None and penalty_time_ms:
+                    total_time += penalty_time_ms
+                
                 all_results.append({
                     "rider_id": r["rider_id"],
                     "number": r["number"],
@@ -477,6 +500,9 @@ def create_app(event_store: EventStore, reader_ip: str,
                     "total_time": total_time,
                     "last_lap_time": int(last["lap_time"]) if last and last["lap_time"] else None,
                     "finish_time": int(r["finish_time"]) if r.get("finish_time") else None,
+                    "penalty_time_ms": penalty_time_ms,
+                    "extra_laps": extra_laps,
+                    "dnf_reason": r.get("dnf_reason", ""),
                 })
 
         def sort_key(r):
