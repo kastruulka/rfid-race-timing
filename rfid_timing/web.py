@@ -309,9 +309,16 @@ async function fetchState() {
     const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
 
-    if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
+    if (data.race_closed) {
+      if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+      if (data.server_elapsed_ms !== null) {
+        document.getElementById('main-clock').textContent = fmtMs(data.server_elapsed_ms);
+        document.getElementById('main-clock').style.color = 'var(--text-dim)';
+      }
+    } else if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
       serverElapsedMs = data.server_elapsed_ms;
       perfAtSync = performance.now();
+      document.getElementById('main-clock').style.color = '';
       if (!clockTimer) clockTimer = setInterval(updateClock, 100);
     }
 
@@ -377,7 +384,12 @@ function updateResults(results) {
       lapsStr += '<span style="color:var(--orange);font-size:10px;margin-left:2px">+' + r.extra_laps + '</span>';
     }
 
-    let statusHtml = '<span class="status-tag status-' + r.status + '">' + r.status + '</span>';
+    let statusHtml;
+    if (r.laps_complete) {
+      statusHtml = '<span class="status-tag" style="background:var(--green-glow);color:var(--green)">ОЖИДАНИЕ</span>';
+    } else {
+      statusHtml = '<span class="status-tag status-' + r.status + '">' + r.status + '</span>';
+    }
     if (r.status === 'DNF' && r.dnf_reason) {
       statusHtml += '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">' + r.dnf_reason + '</div>';
     }
@@ -489,6 +501,11 @@ def create_app(event_store: EventStore, reader_ip: str,
                 if total_time is not None and penalty_time_ms:
                     total_time += penalty_time_ms
                 
+                total_required = cat["laps"] + extra_laps
+                laps_complete = (r["status"] == "RACING"
+                                 and r.get("finish_time") is not None
+                                 and laps_done >= total_required)
+                
                 all_results.append({
                     "rider_id": r["rider_id"],
                     "number": r["number"],
@@ -503,6 +520,7 @@ def create_app(event_store: EventStore, reader_ip: str,
                     "penalty_time_ms": penalty_time_ms,
                     "extra_laps": extra_laps,
                     "dnf_reason": r.get("dnf_reason", ""),
+                    "laps_complete": laps_complete,
                 })
 
         def sort_key(r):
@@ -541,6 +559,8 @@ def create_app(event_store: EventStore, reader_ip: str,
 
         status = engine.get_race_status(cat_id)
 
+        race_closed = db.is_race_closed()
+
         return jsonify({
             "feed": feed,
             "results": all_results,
@@ -549,6 +569,7 @@ def create_app(event_store: EventStore, reader_ip: str,
                             "laps": c["laps"]} for c in categories],
             "start_time": start_time_ms,
             "server_elapsed_ms": server_elapsed_ms,
+            "race_closed": race_closed,
         })
 
     @app.route("/api/events")

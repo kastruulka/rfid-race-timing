@@ -275,7 +275,79 @@ class RaceEngine:
 
         return lap_data
 
+    def finish_all(self, category_id: int) -> dict:
+        results = self.db.get_results_by_category(category_id)
+        finished = 0
+        dnf_count = 0
+ 
+        for r in results:
+            if r["status"] != "RACING":
+                continue
+            if r.get("finish_time"):
+                self.db.update_result(r["id"], status="FINISHED")
+                finished += 1
+            else:
+                self.db.update_result(r["id"], status="DNF",
+                                      dnf_reason="Гонка завершена судьёй")
+                self.db.add_penalty(r["id"], "DNF", value=0,
+                                    reason="Гонка завершена судьёй")
+                dnf_count += 1
+ 
+        self.calculate_places(category_id)
+ 
+        self.db.close_race()
+ 
+        logger.info("Гонка завершена: категория %d, финиш: %d, DNF: %d",
+                    category_id, finished, dnf_count)
+ 
+        return {"finished": finished, "dnf_count": dnf_count}
+ 
+    def unfinish_rider(self, rider_id: int) -> bool:
+        result = self.db.get_result_by_rider(rider_id)
+        if not result or result["status"] != "FINISHED":
+            return False
+ 
+        if self.db.is_race_closed():
+            return False
+ 
+        self.db.update_result(result["id"], status="RACING",
+                              finish_time=None)
+ 
+        rider = self.db.get_rider(rider_id)
+        logger.info("#%d %s — финиш отменён, возврат в RACING",
+                    rider["number"] if rider else rider_id,
+                    rider["last_name"] if rider else "")
+ 
+        self.raw_logger.log_event(
+            "UNFINISH", epc=rider.get("epc", "") if rider else "",
+            details=f"rider={rider['number']}" if rider else "")
+ 
+        return True
 
+    def edit_finish_time(self, rider_id: int,
+                         new_finish_time_ms: int) -> bool:
+        result = self.db.get_result_by_rider(rider_id)
+        if not result or result["status"] != "FINISHED":
+            return False
+        if self.db.is_race_closed():
+            return False
+ 
+        old_time = result.get("finish_time")
+        self.db.update_result(result["id"],
+                              finish_time=new_finish_time_ms)
+ 
+        rider = self.db.get_rider(rider_id)
+        logger.info("#%d %s — время финиша изменено: %s → %s",
+                    rider["number"] if rider else rider_id,
+                    rider["last_name"] if rider else "",
+                    old_time, new_finish_time_ms)
+ 
+        self.raw_logger.log_event(
+            "EDIT_FINISH", epc=rider.get("epc", "") if rider else "",
+            details=f"rider={rider['number']},old={old_time},new={new_finish_time_ms}")
+ 
+        return True
+    
     DNF_REASONS = {
         "voluntary": "Добровольный сход",
         "mechanical": "Механическая поломка",
@@ -286,7 +358,7 @@ class RaceEngine:
     def set_dnf(self, rider_id: int, reason_code: str = "",
                 reason_text: str = "") -> bool:
         result = self.db.get_result_by_rider(rider_id)
-        if not result or result["status"] not in ("RACING", "DNS"):
+        if not result or result["status"] not in ("RACING", "DNS", "FINISHED"):
             return False
 
         reason = self.DNF_REASONS.get(reason_code, reason_text or reason_code)
@@ -342,7 +414,6 @@ class RaceEngine:
 
     def add_time_penalty(self, rider_id: int, seconds: float,
                          reason: str = "") -> Optional[Dict]:
-        """Добавляет временной штраф (+N секунд)."""
         result = self.db.get_result_by_rider(rider_id)
         if not result:
             return None

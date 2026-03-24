@@ -65,16 +65,36 @@ JUDGE_HTML = r"""
     }
     .panel-title span { color: var(--accent); }
 
-    .rider-selector {
-      display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end;
-    }
-    .rider-selector .form-row { flex: 1; margin-bottom: 0; }
-    .rider-selector select, .rider-selector input {
+    .rider-selector { position: relative; margin-bottom: 20px; }
+    .rider-selector input {
       width: 100%; padding: 10px 14px; font-family: var(--sans); font-size: 14px;
       background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
       color: var(--text); outline: none; font-weight: 600;
     }
-    .rider-selector select:focus, .rider-selector input:focus { border-color: var(--accent); }
+    .rider-selector input:focus { border-color: var(--accent); }
+    .rider-dropdown {
+      display: none; position: absolute; top: 100%; left: 0; right: 0;
+      z-index: 50; max-height: 240px; overflow-y: auto;
+      background: var(--surface); border: 1px solid var(--accent);
+      border-top: none; border-radius: 0 0 8px 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .rider-dropdown.open { display: block; }
+    .rider-dropdown-item {
+      padding: 8px 14px; cursor: pointer; font-size: 13px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid rgba(42,53,72,0.3);
+    }
+    .rider-dropdown-item:hover { background: var(--accent-glow); }
+    .rider-dropdown-item .rdi-num {
+      font-family: var(--mono); font-weight: 700; color: var(--accent);
+      min-width: 40px;
+    }
+    .rider-dropdown-item .rdi-name { font-weight: 600; flex: 1; }
+    .rider-dropdown-item .rdi-status {
+      font-size: 10px; font-weight: 700; padding: 2px 6px;
+      border-radius: 3px; margin-left: 8px;
+    }
 
     .selected-rider {
       display: none; padding: 14px 18px; margin-bottom: 18px;
@@ -242,17 +262,36 @@ JUDGE_HTML = r"""
       </div>
 
       <div class="rider-selector">
-        <div class="form-row">
-          <label>Участник</label>
-          <select id="rider-select" onchange="onRiderSelect()">
-            <option value="">— Выберите участника —</option>
-          </select>
-        </div>
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px;display:block">Участник</label>
+        <input type="text" id="rider-search" placeholder="Введите номер или фамилию…"
+               oninput="onSearchInput()" onfocus="onSearchFocus()" autocomplete="off">
+        <div class="rider-dropdown" id="rider-dropdown"></div>
       </div>
 
       <div class="selected-rider" id="selected-info">
         <div><span class="sr-number" id="sr-num"></span><span class="sr-name" id="sr-name"></span></div>
         <div class="sr-meta" id="sr-meta"></div>
+        <div class="sr-status" id="sr-status" style="margin-top:6px"></div>
+      </div>
+
+      <div class="action-section">
+        <div class="action-title" style="color:var(--green)">Коррекция финиша</div>
+        <div id="current-finish-info" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:11px;color:var(--text-dim)">Текущее время финиша:</span>
+          <span id="current-finish-time" style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green);margin-left:8px"></span>
+        </div>
+        <div id="no-finish-info" style="display:none;margin-bottom:10px;padding:8px 12px;font-size:12px;color:var(--text-dim)">
+          Участник ещё не финишировал
+        </div>
+        <div class="penalty-input" style="margin-bottom:8px">
+          <input type="text" id="edit-finish-mm" placeholder="ММ" style="width:60px;text-align:center;font-family:var(--mono)">
+          <span style="color:var(--text-dim);font-weight:700;font-size:18px">:</span>
+          <input type="text" id="edit-finish-ss" placeholder="СС.д" style="width:80px;text-align:center;font-family:var(--mono)">
+          <button class="btn btn-accent" onclick="doEditFinishTime()">Изменить</button>
+        </div>
+        <button class="btn" onclick="doUnfinishRider()" style="width:100%;padding:8px">
+          Отменить финиш → вернуть в RACING
+        </button>
       </div>
 
       <div class="action-section">
@@ -297,6 +336,15 @@ JUDGE_HTML = r"""
           <button class="btn btn-yellow" onclick="doWarning()">Предупреждение</button>
         </div>
       </div>
+
+      <div class="action-section">
+        <div class="action-title" style="color:var(--accent)">Заметки судьи</div>
+        <div class="penalty-input">
+          <input type="text" id="note-text" placeholder="Текст заметки…" style="flex:1">
+          <button class="btn btn-accent" onclick="addNote()">+ Заметка</button>
+        </div>
+        <div id="notes-list" style="margin-top:8px"></div>
+      </div>
     </div>
 
     <div class="log-panel">
@@ -329,35 +377,101 @@ async function api(url, method, body) {
 async function loadRiders() {
   const data = await api('/api/riders', 'GET');
   riders = Array.isArray(data) ? data : [];
-  const sel = document.getElementById('rider-select');
-  sel.innerHTML = '<option value="">— Выберите участника —</option>';
-  riders.forEach(r => {
-    const o = document.createElement('option');
-    o.value = r.id;
-    o.textContent = '#' + r.number + ' ' + r.last_name + ' ' + (r.first_name || '');
-    sel.appendChild(o);
-  });
 }
 
-function onRiderSelect() {
-  const val = document.getElementById('rider-select').value;
-  selectedRiderId = val ? parseInt(val) : null;
-  const info = document.getElementById('selected-info');
+function onSearchInput() {
+  renderDropdown();
+  document.getElementById('rider-dropdown').classList.add('open');
+}
 
-  if (!selectedRiderId) {
-    info.classList.remove('visible');
+function onSearchFocus() {
+  renderDropdown();
+  document.getElementById('rider-dropdown').classList.add('open');
+}
+
+function renderDropdown() {
+  const query = (document.getElementById('rider-search').value || '').toLowerCase();
+  const dd = document.getElementById('rider-dropdown');
+  const filtered = riders.filter(r => {
+    if (!query) return true;
+    return String(r.number).includes(query) ||
+           (r.last_name || '').toLowerCase().includes(query) ||
+           (r.first_name || '').toLowerCase().includes(query);
+  });
+
+  if (!filtered.length) {
+    dd.innerHTML = '<div style="padding:12px 14px;color:var(--text-dim);font-size:12px">Не найдено</div>';
     return;
   }
 
-  const r = riders.find(x => x.id === selectedRiderId);
-  if (!r) { info.classList.remove('visible'); return; }
+  dd.innerHTML = filtered.map(r =>
+    '<div class="rider-dropdown-item" onclick="selectRider(' + r.id + ')">' +
+      '<span class="rdi-num">#' + r.number + '</span>' +
+      '<span class="rdi-name">' + (r.last_name || '') + ' ' + (r.first_name || '') + '</span>' +
+    '</div>'
+  ).join('');
+}
 
+function selectRider(riderId) {
+  selectedRiderId = riderId;
+  const r = riders.find(x => x.id === riderId);
+  const dd = document.getElementById('rider-dropdown');
+  dd.classList.remove('open');
+
+  if (!r) return;
+
+  document.getElementById('rider-search').value = '#' + r.number + ' ' + r.last_name + ' ' + (r.first_name || '');
   document.getElementById('sr-num').textContent = '#' + r.number;
   document.getElementById('sr-name').textContent = r.last_name + ' ' + (r.first_name || '');
   document.getElementById('sr-meta').textContent =
     (r.category_name || '—') + ' · ' + (r.club || '—') + ' · ' + (r.city || '');
-  info.classList.add('visible');
+  document.getElementById('selected-info').classList.add('visible');
+
+  loadRiderFinishInfo(riderId);
 }
+
+async function loadRiderFinishInfo(riderId) {
+  try {
+    const data = await api('/api/judge/rider-status/' + riderId, 'GET');
+    const cfi = document.getElementById('current-finish-info');
+    const nfi = document.getElementById('no-finish-info');
+    const srs = document.getElementById('sr-status');
+
+    if (data.status === 'FINISHED' && data.total_time_ms != null) {
+      const ms = data.total_time_ms;
+      const m = Math.floor(Math.abs(ms) / 1000 / 60);
+      const s = (Math.abs(ms) / 1000) % 60;
+      const timeStr = String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
+      document.getElementById('current-finish-time').textContent = timeStr;
+      // Предзаполняем поля редактирования
+      document.getElementById('edit-finish-mm').value = String(m);
+      document.getElementById('edit-finish-ss').value = s.toFixed(1);
+      cfi.style.display = 'block';
+      nfi.style.display = 'none';
+      srs.innerHTML = '<span style="color:var(--green);font-weight:700;font-size:12px">FINISHED</span>';
+    } else {
+      cfi.style.display = 'none';
+      nfi.style.display = data.status === 'RACING' ? 'block' : 'none';
+      document.getElementById('edit-finish-mm').value = '';
+      document.getElementById('edit-finish-ss').value = '';
+      srs.innerHTML = '<span style="font-weight:700;font-size:12px;color:' +
+        (data.status === 'RACING' ? 'var(--accent)' :
+         data.status === 'DNF' ? 'var(--red)' :
+         data.status === 'DSQ' ? 'var(--red)' : 'var(--text-dim)') +
+        '">' + (data.status || '—') + '</span>' +
+        (data.dnf_reason ? '<span style="font-size:10px;color:var(--text-dim);margin-left:6px">' + data.dnf_reason + '</span>' : '');
+    }
+  } catch(e) {
+    document.getElementById('current-finish-info').style.display = 'none';
+    document.getElementById('no-finish-info').style.display = 'none';
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.rider-selector')) {
+    document.getElementById('rider-dropdown').classList.remove('open');
+  }
+});
 
 function requireRider() {
   if (!selectedRiderId) { toast('Выберите участника', true); return false; }
@@ -428,13 +542,13 @@ async function loadLog() {
     const data = await api('/api/judge/log', 'GET');
     const log = Array.isArray(data) ? data : [];
     const list = document.getElementById('log-list');
- 
+
     if (!log.length) {
       list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-dim)">Нет записей</div>';
       return;
     }
 
-  list.innerHTML = log.map(item => {
+    list.innerHTML = log.map(item => {
     const timeStr = new Date(item.created_at * 1000).toLocaleTimeString('ru-RU');
     const valueStr = item.type === 'TIME_PENALTY' ? '+' + item.value + ' сек'
       : item.type === 'EXTRA_LAP' ? '+' + item.value + ' кр.'
@@ -464,6 +578,7 @@ async function loadLog() {
 
 loadRiders();
 loadLog();
+loadNotes();
 loadCategoriesAndRestore();
 setInterval(loadLog, 5000);
 setInterval(loadRaceStatus, 2000);
@@ -483,6 +598,7 @@ async function loadCategoriesAndRestore() {
   if (saved && sel.querySelector('option[value="' + saved + '"]')) {
     sel.value = saved;
   } else if (cats.length === 1) {
+    // Если одна категория — выбираем автоматически
     sel.value = cats[0].id;
   }
   loadRaceStatus();
@@ -490,9 +606,11 @@ async function loadCategoriesAndRestore() {
 
 async function loadRaceStatus() {
   const catId = document.getElementById('race-category').value;
+
   if (catId) {
     sessionStorage.setItem('judge_cat_id', catId);
   }
+
   if (!catId) {
     document.getElementById('race-status-bar').style.display = 'none';
     document.getElementById('btn-mass-start').disabled = false;
@@ -503,24 +621,39 @@ async function loadRaceStatus() {
     const resp = await fetch('/api/state?category_id=' + catId);
     const data = await resp.json();
     const st = data.status || {};
-    document.getElementById('rs-racing').textContent = st.RACING || 0;
-    document.getElementById('rs-finished').textContent = st.FINISHED || 0;
-    document.getElementById('rs-dnf').textContent = (st.DNF || 0) + (st.DSQ || 0);
+    const racing = st.RACING || 0;
+    const finished = st.FINISHED || 0;
+    const dnf = (st.DNF || 0) + (st.DSQ || 0);
+    const total = racing + finished + dnf;
+
+    document.getElementById('rs-racing').textContent = racing;
+    document.getElementById('rs-finished').textContent = finished;
+    document.getElementById('rs-dnf').textContent = dnf;
     document.getElementById('race-status-bar').style.display = 'block';
 
-    const hasRacing = (st.RACING || 0) > 0;
-    const hasAny = (st.RACING || 0) + (st.FINISHED || 0) + (st.DNF || 0) + (st.DSQ || 0) > 0;
-    document.getElementById('btn-mass-start').disabled = hasAny;
-    document.getElementById('btn-finish-race').disabled = !hasRacing;
+    const raceClosed = data.race_closed === true;
+
+    document.getElementById('btn-mass-start').disabled = total > 0;
+
+    document.getElementById('btn-finish-race').disabled = total === 0 || raceClosed;
 
     const startBtn = document.getElementById('btn-mass-start');
-    if (hasRacing) {
-      startBtn.textContent = 'Гонка идёт';
-    } else if (hasAny) {
+    if (raceClosed) {
       startBtn.textContent = 'Гонка завершена';
+    } else if (total > 0) {
+      startBtn.textContent = racing > 0 ? 'Гонка идёт' : 'Гонка активна';
     } else {
       startBtn.textContent = '▶ Масс-старт';
     }
+
+    const finBtn = document.getElementById('btn-finish-race');
+    finBtn.textContent = raceClosed ? 'Гонка завершена' : '■ Завершить гонку';
+
+    document.querySelectorAll('.action-section .btn').forEach(b => {
+      if (!b.closest('#race-control')) {
+        b.disabled = raceClosed;
+      }
+    });
   } catch(e) {}
 }
 
@@ -539,13 +672,96 @@ async function doMassStart() {
   }
 }
 
+async function doUnfinishRider() {
+  if (!requireRider()) return;
+  const r = riders.find(x => x.id === selectedRiderId);
+  const label = r ? '#' + r.number + ' ' + r.last_name : '#' + selectedRiderId;
+  if (!confirm('Отменить финиш ' + label + '?\nУчастник вернётся в статус RACING.')) return;
+  const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId });
+  if (res.ok) {
+    toast('Финиш отменён: ' + label);
+    loadRaceStatus();
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
+async function doEditFinishTime() {
+  if (!requireRider()) return;
+  const mm = document.getElementById('edit-finish-mm').value.trim();
+  const ss = document.getElementById('edit-finish-ss').value.trim();
+  if (!mm && !ss) { toast('Введите время ММ:СС.д', true); return; }
+  const minutes = parseInt(mm) || 0;
+  const seconds = parseFloat(ss) || 0;
+  if (minutes < 0 || seconds < 0 || seconds >= 60) {
+    toast('Неверный формат времени', true); return;
+  }
+  const totalMs = Math.round((minutes * 60 + seconds) * 1000);
+
+  const r = riders.find(x => x.id === selectedRiderId);
+  const label = r ? '#' + r.number + ' ' + r.last_name : '#' + selectedRiderId;
+  const timeStr = String(minutes).padStart(2,'0') + ':' + seconds.toFixed(1).padStart(4,'0');
+  if (!confirm('Изменить время финиша ' + label + ' на ' + timeStr + '?')) return;
+
+  const res = await api('/api/judge/edit-finish-time', 'POST', {
+    rider_id: selectedRiderId, finish_time_ms: totalMs
+  });
+  if (res.ok) {
+    toast('Время финиша изменено: ' + label + ' → ' + timeStr);
+    document.getElementById('edit-finish-mm').value = '';
+    document.getElementById('edit-finish-ss').value = '';
+    loadRaceStatus();
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
+async function addNote() {
+  const text = document.getElementById('note-text').value.trim();
+  if (!text) { toast('Введите текст заметки', true); return; }
+  const res = await api('/api/judge/notes', 'POST', {
+    text: text, rider_id: selectedRiderId || null
+  });
+  if (res.ok) {
+    toast('Заметка сохранена');
+    document.getElementById('note-text').value = '';
+    loadNotes();
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
+async function deleteNote(nid) {
+  const res = await api('/api/judge/notes/' + nid, 'DELETE');
+  if (res.ok) loadNotes();
+}
+
+async function loadNotes() {
+  try {
+    const data = await api('/api/judge/notes', 'GET');
+    const notes = Array.isArray(data) ? data : [];
+    const list = document.getElementById('notes-list');
+    if (!notes.length) { list.innerHTML = ''; return; }
+    list.innerHTML = notes.map(n => {
+      const timeStr = new Date(n.created_at * 1000).toLocaleTimeString('ru-RU');
+      const rider = n.rider_number ? '#' + n.rider_number + ' ' + (n.last_name || '') + ' — ' : '';
+      return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+        '<div style="flex:1"><span style="color:var(--accent);font-weight:600">' + rider + '</span>' +
+        '<span style="color:var(--text)">' + n.text + '</span></div>' +
+        '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px;white-space:nowrap">' + timeStr + '</span>' +
+        '<span style="cursor:pointer;color:var(--text-dim);font-size:10px" onclick="deleteNote(' + n.id + ')" title="Удалить">✕</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) {}
+}
+
 async function doFinishRace() {
   const catId = document.getElementById('race-category').value;
   if (!catId) { toast('Выберите категорию', true); return; }
-  if (!confirm('Завершить гонку? Все участники со статусом RACING получат DNF.')) return;
+  if (!confirm('Завершить гонку?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер остановится\n• Изменения более невозможны')) return;
   const res = await api('/api/judge/finish-race', 'POST', { category_id: parseInt(catId) });
   if (res.ok) {
-    toast('Гонка завершена. DNF: ' + (res.dnf_count || 0));
+    toast('Гонка завершена. Финиш: ' + (res.finished || 0) + ', DNF: ' + (res.dnf_count || 0));
     loadRaceStatus();
     loadLog();
   } else {
@@ -575,6 +791,25 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/judge")
     def judge_page():
         return render_template_string(JUDGE_HTML)
+
+    @app.route("/api/judge/rider-status/<int:rid>", methods=["GET"])
+    def api_judge_rider_status(rid):
+        result = db.get_result_by_rider(rid)
+        if not result:
+            return jsonify({"status": "DNS", "total_time_ms": None,
+                            "dnf_reason": ""})
+        total_time_ms = None
+        if result.get("finish_time") and result.get("start_time"):
+            total_time_ms = int(result["finish_time"]) - int(result["start_time"])
+        return jsonify({
+            "status": result["status"],
+            "total_time_ms": total_time_ms,
+            "finish_time": result.get("finish_time"),
+            "start_time": result.get("start_time"),
+            "dnf_reason": result.get("dnf_reason", ""),
+            "penalty_time_ms": result.get("penalty_time_ms") or 0,
+            "extra_laps": result.get("extra_laps") or 0,
+        })
 
     @app.route("/api/judge/dnf", methods=["POST"])
     def api_judge_dnf():
@@ -670,6 +905,20 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
+    @app.route("/api/judge/unfinish-rider", methods=["POST"])
+    def api_judge_unfinish_rider():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        rid = data.get("rider_id")
+        if not rid:
+            return jsonify({"error": "Участник не выбран"}), 400
+        ok = engine.unfinish_rider(int(rid))
+        if not ok:
+            return jsonify({"error":
+                "Невозможно — участник не FINISHED или гонка закрыта"}), 400
+        return jsonify({"ok": True})
+
     @app.route("/api/judge/finish-race", methods=["POST"])
     def api_judge_finish_race():
         if not engine:
@@ -679,14 +928,51 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not cat_id:
             return jsonify({"error": "Категория не выбрана"}), 400
 
-        results = db.get_results_by_category(int(cat_id))
-        dnf_count = 0
-        for r in results:
-            if r["status"] == "RACING":
-                db.update_result(r["id"], status="DNF",
-                                 dnf_reason="Гонка завершена судьёй")
-                dnf_count += 1
+        result = engine.finish_all(int(cat_id))
+        return jsonify({"ok": True, **result})
 
-        engine.calculate_places(int(cat_id))
+    @app.route("/api/judge/edit-finish-time", methods=["POST"])
+    def api_judge_edit_finish_time():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        rid = data.get("rider_id")
+        finish_time_ms = data.get("finish_time_ms")
+        if not rid or finish_time_ms is None:
+            return jsonify({"error": "Участник или время не указаны"}), 400
 
-        return jsonify({"ok": True, "dnf_count": dnf_count})
+        result = db.get_result_by_rider(int(rid))
+        if not result or result["status"] != "FINISHED":
+            return jsonify({"error":
+                "Участник не FINISHED"}), 400
+        start = result.get("start_time") or 0
+        absolute_finish = int(start) + int(finish_time_ms)
+
+        ok = engine.edit_finish_time(int(rid), absolute_finish)
+        if not ok:
+            return jsonify({"error":
+                "Невозможно — гонка закрыта или участник не FINISHED"}), 400
+        return jsonify({"ok": True})
+
+    @app.route("/api/judge/notes", methods=["GET"])
+    def api_judge_notes_list():
+        try:
+            notes = db.get_notes()
+            return jsonify(notes)
+        except Exception:
+            return jsonify([])
+
+    @app.route("/api/judge/notes", methods=["POST"])
+    def api_judge_notes_create():
+        data = request.get_json(force=True)
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"error": "Текст заметки пуст"}), 400
+        rid = data.get("rider_id")
+        nid = db.add_note(text=text, rider_id=int(rid) if rid else None)
+        return jsonify({"ok": True, "id": nid})
+
+    @app.route("/api/judge/notes/<int:nid>", methods=["DELETE"])
+    def api_judge_notes_delete(nid):
+        db.delete_note(nid)
+        return jsonify({"ok": True})

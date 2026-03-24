@@ -56,14 +56,14 @@ class Database:
             );
 
             CREATE TABLE IF NOT EXISTS result (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                rider_id    INTEGER NOT NULL REFERENCES rider(id),
-                category_id INTEGER REFERENCES category(id),
-                race_id     INTEGER REFERENCES race(id),
-                start_time  REAL,
-                finish_time REAL,
-                status      TEXT    NOT NULL DEFAULT 'DNS',
-                place       INTEGER,
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                rider_id        INTEGER NOT NULL REFERENCES rider(id),
+                category_id     INTEGER REFERENCES category(id),
+                race_id         INTEGER REFERENCES race(id),
+                start_time      REAL,
+                finish_time     REAL,
+                status          TEXT    NOT NULL DEFAULT 'DNS',
+                place           INTEGER,
                 dnf_reason      TEXT    DEFAULT '',
                 penalty_time_ms INTEGER DEFAULT 0,
                 extra_laps      INTEGER DEFAULT 0
@@ -87,7 +87,7 @@ class Database:
                 reason      TEXT    DEFAULT '',
                 created_at  REAL    NOT NULL
             );
- 
+
             CREATE INDEX IF NOT EXISTS idx_rider_epc      ON rider(epc);
             CREATE INDEX IF NOT EXISTS idx_result_rider    ON result(rider_id);
             CREATE INDEX IF NOT EXISTS idx_lap_result      ON lap(result_id);
@@ -99,24 +99,24 @@ class Database:
     def _migrate(self):
         cols = [row[1] for row in
                 self._exec("PRAGMA table_info(result)").fetchall()]
+
         if "race_id" not in cols:
             self._exec(
                 "ALTER TABLE result ADD COLUMN race_id INTEGER"
                 " REFERENCES race(id)")
             self._commit()
 
-        
         if "dnf_reason" not in cols:
             self._exec(
                 "ALTER TABLE result ADD COLUMN dnf_reason TEXT DEFAULT ''")
             self._commit()
- 
+
         if "penalty_time_ms" not in cols:
             self._exec(
                 "ALTER TABLE result ADD COLUMN penalty_time_ms"
                 " INTEGER DEFAULT 0")
             self._commit()
- 
+
         if "extra_laps" not in cols:
             self._exec(
                 "ALTER TABLE result ADD COLUMN extra_laps"
@@ -143,6 +143,26 @@ class Database:
             " ON penalty(result_id)")
         self._commit()
 
+        race_cols = [row[1] for row in
+                     self._exec("PRAGMA table_info(race)").fetchall()]
+        if "closed_at" not in race_cols:
+            self._exec(
+                "ALTER TABLE race ADD COLUMN closed_at REAL DEFAULT NULL")
+            self._commit()
+
+        self._exec("""
+            CREATE TABLE IF NOT EXISTS note (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                race_id     INTEGER REFERENCES race(id),
+                rider_id    INTEGER REFERENCES rider(id),
+                text        TEXT    NOT NULL,
+                created_at  REAL    NOT NULL
+            )
+        """)
+        self._exec(
+            "CREATE INDEX IF NOT EXISTS idx_note_race"
+            " ON note(race_id)")
+        self._commit()
 
     def create_race(self, label: str = "") -> int:
         cur = self._exec(
@@ -161,12 +181,30 @@ class Database:
     def new_race(self, label: str = "") -> int:
         return self.create_race(label)
 
+    def close_race(self, race_id: int = None):
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return
+        self._exec("UPDATE race SET closed_at=? WHERE id=?",
+                    (time.time(), race_id))
+        self._commit()
+
+    def is_race_closed(self, race_id: int = None) -> bool:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return False
+        r = self._exec("SELECT closed_at FROM race WHERE id=?",
+                        (race_id,)).fetchone()
+        return r is not None and r["closed_at"] is not None
+
 
     def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
         cur = self._exec("INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)", (name, laps, distance_km))
         self._commit()
         return cur.lastrowid
-    
+
     def update_category(self, cid: int, **kw) -> bool:
         ok = {"name", "laps", "distance_km"}
         f = {k: v for k, v in kw.items() if k in ok}
@@ -178,7 +216,7 @@ class Database:
         self._exec(sql, (*f.values(), cid))
         self._commit()
         return True
- 
+
     def delete_category(self, cid: int) -> bool:
         r = self._exec(
             "SELECT COUNT(*) as cnt FROM rider WHERE category_id=?",
@@ -195,6 +233,7 @@ class Database:
     def get_category(self, cid: int) -> Optional[Dict]:
         r = self._exec("SELECT * FROM category WHERE id=?", (cid,)).fetchone()
         return dict(r) if r else None
+
 
     def add_rider(self, number: int, last_name: str, first_name: str = "",
                   birth_year: int = None, city: str = "", club: str = "",
@@ -221,7 +260,7 @@ class Database:
         self._exec(sql, (*f.values(), rid))
         self._commit()
         return True
- 
+
     def delete_rider(self, rid: int) -> bool:
         try:
             results = self._exec(
@@ -336,7 +375,8 @@ class Database:
         return [dict(r) for r in rows]
 
     def update_result(self, result_id: int, **kw):
-        ok = {"start_time", "finish_time", "status", "place", "dnf_reason", "penalty_time_ms", "extra_laps"}
+        ok = {"start_time", "finish_time", "status", "place",
+              "dnf_reason", "penalty_time_ms", "extra_laps"}
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return
@@ -355,13 +395,13 @@ class Database:
             (result_id, penalty_type, value, reason, time.time()))
         self._commit()
         return cur.lastrowid
- 
+
     def get_penalties(self, result_id: int) -> List[Dict]:
         rows = self._exec(
             "SELECT * FROM penalty WHERE result_id=? ORDER BY created_at",
             (result_id,)).fetchall()
         return [dict(r) for r in rows]
- 
+
     def get_penalties_by_race(self, race_id: int = None) -> List[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
@@ -377,12 +417,12 @@ class Database:
             ORDER BY p.created_at DESC
         """, (race_id,)).fetchall()
         return [dict(r) for r in rows]
- 
+
     def delete_penalty(self, penalty_id: int) -> bool:
         self._exec("DELETE FROM penalty WHERE id=?", (penalty_id,))
         self._commit()
         return True
- 
+
     def recalc_penalties(self, result_id: int):
         penalties = self.get_penalties(result_id)
         total_time_ms = 0
@@ -396,7 +436,6 @@ class Database:
                            penalty_time_ms=total_time_ms,
                            extra_laps=total_extra_laps)
 
-    
     def record_lap(self, result_id: int, lap_number: int,
                    timestamp: float, lap_time: float = None,
                    segment: str = '{}', source: str = "RFID") -> int:
@@ -425,7 +464,6 @@ class Database:
             "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number DESC LIMIT 1",
             (result_id,)).fetchone()
         return dict(r) if r else None
-
 
     def get_flat_results(self) -> List[Dict]:
         rows = self._exec("""
@@ -494,3 +532,34 @@ class Database:
             """, (race_id, limit)).fetchall()
 
         return [dict(r) for r in rows]
+
+    def add_note(self, text: str, rider_id: int = None,
+                 race_id: int = None) -> int:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        cur = self._exec(
+            """INSERT INTO note (race_id, rider_id, text, created_at)
+               VALUES (?,?,?,?)""",
+            (race_id, rider_id, text, time.time()))
+        self._commit()
+        return cur.lastrowid
+ 
+    def get_notes(self, race_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
+        rows = self._exec("""
+            SELECT n.*, rd.number as rider_number,
+                   rd.last_name, rd.first_name
+            FROM note n
+            LEFT JOIN rider rd ON n.rider_id = rd.id
+            WHERE n.race_id = ?
+            ORDER BY n.created_at DESC
+        """, (race_id,)).fetchall()
+        return [dict(r) for r in rows]
+ 
+    def delete_note(self, note_id: int) -> bool:
+        self._exec("DELETE FROM note WHERE id=?", (note_id,))
+        self._commit()
+        return True
