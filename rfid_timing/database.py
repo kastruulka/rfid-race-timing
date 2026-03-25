@@ -465,6 +465,28 @@ class Database:
             (result_id,)).fetchone()
         return dict(r) if r else None
 
+    def update_lap(self, lap_id: int, **kw) -> bool:
+        ok = {"timestamp", "lap_time", "source"}
+        f = {k: v for k, v in kw.items() if k in ok}
+        if not f:
+            return False
+        sql = ("UPDATE lap SET "
+               + ",".join(f"{k}=?" for k in f)
+               + " WHERE id=?")
+        self._exec(sql, (*f.values(), lap_id))
+        self._commit()
+        return True
+ 
+    def delete_lap(self, lap_id: int) -> bool:
+        self._exec("DELETE FROM lap WHERE id=?", (lap_id,))
+        self._commit()
+        return True
+ 
+    def get_lap_by_id(self, lap_id: int) -> Optional[Dict]:
+        r = self._exec("SELECT * FROM lap WHERE id=?",
+                        (lap_id,)).fetchone()
+        return dict(r) if r else None
+    
     def get_flat_results(self) -> List[Dict]:
         rows = self._exec("""
             SELECT r.rider_id as user_id, r.category_id, rd.number,

@@ -310,6 +310,10 @@ class RaceEngine:
         if self.db.is_race_closed():
             return False
  
+        last_lap = self.db.get_last_lap(result["id"])
+        if last_lap:
+            self.db.delete_lap(last_lap["id"])
+
         self.db.update_result(result["id"], status="RACING",
                               finish_time=None)
  

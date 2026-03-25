@@ -13,211 +13,172 @@ JUDGE_HTML = r"""
   <title>Панель судьи</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@400;600;700;900&display=swap');
-
     :root {
-      --bg: #0a0e17;
-      --surface: #111827;
-      --surface2: #1a2234;
-      --border: #2a3548;
-      --text: #e2e8f0;
-      --text-dim: #64748b;
-      --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.15);
-      --green: #22c55e;
-      --green-glow: rgba(34, 197, 94, 0.15);
-      --red: #ef4444;
-      --red-glow: rgba(239, 68, 68, 0.15);
-      --yellow: #eab308;
-      --yellow-glow: rgba(234, 179, 8, 0.15);
-      --orange: #f97316;
-      --orange-glow: rgba(249, 115, 22, 0.15);
+      --bg: #0a0e17; --surface: #111827; --surface2: #1a2234;
+      --border: #2a3548; --text: #e2e8f0; --text-dim: #64748b;
+      --accent: #38bdf8; --accent-glow: rgba(56,189,248,0.15);
+      --green: #22c55e; --green-glow: rgba(34,197,94,0.15);
+      --red: #ef4444; --red-glow: rgba(239,68,68,0.15);
+      --yellow: #eab308; --yellow-glow: rgba(234,179,8,0.15);
+      --orange: #f97316; --orange-glow: rgba(249,115,22,0.15);
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Montserrat', system-ui, sans-serif;
-      --radius: 10px;
+      --radius: 8px;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
 
     .topnav {
-      display: flex; align-items: center; gap: 24px;
-      padding: 0 24px; height: 52px;
-      background: var(--surface); border-bottom: 1px solid var(--border);
+      display:flex; align-items:center; gap:24px; padding:0 24px; height:44px;
+      background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;
     }
-    .topnav-brand { font-weight: 900; font-size: 16px; text-transform: uppercase; letter-spacing: -0.02em; }
-    .topnav-brand span { color: var(--accent); }
-    .topnav a {
-      color: var(--text-dim); text-decoration: none; font-size: 13px;
-      font-weight: 700; padding: 14px 0; border-bottom: 2px solid transparent;
-      transition: color .15s, border-color .15s;
-    }
-    .topnav a:hover { color: var(--text); }
-    .topnav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .topnav-brand { font-weight:900; font-size:15px; text-transform:uppercase; }
+    .topnav-brand span { color:var(--accent); }
+    .topnav a { color:var(--text-dim); text-decoration:none; font-size:12px; font-weight:700;
+      padding:12px 0; border-bottom:2px solid transparent; }
+    .topnav a:hover { color:var(--text); }
+    .topnav a.active { color:var(--accent); border-bottom-color:var(--accent); }
 
-    .page { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: calc(100vh - 52px); }
+    .page { display:grid; grid-template-columns:280px 1fr 300px; height:calc(100vh - 44px); }
 
-    .actions-panel {
-      border-right: 1px solid var(--border); display: flex;
-      flex-direction: column; overflow-y: auto; padding: 20px;
-    }
-    .panel-title {
-      font-size: 14px; font-weight: 900; text-transform: uppercase;
-      letter-spacing: -0.01em; margin-bottom: 18px;
-    }
-    .panel-title span { color: var(--accent); }
+    .col-left { border-right:1px solid var(--border); padding:12px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
 
-    .rider-selector { position: relative; margin-bottom: 20px; }
-    .rider-selector input {
-      width: 100%; padding: 10px 14px; font-family: var(--sans); font-size: 14px;
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-      color: var(--text); outline: none; font-weight: 600;
-    }
-    .rider-selector input:focus { border-color: var(--accent); }
-    .rider-dropdown {
-      display: none; position: absolute; top: 100%; left: 0; right: 0;
-      z-index: 50; max-height: 240px; overflow-y: auto;
-      background: var(--surface); border: 1px solid var(--accent);
-      border-top: none; border-radius: 0 0 8px 8px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    }
-    .rider-dropdown.open { display: block; }
-    .rider-dropdown-item {
-      padding: 8px 14px; cursor: pointer; font-size: 13px;
-      display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(42,53,72,0.3);
-    }
-    .rider-dropdown-item:hover { background: var(--accent-glow); }
-    .rider-dropdown-item .rdi-num {
-      font-family: var(--mono); font-weight: 700; color: var(--accent);
-      min-width: 40px;
-    }
-    .rider-dropdown-item .rdi-name { font-weight: 600; flex: 1; }
-    .rider-dropdown-item .rdi-status {
-      font-size: 10px; font-weight: 700; padding: 2px 6px;
-      border-radius: 3px; margin-left: 8px;
-    }
+    .col-center { padding:12px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
+    .actions-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 
-    .selected-rider {
-      display: none; padding: 14px 18px; margin-bottom: 18px;
-      background: var(--accent-glow); border: 1px solid rgba(56,189,248,0.3);
-      border-radius: var(--radius);
-    }
-    .selected-rider.visible { display: block; }
-    .selected-rider .sr-number {
-      font-family: var(--mono); font-size: 28px; font-weight: 700;
-      color: var(--accent); display: inline;
-    }
-    .selected-rider .sr-name { font-size: 16px; font-weight: 700; display: inline; margin-left: 10px; }
-    .selected-rider .sr-meta { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+    .col-right { border-left:1px solid var(--border); display:flex; flex-direction:column; }
 
-    .form-row { margin-bottom: 12px; }
-    .form-row label {
-      display: block; font-size: 11px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--text-dim); margin-bottom: 4px;
+    .card {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); padding:10px; 
     }
-
-    .action-section {
-      margin-bottom: 20px; padding: 18px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius);
+    .card-title {
+      font-size:10px; font-weight:700; text-transform:uppercase;
+      letter-spacing:0.06em; color:var(--text-dim); margin-bottom:8px;
+      padding-bottom:5px; border-bottom:1px solid var(--border);
     }
-    .action-title {
-      font-size: 12px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.06em; margin-bottom: 12px; padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .action-title.red { color: var(--red); }
-    .action-title.yellow { color: var(--yellow); }
-    .action-title.orange { color: var(--orange); }
+    .card-title.green { color:var(--green); }
+    .card-title.red { color:var(--red); }
+    .card-title.orange { color:var(--orange); }
+    .card-title.yellow { color:var(--yellow); }
+    .card-title.blue { color:var(--accent); }
 
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 9px 16px; font-family: var(--sans); font-size: 12px; font-weight: 700;
-      border: 1px solid var(--border); border-radius: 6px;
-      background: var(--surface2); color: var(--text); cursor: pointer;
-      transition: all .15s;
+      display:inline-flex; align-items:center; justify-content:center; gap:4px;
+      padding:6px 10px; font-family:var(--sans); font-size:11px; font-weight:700;
+      border:1px solid var(--border); border-radius:5px;
+      background:var(--surface2); color:var(--text); cursor:pointer;
     }
-    .btn:hover { border-color: var(--accent); }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-red { background: var(--red); color: #fff; border-color: var(--red); }
-    .btn-red:hover { background: #dc2626; }
-    .btn-yellow { background: var(--yellow); color: var(--bg); border-color: var(--yellow); }
-    .btn-yellow:hover { background: #ca9f07; }
-    .btn-orange { background: var(--orange); color: #fff; border-color: var(--orange); }
-    .btn-orange:hover { background: #ea6c0e; }
-    .btn-accent { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-    .btn-accent:hover { background: #2daae8; }
+    .btn:hover { border-color:var(--accent); }
+    .btn:disabled { opacity:0.35; cursor:not-allowed; }
+    .btn-red { background:var(--red); color:#fff; border-color:var(--red); }
+    .btn-red:hover { background:#dc2626; }
+    .btn-yellow { background:var(--yellow); color:var(--bg); border-color:var(--yellow); }
+    .btn-orange { background:var(--orange); color:#fff; border-color:var(--orange); }
+    .btn-accent { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+    .btn-accent:hover { background:#2daae8; }
+    .btn-row { display:flex; gap:6px; flex-wrap:wrap; }
+    .btn-full { width:100%; padding:8px; }
 
-    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-
-    .dnf-reasons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-    .dnf-reasons .btn { flex: 1; min-width: 120px; text-align: center; }
-
-    .penalty-input {
-      display: flex; gap: 8px; align-items: flex-end; margin-bottom: 10px;
+    input, select {
+      padding:6px 8px; font-family:var(--sans); font-size:12px;
+      background:var(--surface2); border:1px solid var(--border); border-radius:5px;
+      color:var(--text); outline:none; width:100%;
     }
-    .penalty-input input, .penalty-input select {
-      padding: 8px 12px; font-family: var(--sans); font-size: 13px;
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-      color: var(--text); outline: none;
-    }
-    .penalty-input input:focus { border-color: var(--accent); }
-    .penalty-input input[type="number"] { width: 90px; }
-    .penalty-input input[type="text"] { flex: 1; }
+    input:focus, select:focus { border-color:var(--accent); }
+    .input-row { display:flex; gap:4px; align-items:center; }
+    .input-row input { flex:1; }
+    .input-sm { width:50px !important; flex:none !important; text-align:center; font-family:var(--mono); }
 
-    .log-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .rider-selector { position:relative; }
+    .rider-dropdown {
+      display:none; position:absolute; top:100%; left:0; right:0; z-index:50;
+      max-height:200px; overflow-y:auto; background:var(--surface);
+      border:1px solid var(--accent); border-top:none; border-radius:0 0 6px 6px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.4);
+    }
+    .rider-dropdown.open { display:block; }
+    .rider-dropdown-item {
+      padding:6px 10px; cursor:pointer; font-size:12px;
+      display:flex; gap:8px; border-bottom:1px solid rgba(42,53,72,0.3);
+    }
+    .rider-dropdown-item:hover { background:var(--accent-glow); }
+    .rider-dropdown-item .rdi-num { font-family:var(--mono); font-weight:700; color:var(--accent); min-width:36px; }
+    .rider-dropdown-item .rdi-name { font-weight:600; }
+
+    .selected-rider {
+      display:none; padding:8px 10px; background:var(--accent-glow);
+      border:1px solid rgba(56,189,248,0.3); border-radius:var(--radius);
+    }
+    .selected-rider.visible { display:block; }
+    .sr-number { font-family:var(--mono); font-size:22px; font-weight:700; color:var(--accent); }
+    .sr-name { font-size:14px; font-weight:700; margin-left:8px; }
+    .sr-meta { font-size:10px; color:var(--text-dim); margin-top:2px; }
+
+    .lap-row {
+      display:flex; align-items:center; gap:4px; padding:3px 0;
+      border-bottom:1px solid rgba(42,53,72,0.3); font-size:11px;
+    }
+    .lap-row .lr-num { font-family:var(--mono); font-weight:700; color:var(--accent); width:20px; text-align:center; }
+    .lap-row .lr-time { font-family:var(--mono); flex:1; }
+    .lap-row input { width:36px !important; padding:2px 4px; font-size:10px; }
+    .lap-row .lr-btn {
+      padding:1px 6px; font-size:9px; font-weight:700; border:1px solid var(--border);
+      border-radius:3px; background:var(--surface2); color:var(--text); cursor:pointer;
+    }
+    .lap-row .lr-btn:hover { border-color:var(--accent); }
+    .lap-row .lr-btn.save { color:var(--green); }
+    .lap-row .lr-btn.del { color:var(--red); }
+
     .log-header {
-      padding: 14px 20px; font-size: 12px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.1em;
-      color: var(--text-dim); background: var(--surface);
-      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      padding:8px 12px; font-size:10px; font-weight:700; text-transform:uppercase;
+      letter-spacing:0.08em; color:var(--text-dim); background:var(--surface);
+      border-bottom:1px solid var(--border); flex-shrink:0;
     }
-    .log-scroll { flex: 1; overflow-y: auto; }
-
+    .log-scroll { flex:1; overflow-y:auto; }
     .log-item {
-      display: flex; align-items: flex-start; gap: 12px;
-      padding: 10px 20px; border-bottom: 1px solid rgba(42,53,72,0.5);
+      display:flex; align-items:flex-start; gap:8px;
+      padding:6px 12px; border-bottom:1px solid rgba(42,53,72,0.4); font-size:11px;
     }
     .log-item .li-badge {
-      flex-shrink: 0; padding: 3px 8px; border-radius: 4px;
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      min-width: 70px; text-align: center;
+      flex-shrink:0; padding:2px 6px; border-radius:3px;
+      font-size:9px; font-weight:700; text-transform:uppercase; min-width:55px; text-align:center;
     }
-    .li-badge.TIME_PENALTY { background: var(--orange-glow); color: var(--orange); }
-    .li-badge.EXTRA_LAP { background: var(--orange-glow); color: var(--orange); }
-    .li-badge.WARNING { background: var(--yellow-glow); color: var(--yellow); }
-    .li-badge.DSQ { background: var(--red-glow); color: var(--red); }
-    .li-badge.DNF { background: var(--red-glow); color: var(--red); }
-    .log-item .li-info { flex: 1; }
-    .log-item .li-rider { font-weight: 700; font-size: 13px; }
-    .log-item .li-detail { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-    .log-item .li-time { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-    .log-item .li-delete {
-      font-size: 11px; color: var(--text-dim); cursor: pointer;
-      padding: 2px 6px; border-radius: 4px;
+    .li-badge.TIME_PENALTY { background:var(--orange-glow); color:var(--orange); }
+    .li-badge.EXTRA_LAP { background:var(--orange-glow); color:var(--orange); }
+    .li-badge.WARNING { background:var(--yellow-glow); color:var(--yellow); }
+    .li-badge.DSQ { background:var(--red-glow); color:var(--red); }
+    .li-badge.DNF { background:var(--red-glow); color:var(--red); }
+    .log-item .li-info { flex:1; min-width:0; }
+    .log-item .li-rider { font-weight:700; font-size:11px; }
+    .log-item .li-detail { font-size:10px; color:var(--text-dim); }
+    .log-item .li-time { font-family:var(--mono); font-size:10px; color:var(--text-dim); white-space:nowrap; }
+    .log-item .li-delete { font-size:10px; color:var(--text-dim); cursor:pointer; padding:1px 4px; border-radius:3px; }
+    .log-item .li-delete:hover { color:var(--red); background:var(--red-glow); }
+
+    .notes-section { border-top:1px solid var(--border); padding:8px 12px; flex-shrink:0; max-height:35%; overflow-y:auto; }
+    .note-del {
+      padding:4px 10px; font-size:12px; font-weight:700; color:var(--red);
+      background:var(--surface2); border:1px solid var(--border); border-radius:4px;
+      cursor:pointer; flex-shrink:0; line-height:1;
     }
-    .log-item .li-delete:hover { color: var(--red); background: var(--red-glow); }
+    .note-del:hover { background:var(--red-glow); border-color:var(--red); }
 
     .toast {
-      position: fixed; bottom: 24px; right: 24px; z-index: 200;
-      padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
-      background: var(--green); color: #fff; opacity: 0;
-      transform: translateY(12px); transition: opacity .25s, transform .25s;
+      position:fixed; bottom:16px; left:16px; z-index:200;
+      padding:10px 16px; border-radius:6px; font-size:12px; font-weight:600;
+      background:var(--green); color:#fff; opacity:0;
+      transform:translateY(10px); transition:opacity .2s, transform .2s;
     }
-    .toast.show { opacity: 1; transform: translateY(0); }
-    .toast.error { background: var(--red); }
+    .toast.show { opacity:1; transform:translateY(0); }
+    .toast.error { background:var(--red); }
 
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-    @media (max-width: 900px) {
-      .page { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-    }
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </style>
 </head>
 <body>
-
   <nav class="topnav">
     <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
     <a href="/start-list">Стартовый лист</a>
@@ -228,128 +189,129 @@ JUDGE_HTML = r"""
   </nav>
 
   <div class="page">
-    <div class="actions-panel">
-      <div class="panel-title"><span>Панель</span> судьи</div>
-
-      <div class="action-section" id="race-control">
-        <div class="action-title" style="color:var(--green)">Управление гонкой</div>
-        <div class="form-row">
-          <label>Категория</label>
-          <select id="race-category">
-            <option value="">— Выберите категорию —</option>
-          </select>
-        </div>
-        <div class="race-status-bar" id="race-status-bar" style="display:none;margin-bottom:12px">
-          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-dim)">
-            <span>В гонке: <b id="rs-racing" style="color:var(--accent);font-family:var(--mono)">0</b></span>
-            <span>Финиш: <b id="rs-finished" style="color:var(--green);font-family:var(--mono)">0</b></span>
-            <span>DNF: <b id="rs-dnf" style="color:var(--red);font-family:var(--mono)">0</b></span>
-          </div>
+    <div class="col-left">
+      <div class="card" id="race-control">
+        <div class="card-title green">Управление гонкой</div>
+        <select id="race-category" style="margin-bottom:6px">
+          <option value="">— Категория —</option>
+        </select>
+        <div id="race-status-bar" style="display:none;margin-bottom:6px;font-size:11px;color:var(--text-dim)">
+          <span>В гонке: <b id="rs-racing" style="color:var(--accent);font-family:var(--mono)">0</b></span> ·
+          <span>Финиш: <b id="rs-finished" style="color:var(--green);font-family:var(--mono)">0</b></span> ·
+          <span>DNF: <b id="rs-dnf" style="color:var(--red);font-family:var(--mono)">0</b></span>
         </div>
         <div class="btn-row">
-          <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1;padding:12px;font-size:14px">
-            ▶ Масс-старт
-          </button>
-          <button class="btn" onclick="doFinishRace()" id="btn-finish-race" style="flex:1;padding:12px;font-size:14px" disabled>
-            ■ Завершить гонку
-          </button>
+          <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1">▶ Старт</button>
+          <button class="btn" onclick="doFinishRace()" id="btn-finish-race" style="flex:1" disabled>■ Завершить</button>
         </div>
-        <div class="btn-row" style="margin-top:8px">
-          <button class="btn" onclick="doNewRace()" id="btn-new-race" style="flex:1">
-            Новая гоночная сессия
-          </button>
-        </div>
+        <button class="btn btn-full" onclick="doNewRace()" id="btn-new-race" style="margin-top:4px">Новая сессия</button>
       </div>
 
-      <div class="rider-selector">
-        <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px;display:block">Участник</label>
-        <input type="text" id="rider-search" placeholder="Введите номер или фамилию…"
-               oninput="onSearchInput()" onfocus="onSearchFocus()" autocomplete="off">
-        <div class="rider-dropdown" id="rider-dropdown"></div>
+      <div class="card">
+        <div class="card-title blue">Участник</div>
+        <div class="rider-selector">
+          <input type="text" id="rider-search" placeholder="Номер или фамилия…"
+                 oninput="onSearchInput()" onfocus="onSearchFocus()" autocomplete="off">
+          <div class="rider-dropdown" id="rider-dropdown"></div>
+        </div>
       </div>
 
       <div class="selected-rider" id="selected-info">
-        <div><span class="sr-number" id="sr-num"></span><span class="sr-name" id="sr-name"></span></div>
+        <span class="sr-number" id="sr-num"></span><span class="sr-name" id="sr-name"></span>
         <div class="sr-meta" id="sr-meta"></div>
-        <div class="sr-status" id="sr-status" style="margin-top:6px"></div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title" style="color:var(--green)">Коррекция финиша</div>
-        <div id="current-finish-info" style="display:none;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border-radius:6px">
-          <span style="font-size:11px;color:var(--text-dim)">Текущее время финиша:</span>
-          <span id="current-finish-time" style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green);margin-left:8px"></span>
-        </div>
-        <div id="no-finish-info" style="display:none;margin-bottom:10px;padding:8px 12px;font-size:12px;color:var(--text-dim)">
-          Участник ещё не финишировал
-        </div>
-        <div class="penalty-input" style="margin-bottom:8px">
-          <input type="text" id="edit-finish-mm" placeholder="ММ" style="width:60px;text-align:center;font-family:var(--mono)">
-          <span style="color:var(--text-dim);font-weight:700;font-size:18px">:</span>
-          <input type="text" id="edit-finish-ss" placeholder="СС.д" style="width:80px;text-align:center;font-family:var(--mono)">
-          <button class="btn btn-accent" onclick="doEditFinishTime()">Изменить</button>
-        </div>
-        <button class="btn" onclick="doUnfinishRider()" style="width:100%;padding:8px">
-          Отменить финиш → вернуть в RACING
-        </button>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title red">Сход с дистанции (DNF)</div>
-        <div class="dnf-reasons">
-          <button class="btn btn-red" onclick="doDNF('voluntary')" id="btn-dnf-vol">Добровольный сход</button>
-          <button class="btn btn-red" onclick="doDNF('mechanical')" id="btn-dnf-mech">Мех. поломка</button>
-          <button class="btn btn-red" onclick="doDNF('injury')" id="btn-dnf-inj">Травма</button>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title red">Дисквалификация (DSQ)</div>
-        <div class="penalty-input">
-          <input type="text" id="dsq-reason" placeholder="Причина дисквалификации">
-          <button class="btn btn-red" onclick="doDSQ()">DSQ</button>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title orange">Временной штраф</div>
-        <div class="penalty-input">
-          <input type="number" id="pen-seconds" placeholder="Сек" min="1" value="30">
-          <input type="text" id="pen-reason" placeholder="Причина штрафа">
-          <button class="btn btn-orange" onclick="doTimePenalty()">+ Штраф</button>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title orange">Штрафной круг</div>
-        <div class="penalty-input">
-          <input type="number" id="extra-laps" placeholder="Кол-во" min="1" value="1" style="width:70px">
-          <input type="text" id="extra-reason" placeholder="Причина">
-          <button class="btn btn-orange" onclick="doExtraLap()">+ Штрафной круг</button>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title yellow">Предупреждение</div>
-        <div class="penalty-input">
-          <input type="text" id="warn-reason" placeholder="Причина предупреждения">
-          <button class="btn btn-yellow" onclick="doWarning()">Предупреждение</button>
-        </div>
-      </div>
-
-      <div class="action-section">
-        <div class="action-title" style="color:var(--accent)">Заметки судьи</div>
-        <div class="penalty-input">
-          <input type="text" id="note-text" placeholder="Текст заметки…" style="flex:1">
-          <button class="btn btn-accent" onclick="addNote()">+ Заметка</button>
-        </div>
-        <div id="notes-list" style="margin-top:8px"></div>
+        <div id="sr-status" style="margin-top:4px"></div>
       </div>
     </div>
 
-    <div class="log-panel">
-      <div class="log-header">Журнал решений судьи</div>
+    <div class="col-center">
+      <div class="card" id="laps-section">
+        <div class="card-title blue">Круги и финиш</div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div id="laps-list">
+              <div style="font-size:11px;color:var(--text-dim);padding:4px 0">Выберите участника</div>
+            </div>
+            <button class="btn btn-accent btn-full" onclick="doAddManualLap()" style="margin-top:6px">+ Добавить круг вручную</button>
+          </div>
+          <div style="width:1px;background:var(--border)"></div>
+          <div style="width:200px;flex-shrink:0">
+            <div id="current-finish-info" style="display:none;margin-bottom:8px;padding:6px 8px;background:var(--surface2);border-radius:4px">
+              <div style="font-size:10px;color:var(--text-dim);margin-bottom:2px">Время финиша:</div>
+              <div id="current-finish-time" style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green)"></div>
+              <div class="input-row" style="margin-top:6px">
+                <input class="input-sm" id="edit-finish-mm" placeholder="ММ">
+                <span style="color:var(--text-dim);font-weight:700">:</span>
+                <input class="input-sm" id="edit-finish-ss" placeholder="СС.д" style="width:55px !important">
+                <button class="btn btn-accent" onclick="doEditFinishTime()">OK</button>
+              </div>
+            </div>
+            <div id="no-finish-info" style="display:none;font-size:11px;color:var(--text-dim);margin-bottom:8px">Участник ещё не финишировал</div>
+            <button class="btn btn-full" onclick="doUnfinishRider()">Отменить финиш</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-grid">
+        <div class="card">
+          <div class="card-title red">DNF — Сход</div>
+          <div class="btn-row" style="flex-direction:column;gap:4px">
+            <button class="btn btn-red btn-full" onclick="doDNF('voluntary')">Добровольный сход</button>
+            <button class="btn btn-red btn-full" onclick="doDNF('mechanical')">Мех. поломка</button>
+            <button class="btn btn-red btn-full" onclick="doDNF('injury')">Травма</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title orange">Штраф времени</div>
+          <div class="input-row" style="margin-bottom:4px">
+            <input class="input-sm" id="pen-seconds" value="30" min="1" type="number">
+            <span style="font-size:10px;color:var(--text-dim)">сек</span>
+          </div>
+          <div class="input-row" style="margin-bottom:4px">
+            <input id="pen-reason" placeholder="Причина">
+          </div>
+          <button class="btn btn-orange btn-full" onclick="doTimePenalty()">+ Штраф</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title red">DSQ — Дисквалификация</div>
+          <div class="input-row" style="margin-bottom:4px">
+            <input id="dsq-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doDSQ()">
+          </div>
+          <button class="btn btn-red btn-full" onclick="doDSQ()">Дисквалифицировать</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title orange">Штрафной круг</div>
+          <div class="input-row" style="margin-bottom:4px">
+            <input class="input-sm" id="extra-laps" value="1" min="1" type="number">
+            <span style="font-size:10px;color:var(--text-dim)">кр.</span>
+            <input id="extra-reason" placeholder="Причина" style="flex:1" onkeydown="if(event.key === 'Enter') doExtraLap()">
+          </div>
+          <button class="btn btn-orange btn-full" onclick="doExtraLap()">+ Штрафной круг</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title yellow">Предупреждение</div>
+          <div class="input-row" style="margin-bottom:4px">
+            <input id="warn-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doWarning()">
+          </div>
+          <button class="btn btn-yellow btn-full" onclick="doWarning()">Предупреждение</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-right">
+      <div class="log-header">Журнал решений</div>
       <div class="log-scroll" id="log-list"></div>
+      <div class="notes-section">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Заметки</div>
+        <div class="input-row" style="margin-bottom:6px">
+          <input id="note-text" placeholder="Текст заметки…" style="padding:8px 10px;font-size:13px" onkeydown="if(event.key === 'Enter') addNote()">
+          <button class="btn btn-accent" onclick="addNote()" style="padding:8px 14px;font-size:12px;white-space:nowrap">+ Заметка</button>
+        </div>
+        <div id="notes-list"></div>
+      </div>
     </div>
   </div>
 
@@ -385,6 +347,7 @@ function onSearchInput() {
 }
 
 function onSearchFocus() {
+  document.getElementById('rider-search').select();
   renderDropdown();
   document.getElementById('rider-dropdown').classList.add('open');
 }
@@ -428,6 +391,7 @@ function selectRider(riderId) {
   document.getElementById('selected-info').classList.add('visible');
 
   loadRiderFinishInfo(riderId);
+  loadRiderLaps(riderId);
 }
 
 async function loadRiderFinishInfo(riderId) {
@@ -443,7 +407,6 @@ async function loadRiderFinishInfo(riderId) {
       const s = (Math.abs(ms) / 1000) % 60;
       const timeStr = String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
       document.getElementById('current-finish-time').textContent = timeStr;
-      // Предзаполняем поля редактирования
       document.getElementById('edit-finish-mm').value = String(m);
       document.getElementById('edit-finish-ss').value = s.toFixed(1);
       cfi.style.display = 'block';
@@ -472,6 +435,89 @@ document.addEventListener('click', function(e) {
     document.getElementById('rider-dropdown').classList.remove('open');
   }
 });
+
+function fmtLapMs(ms) {
+  if (ms === null || ms === undefined) return '—';
+  const totalSec = Math.abs(ms) / 1000;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
+}
+
+async function loadRiderLaps(riderId) {
+  const sec = document.getElementById('laps-section');
+  sec.style.display = 'block';
+  try {
+    const data = await api('/api/judge/rider-laps/' + riderId, 'GET');
+    const laps = Array.isArray(data) ? data : [];
+
+    if (!laps.length) {
+      document.getElementById('laps-list').innerHTML =
+        '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">Нет зафиксированных кругов</div>';
+      return;
+    }
+
+    document.getElementById('laps-list').innerHTML = laps.map(l => {
+      const label = l.lap_number === 0 ? 'разг.' : 'круг ' + l.lap_number;
+      return '<div class="lap-row" id="lap-row-' + l.id + '">' +
+        '<span class="lr-num">' + (l.lap_number === 0 ? '0' : l.lap_number) + '</span>' +
+        '<span class="lr-time">' + fmtLapMs(l.lap_time) + '</span>' +
+        '<input id="lap-mm-' + l.id + '" placeholder="М" value="' + Math.floor(Math.abs(l.lap_time || 0) / 1000 / 60) + '">' +
+        '<span style="color:var(--text-dim)">:</span>' +
+        '<input id="lap-ss-' + l.id + '" placeholder="С.д" style="width:50px" value="' + (((Math.abs(l.lap_time || 0) / 1000) % 60).toFixed(1)) + '">' +
+        '<span class="lr-btn save" onclick="saveLap(' + l.id + ')">✓</span>' +
+        '<span class="lr-btn del" onclick="deleteLap(' + l.id + ')">✕</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) {}
+}
+
+async function saveLap(lapId) {
+  const mm = document.getElementById('lap-mm-' + lapId).value.trim();
+  const ss = document.getElementById('lap-ss-' + lapId).value.trim();
+  const minutes = parseInt(mm) || 0;
+  const seconds = parseFloat(ss) || 0;
+  if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; }
+  const lapTimeMs = Math.round((minutes * 60 + seconds) * 1000);
+
+  const res = await api('/api/judge/lap/' + lapId, 'PUT', { lap_time_ms: lapTimeMs });
+  if (res.ok) {
+    toast('Круг обновлён');
+    if (selectedRiderId) {
+      loadRiderLaps(selectedRiderId);
+      loadRiderFinishInfo(selectedRiderId);
+    }
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
+async function deleteLap(lapId) {
+  if (!confirm('Удалить этот круг?')) return;
+  const res = await api('/api/judge/lap/' + lapId, 'DELETE');
+  if (res.ok) {
+    toast('Круг удалён');
+    if (selectedRiderId) {
+      loadRiderLaps(selectedRiderId);
+      loadRiderFinishInfo(selectedRiderId);
+    }
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
+async function doAddManualLap() {
+  if (!requireRider()) return;
+  const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId });
+  if (res.ok) {
+    toast('Круг добавлен');
+    loadRiderLaps(selectedRiderId);
+    loadRiderFinishInfo(selectedRiderId);
+    loadRaceStatus();
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
 
 function requireRider() {
   if (!selectedRiderId) { toast('Выберите участника', true); return false; }
@@ -598,7 +644,6 @@ async function loadCategoriesAndRestore() {
   if (saved && sel.querySelector('option[value="' + saved + '"]')) {
     sel.value = saved;
   } else if (cats.length === 1) {
-    // Если одна категория — выбираем автоматически
     sel.value = cats[0].id;
   }
   loadRaceStatus();
@@ -745,13 +790,17 @@ async function loadNotes() {
     list.innerHTML = notes.map(n => {
       const timeStr = new Date(n.created_at * 1000).toLocaleTimeString('ru-RU');
       const rider = n.rider_number ? '#' + n.rider_number + ' ' + (n.last_name || '') + ' — ' : '';
-      return '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
-        '<div style="flex:1"><span style="color:var(--accent);font-weight:600">' + rider + '</span>' +
+      return '<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
+        '<div style="flex:1;min-width:0"><span style="color:var(--accent);font-weight:600">' + rider + '</span>' +
         '<span style="color:var(--text)">' + n.text + '</span></div>' +
         '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px;white-space:nowrap">' + timeStr + '</span>' +
-        '<span style="cursor:pointer;color:var(--text-dim);font-size:10px" onclick="deleteNote(' + n.id + ')" title="Удалить">✕</span>' +
+        '<button class="note-del" data-nid="' + n.id + '">✕</button>' +
       '</div>';
     }).join('');
+
+    list.querySelectorAll('.note-del').forEach(btn => {
+      btn.addEventListener('click', function() { deleteNote(parseInt(this.dataset.nid)); });
+    });
   } catch(e) {}
 }
 
@@ -787,6 +836,7 @@ async function doNewRace() {
 
 
 def register_judge(app, db: Database, engine: RaceEngine = None):
+    """Подключает страницу судьи и API."""
 
     @app.route("/judge")
     def judge_page():
@@ -976,3 +1026,94 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     def api_judge_notes_delete(nid):
         db.delete_note(nid)
         return jsonify({"ok": True})
+
+    @app.route("/api/judge/rider-laps/<int:rid>", methods=["GET"])
+    def api_judge_rider_laps(rid):
+        result = db.get_result_by_rider(rid)
+        if not result:
+            return jsonify([])
+        laps = db.get_laps(result["id"])
+        return jsonify(laps)
+
+    @app.route("/api/judge/lap/<int:lap_id>", methods=["PUT"])
+    def api_judge_update_lap(lap_id):
+        if db.is_race_closed():
+            return jsonify({"error": "Гонка закрыта"}), 400
+        data = request.get_json(force=True)
+        lap_time_ms = data.get("lap_time_ms")
+        if lap_time_ms is None:
+            return jsonify({"error": "Время не указано"}), 400
+
+        lap = db.get_lap_by_id(lap_id)
+        if not lap:
+            return jsonify({"error": "Круг не найден"}), 404
+
+        db.update_lap(lap_id, lap_time=int(lap_time_ms), source="EDITED")
+
+        _recalc_lap_timestamps(db, lap["result_id"])
+
+        return jsonify({"ok": True})
+
+    @app.route("/api/judge/lap/<int:lap_id>", methods=["DELETE"])
+    def api_judge_delete_lap(lap_id):
+        if db.is_race_closed():
+            return jsonify({"error": "Гонка закрыта"}), 400
+
+        lap = db.get_lap_by_id(lap_id)
+        if not lap:
+            return jsonify({"error": "Круг не найден"}), 404
+
+        result_id = lap["result_id"]
+        db.delete_lap(lap_id)
+
+        _renumber_laps(db, result_id)
+
+        return jsonify({"ok": True})
+
+    @app.route("/api/judge/manual-lap", methods=["POST"])
+    def api_judge_manual_lap():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        if db.is_race_closed():
+            return jsonify({"error": "Гонка закрыта"}), 400
+        data = request.get_json(force=True)
+        rid = data.get("rider_id")
+        if not rid:
+            return jsonify({"error": "Участник не выбран"}), 400
+        result = engine.manual_lap(int(rid))
+        if not result:
+            return jsonify({"error":
+                "Невозможно — участник не в гонке"}), 400
+        return jsonify({"ok": True, "result": result})
+
+
+def _recalc_lap_timestamps(db, result_id):
+    result = db._exec(
+        "SELECT start_time, status, penalty_time_ms FROM result WHERE id=?",
+        (result_id,)).fetchone()
+    if not result:
+        return
+    laps = db.get_laps(result_id)
+    current_ts = int(float(result["start_time"]))
+    for l in laps:
+        lt = l.get("lap_time") or 0
+        current_ts += int(lt)
+        db._exec("UPDATE lap SET timestamp=? WHERE id=?",
+                 (current_ts, l["id"]))
+    db._commit()
+
+    if result["status"] == "FINISHED" and laps:
+        penalty_ms = result["penalty_time_ms"] or 0
+        new_finish = current_ts + penalty_ms
+        db.update_result(result_id, finish_time=new_finish)
+
+
+def _renumber_laps(db, result_id):
+    laps = db.get_laps(result_id)
+    for i, l in enumerate(laps):
+        new_num = 0 if i == 0 else i
+        if l["lap_number"] != new_num:
+            db._exec("UPDATE lap SET lap_number=? WHERE id=?",
+                     (new_num, l["id"]))
+    db._commit()
+    _recalc_lap_timestamps(db, result_id)

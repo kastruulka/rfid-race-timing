@@ -49,11 +49,17 @@ def build_protocol_data(db: Database, engine: RaceEngine,
         laps = db.get_laps(r["id"])
         laps_done = sum(1 for l in laps if l["lap_number"] > 0)
 
+        penalty_time_ms = r.get("penalty_time_ms") or 0
+
         total_time = None
-        if r.get("finish_time") and r.get("start_time"):
-            total_time = int(r["finish_time"]) - int(r["start_time"])
+        if r["status"] == "FINISHED":
+            if r.get("finish_time") and r.get("start_time"):
+                total_time = int(r["finish_time"]) - int(r["start_time"])
+            elif laps and r.get("start_time"):
+                total_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
         elif laps and r.get("start_time"):
-            total_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
+            raw_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
+            total_time = raw_time + penalty_time_ms
 
         if r["status"] == "FINISHED" and leader_time is None:
             leader_time = total_time
@@ -85,6 +91,8 @@ def build_protocol_data(db: Database, engine: RaceEngine,
             "laps_required": category["laps"],
             "total_time": total_time,
             "total_time_str": fmt_ms(total_time),
+            "penalty_time_ms": penalty_time_ms,
+            "penalty_str": ("+" + fmt_ms(penalty_time_ms)) if penalty_time_ms else "",
             "gap": gap,
             "gap_str": fmt_gap(gap),
             "avg_speed": fmt_speed(distance_total, total_time),
@@ -132,7 +140,7 @@ PROTOCOL_CONTENT_HTML = """
         {% if cols.birth_year %}<td class="c">{{ r.birth_year or '' }}</td>{% endif %}
         {% if cols.club %}<td>{{ r.club }}</td>{% endif %}
         {% if cols.city %}<td>{{ r.city }}</td>{% endif %}
-        {% if cols.time %}<td class="r mono">{{ r.total_time_str if r.status == 'FINISHED' else '—' }}</td>{% endif %}
+        {% if cols.time %}<td class="r mono">{{ r.total_time_str if r.status == 'FINISHED' else '—' }}{% if r.penalty_str %}<br><span style="font-size:8px;color:#999">шт. {{ r.penalty_str }}</span>{% endif %}</td>{% endif %}
         {% if cols.gap %}<td class="r mono">{{ r.gap_str }}</td>{% endif %}
         {% if cols.laps %}<td class="lap-details">{{ r.lap_details | map(attribute='time') | join(' / ') if r.lap_details else '—' }}</td>{% endif %}
         {% if cols.speed %}<td class="r mono">{{ r.avg_speed if r.status == 'FINISHED' else '—' }}</td>{% endif %}
