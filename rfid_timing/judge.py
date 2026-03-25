@@ -102,7 +102,7 @@ JUDGE_HTML = r"""
       padding:6px 10px; cursor:pointer; font-size:12px;
       display:flex; gap:8px; border-bottom:1px solid rgba(42,53,72,0.3);
     }
-    .rider-dropdown-item:hover { background:var(--accent-glow); }
+    .rider-dropdown-item:hover, .rider-dropdown-item.active { background:var(--accent-glow); }
     .rider-dropdown-item .rdi-num { font-family:var(--mono); font-weight:700; color:var(--accent); min-width:36px; }
     .rider-dropdown-item .rdi-name { font-weight:600; }
 
@@ -211,7 +211,8 @@ JUDGE_HTML = r"""
         <div class="card-title blue">Участник</div>
         <div class="rider-selector">
           <input type="text" id="rider-search" placeholder="Номер или фамилия…"
-                 oninput="onSearchInput()" onfocus="onSearchFocus()" autocomplete="off">
+                 oninput="onSearchInput()" onfocus="onSearchFocus()"
+                 onkeydown="onSearchKey(event)" autocomplete="off">
           <div class="rider-dropdown" id="rider-dropdown"></div>
         </div>
       </div>
@@ -268,7 +269,7 @@ JUDGE_HTML = r"""
             <span style="font-size:10px;color:var(--text-dim)">сек</span>
           </div>
           <div class="input-row" style="margin-bottom:4px">
-            <input id="pen-reason" placeholder="Причина">
+            <input id="pen-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doTimePenalty()">
           </div>
           <button class="btn btn-orange btn-full" onclick="doTimePenalty()">+ Штраф</button>
         </div>
@@ -341,6 +342,9 @@ async function loadRiders() {
   riders = Array.isArray(data) ? data : [];
 }
 
+let ddIndex = -1;
+let ddFiltered = [];
+
 function onSearchInput() {
   renderDropdown();
   document.getElementById('rider-dropdown').classList.add('open');
@@ -348,27 +352,60 @@ function onSearchInput() {
 
 function onSearchFocus() {
   document.getElementById('rider-search').select();
+  ddIndex = -1;
   renderDropdown();
   document.getElementById('rider-dropdown').classList.add('open');
+}
+
+function onSearchKey(e) {
+  const dd = document.getElementById('rider-dropdown');
+  const isOpen = dd.classList.contains('open');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!isOpen) { renderDropdown(); dd.classList.add('open'); }
+    ddIndex = Math.min(ddIndex + 1, ddFiltered.length - 1);
+    highlightItem();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    ddIndex = Math.max(ddIndex - 1, 0);
+    highlightItem();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (ddIndex >= 0 && ddIndex < ddFiltered.length) {
+      selectRider(ddFiltered[ddIndex].id);
+    } else if (ddFiltered.length === 1) {
+      selectRider(ddFiltered[0].id);
+    }
+  } else if (e.key === 'Escape') {
+    dd.classList.remove('open');
+    document.getElementById('rider-search').blur();
+  }
+}
+ 
+function highlightItem() {
+  document.querySelectorAll('.rider-dropdown-item').forEach((el, i) => {
+    el.classList.toggle('active', i === ddIndex);
+    if (i === ddIndex) el.scrollIntoView({ block: 'nearest' });
+  });
 }
 
 function renderDropdown() {
   const query = (document.getElementById('rider-search').value || '').toLowerCase();
   const dd = document.getElementById('rider-dropdown');
-  const filtered = riders.filter(r => {
+  ddFiltered = riders.filter(r => {
     if (!query) return true;
     return String(r.number).includes(query) ||
            (r.last_name || '').toLowerCase().includes(query) ||
            (r.first_name || '').toLowerCase().includes(query);
   });
 
-  if (!filtered.length) {
+  if (!ddFiltered.length) {
     dd.innerHTML = '<div style="padding:12px 14px;color:var(--text-dim);font-size:12px">Не найдено</div>';
     return;
   }
 
-  dd.innerHTML = filtered.map(r =>
-    '<div class="rider-dropdown-item" onclick="selectRider(' + r.id + ')">' +
+   dd.innerHTML = ddFiltered.map((r, i) =>
+    '<div class="rider-dropdown-item' + (i === ddIndex ? ' active' : '') + '" onclick="selectRider(' + r.id + ')">' +
       '<span class="rdi-num">#' + r.number + '</span>' +
       '<span class="rdi-name">' + (r.last_name || '') + ' ' + (r.first_name || '') + '</span>' +
     '</div>'
@@ -445,8 +482,6 @@ function fmtLapMs(ms) {
 }
 
 async function loadRiderLaps(riderId) {
-  const sec = document.getElementById('laps-section');
-  sec.style.display = 'block';
   try {
     const data = await api('/api/judge/rider-laps/' + riderId, 'GET');
     const laps = Array.isArray(data) ? data : [];
@@ -483,10 +518,7 @@ async function saveLap(lapId) {
   const res = await api('/api/judge/lap/' + lapId, 'PUT', { lap_time_ms: lapTimeMs });
   if (res.ok) {
     toast('Круг обновлён');
-    if (selectedRiderId) {
-      loadRiderLaps(selectedRiderId);
-      loadRiderFinishInfo(selectedRiderId);
-    }
+    await refreshRiderPanel();
   } else {
     toast(res.error || 'Ошибка', true);
   }
@@ -497,10 +529,8 @@ async function deleteLap(lapId) {
   const res = await api('/api/judge/lap/' + lapId, 'DELETE');
   if (res.ok) {
     toast('Круг удалён');
-    if (selectedRiderId) {
-      loadRiderLaps(selectedRiderId);
-      loadRiderFinishInfo(selectedRiderId);
-    }
+    await refreshRiderPanel();
+    loadRaceStatus()
   } else {
     toast(res.error || 'Ошибка', true);
   }
@@ -511,8 +541,7 @@ async function doAddManualLap() {
   const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId });
   if (res.ok) {
     toast('Круг добавлен');
-    loadRiderLaps(selectedRiderId);
-    loadRiderFinishInfo(selectedRiderId);
+    await refreshRiderPanel();
     loadRaceStatus();
   } else {
     toast(res.error || 'Ошибка', true);
@@ -529,7 +558,7 @@ async function doDNF(reason) {
   const res = await api('/api/judge/dnf', 'POST', {
     rider_id: selectedRiderId, reason_code: reason
   });
-  if (res.ok) { toast('DNF зафиксирован'); loadLog(); }
+  if (res.ok) { toast('DNF зафиксирован'); loadLog(); refreshRiderPanel(); }
   else toast(res.error || 'Ошибка', true);
 }
 
@@ -539,7 +568,7 @@ async function doDSQ() {
   const res = await api('/api/judge/dsq', 'POST', {
     rider_id: selectedRiderId, reason: reason
   });
-  if (res.ok) { toast('DSQ — дисквалификация'); document.getElementById('dsq-reason').value = ''; loadLog(); }
+  if (res.ok) { toast('DSQ — дисквалификация'); document.getElementById('dsq-reason').value = ''; loadLog(); refreshRiderPanel(); }
   else toast(res.error || 'Ошибка', true);
 }
 
@@ -622,30 +651,35 @@ async function loadLog() {
   } catch(e) { console.error('loadLog error', e); }
 }
 
-loadRiders();
-loadLog();
-loadNotes();
-loadCategoriesAndRestore();
-setInterval(loadLog, 5000);
-setInterval(loadRaceStatus, 2000);
+document.addEventListener('DOMContentLoaded', function() {
+  loadRiders();
+  loadLog();
+  loadNotes();
+  loadCategoriesAndRestore();
+  setInterval(loadLog, 5000);
+  setInterval(loadRaceStatus, 2000);
+});
 
 async function loadCategoriesAndRestore() {
-  const cats = await api('/api/categories', 'GET');
-  const sel = document.getElementById('race-category');
-  sel.innerHTML = '<option value="">— Выберите категорию —</option>';
-  cats.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name + ' (' + c.laps + ' кр.)';
-    sel.appendChild(o);
-  });
-
-  const saved = sessionStorage.getItem('judge_cat_id');
-  if (saved && sel.querySelector('option[value="' + saved + '"]')) {
-    sel.value = saved;
-  } else if (cats.length === 1) {
-    sel.value = cats[0].id;
-  }
+  try {
+    const data = await api('/api/categories', 'GET');
+    const cats = Array.isArray(data) ? data : [];
+    const sel = document.getElementById('race-category');
+    sel.innerHTML = '<option value="">— Категория —</option>';
+    cats.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.name + ' (' + c.laps + ' кр.)';
+      sel.appendChild(o);
+    });
+ 
+    const saved = sessionStorage.getItem('judge_cat_id');
+    if (saved && sel.querySelector('option[value="' + saved + '"]')) {
+      sel.value = saved;
+    } else if (cats.length === 1) {
+      sel.value = cats[0].id;
+    }
+  } catch(e) { console.error('loadCategories error', e); }
   loadRaceStatus();
 }
 
@@ -694,10 +728,8 @@ async function loadRaceStatus() {
     const finBtn = document.getElementById('btn-finish-race');
     finBtn.textContent = raceClosed ? 'Гонка завершена' : '■ Завершить гонку';
 
-    document.querySelectorAll('.action-section .btn').forEach(b => {
-      if (!b.closest('#race-control')) {
-        b.disabled = raceClosed;
-      }
+    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => {
+      b.disabled = raceClosed;
     });
   } catch(e) {}
 }
@@ -717,6 +749,13 @@ async function doMassStart() {
   }
 }
 
+async function refreshRiderPanel() {
+  if (selectedRiderId) {
+    await loadRiderFinishInfo(selectedRiderId);
+    await loadRiderLaps(selectedRiderId);
+  }
+}
+
 async function doUnfinishRider() {
   if (!requireRider()) return;
   const r = riders.find(x => x.id === selectedRiderId);
@@ -725,6 +764,7 @@ async function doUnfinishRider() {
   const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId });
   if (res.ok) {
     toast('Финиш отменён: ' + label);
+    await refreshRiderPanel();
     loadRaceStatus();
   } else {
     toast(res.error || 'Ошибка', true);
@@ -755,6 +795,7 @@ async function doEditFinishTime() {
     toast('Время финиша изменено: ' + label + ' → ' + timeStr);
     document.getElementById('edit-finish-mm').value = '';
     document.getElementById('edit-finish-ss').value = '';
+    await refreshRiderPanel();
     loadRaceStatus();
   } else {
     toast(res.error || 'Ошибка', true);

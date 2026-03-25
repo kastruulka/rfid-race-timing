@@ -337,9 +337,23 @@ class RaceEngine:
             return False
  
         old_time = result.get("finish_time")
+        penalty_ms = result.get("penalty_time_ms") or 0
         self.db.update_result(result["id"],
                               finish_time=new_finish_time_ms)
- 
+
+        laps = self.db.get_laps(result["id"])
+        if laps:
+            last = laps[-1]
+            new_last_ts = new_finish_time_ms - penalty_ms
+            if len(laps) >= 2:
+                prev_ts = laps[-2]["timestamp"]
+            else:
+                prev_ts = int(float(result["start_time"]))
+            new_lap_time = new_last_ts - int(prev_ts)
+            self.db.update_lap(last["id"],
+                               lap_time=new_lap_time,
+                               timestamp=new_last_ts)
+            
         rider = self.db.get_rider(rider_id)
         logger.info("#%d %s — время финиша изменено: %s → %s",
                     rider["number"] if rider else rider_id,
