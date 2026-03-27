@@ -79,77 +79,91 @@ SETTINGS_HTML = r"""
       --yellow: #eab308;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Montserrat', system-ui, sans-serif;
-      --radius: 10px;
+      --radius: 8px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+    html, body { font-family: var(--sans); background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
 
     .topnav {
       display: flex; align-items: center; gap: 24px;
-      padding: 0 24px; height: 52px;
+      padding: 0 24px; height: 44px;
       background: var(--surface); border-bottom: 1px solid var(--border);
     }
-    .topnav-brand { font-weight: 900; font-size: 16px; text-transform: uppercase; letter-spacing: -0.02em; }
+    .topnav-brand { font-weight: 900; font-size: 14px; text-transform: uppercase; letter-spacing: -0.02em; }
     .topnav-brand span { color: var(--accent); }
     .topnav a {
-      color: var(--text-dim); text-decoration: none; font-size: 13px;
-      font-weight: 700; padding: 14px 0; border-bottom: 2px solid transparent;
+      color: var(--text-dim); text-decoration: none; font-size: 12px;
+      font-weight: 700; padding: 12px 0; border-bottom: 2px solid transparent;
       transition: color .15s, border-color .15s;
     }
     .topnav a:hover { color: var(--text); }
     .topnav a.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     .page-content {
-      max-width: 720px; margin: 0 auto; padding: 32px 24px;
+      height: calc(100vh - 44px);
+      display: flex; flex-direction: column;
+      max-width: 960px; margin: 0 auto; padding: 12px 20px 10px;
+    }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
     }
     .page-title {
-      font-size: 20px; font-weight: 900; text-transform: uppercase;
-      letter-spacing: -0.02em; margin-bottom: 28px;
+      font-size: 16px; font-weight: 900; text-transform: uppercase;
+      letter-spacing: -0.02em;
     }
     .page-title span { color: var(--accent); }
 
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 10px;
+      align-content: start;
+    }
+
     .card {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 22px; margin-bottom: 20px;
+      border-radius: var(--radius); padding: 12px 14px;
     }
     .card-title {
-      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.06em; color: var(--text-dim);
-      margin-bottom: 16px; padding-bottom: 8px;
+      margin-bottom: 8px; padding-bottom: 5px;
       border-bottom: 1px solid var(--border);
     }
 
-    .form-row { margin-bottom: 14px; }
+    .form-row { margin-bottom: 6px; }
+    .form-row:last-child { margin-bottom: 0; }
     .form-row label {
-      display: block; font-size: 11px; font-weight: 700;
+      display: block; font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--text-dim); margin-bottom: 4px;
+      color: var(--text-dim); margin-bottom: 2px;
     }
     .form-row input, .form-row select {
-      width: 100%; padding: 8px 12px; font-family: var(--sans); font-size: 13px;
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      width: 100%; padding: 5px 10px; font-family: var(--sans); font-size: 12px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
       color: var(--text); outline: none;
     }
     .form-row input:focus { border-color: var(--accent); }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
-    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 14px; }
-    .form-hint { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .form-hint { font-size: 9px; color: var(--text-dim); margin-top: 1px; line-height: 1.2; }
 
     .checkbox-row {
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     }
     .cb-item {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 13px; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
     }
     .cb-item input[type="checkbox"] {
-      width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+      width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer;
     }
 
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 9px 18px; font-family: var(--sans); font-size: 13px; font-weight: 700;
-      border: 1px solid var(--border); border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+      padding: 6px 12px; font-family: var(--sans); font-size: 11px; font-weight: 700;
+      border: 1px solid var(--border); border-radius: 6px;
       background: var(--surface2); color: var(--text); cursor: pointer;
       transition: background .15s, border-color .15s;
     }
@@ -161,19 +175,19 @@ SETTINGS_HTML = r"""
     .btn-danger { background: transparent; color: var(--red); border-color: var(--red); }
     .btn-danger:hover { background: var(--red-glow); }
 
-    .btn-row { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
     .status-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 5px; font-size: 10px; font-weight: 700;
     }
     .status-badge.ok { background: var(--green-glow); color: var(--green); }
     .status-badge.err { background: var(--red-glow); color: var(--red); }
     .status-badge.wait { background: var(--accent-glow); color: var(--accent); }
 
     .toast {
-      position: fixed; bottom: 24px; right: 24px; z-index: 200;
-      padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      position: fixed; bottom: 16px; right: 16px; z-index: 200;
+      padding: 10px 16px; border-radius: 6px; font-size: 12px; font-weight: 600;
       background: var(--green); color: #fff; opacity: 0;
       transform: translateY(12px); transition: opacity .25s, transform .25s;
     }
@@ -181,10 +195,20 @@ SETTINGS_HTML = r"""
     .toast.error { background: var(--red); }
 
     .info-row {
-      display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 10px;
+      display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px;
     }
-    .info-item { font-size: 12px; color: var(--text-dim); }
-    .info-item b { color: var(--text); font-family: var(--mono); }
+    .info-item { font-size: 11px; color: var(--text-dim); }
+    .info-item b { color: var(--text); font-family: var(--mono); font-size: 11px; }
+
+    .conn-row {
+      display: flex; align-items: center; gap: 8px; margin-top: 4px;
+    }
+
+    .card-system { grid-column: 1 / -1; }
+
+    .bottom-bar {
+      display: flex; justify-content: flex-end; padding-top: 10px;
+    }
 
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -203,86 +227,94 @@ SETTINGS_HTML = r"""
   </nav>
 
   <div class="page-content">
-    <div class="page-title"><span>Настройки</span> системы</div>
-
-    <div class="card">
-      <div class="card-title">RFID-ридер</div>
-      <div class="form-grid">
-        <div class="form-row">
-          <label>IP-адрес ридера</label>
-          <input type="text" id="s-reader-ip" placeholder="169.254.1.1">
-        </div>
-        <div class="form-row">
-          <label>Порт</label>
-          <input type="number" id="s-reader-port" placeholder="5084">
-        </div>
-      </div>
-      <div class="form-row">
-        <label>TX Power (мощность, dBm)</label>
-        <input type="number" id="s-tx-power" step="0.5" min="0" max="32.5" placeholder="30.0">
-        <div class="form-hint">Рекомендуется 27–31 dBm. Зависит от расстояния до трассы.</div>
-      </div>
-      <div class="form-row">
-        <label>Активные антенны</label>
-        <div class="checkbox-row">
-          <label class="cb-item"><input type="checkbox" id="s-ant-1" value="1"> Антенна 1</label>
-          <label class="cb-item"><input type="checkbox" id="s-ant-2" value="2"> Антенна 2</label>
-          <label class="cb-item"><input type="checkbox" id="s-ant-3" value="3"> Антенна 3</label>
-          <label class="cb-item"><input type="checkbox" id="s-ant-4" value="4"> Антенна 4</label>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn" onclick="checkConnection()">Проверить подключение</button>
-        <span class="status-badge wait" id="conn-status">Не проверено</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Параметры фильтрации</div>
-      <div class="form-grid">
-        <div class="form-row">
-          <label>RSSI Window (сек)</label>
-          <input type="number" id="s-rssi-window" step="0.1" min="0.5" max="10">
-          <div class="form-hint">Окно сбора считываний одной метки. По умолчанию 2.0 сек.</div>
-        </div>
-        <div class="form-row">
-          <label>MIN_LAP_TIME (сек)</label>
-          <input type="number" id="s-min-lap" step="1" min="5" max="3600">
-          <div class="form-hint">Антидребезг. Минимальное время между проездами одной метки.</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Эмулятор</div>
-      <div class="form-grid">
-        <div class="form-row">
-          <label>Режим</label>
-          <div class="checkbox-row" style="padding-top:4px">
-            <label class="cb-item"><input type="checkbox" id="s-use-emulator"> Эмулятор включён</label>
-          </div>
-          <div class="form-hint">При включённом эмуляторе ридер не подключается.</div>
-        </div>
-        <div class="form-row">
-          <label>Мин. время круга эмулятора (сек)</label>
-          <input type="number" id="s-emu-lap" step="1" min="5">
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Система</div>
-      <div class="info-row" id="sys-info"></div>
-      <div class="btn-row">
-        <button class="btn btn-green" onclick="backupDB()">Бэкап базы данных</button>
-        <button class="btn btn-danger" onclick="resetRace()">Сбросить текущую гонку</button>
-      </div>
-    </div>
-
-    <div class="btn-row" style="margin-top:24px">
-      <button class="btn btn-accent" onclick="saveSettings()" style="padding:12px 32px; font-size:14px">
+    <div class="page-header">
+      <div class="page-title"><span>Настройки</span> системы</div>
+      <button class="btn btn-accent" onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
         Сохранить настройки
       </button>
+    </div>
+
+    <div class="main-grid">
+      <div class="card">
+        <div class="card-title">RFID-ридер</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>IP-адрес ридера</label>
+            <input type="text" id="s-reader-ip" placeholder="169.254.1.1">
+          </div>
+          <div class="form-row">
+            <label>Порт</label>
+            <input type="number" id="s-reader-port" placeholder="5084">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>TX Power (dBm)</label>
+          <input type="number" id="s-tx-power" step="0.5" min="0" max="32.5" placeholder="30.0">
+          <div class="form-hint">Рекомендуется 27–31 dBm</div>
+        </div>
+        <div class="form-row">
+          <label>Активные антенны</label>
+          <div class="checkbox-row">
+            <label class="cb-item"><input type="checkbox" id="s-ant-1" value="1"> 1</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-2" value="2"> 2</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-3" value="3"> 3</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-4" value="4"> 4</label>
+          </div>
+        </div>
+        <div class="conn-row">
+          <button class="btn" onclick="checkConnection()">Проверить подключение</button>
+          <span class="status-badge wait" id="conn-status">Не проверено</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Параметры фильтрации</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>RSSI Window (сек)</label>
+            <input type="number" id="s-rssi-window" step="0.1" min="0.5" max="10">
+            <div class="form-hint">Окно сбора считываний метки (по умолч. 2.0)</div>
+          </div>
+          <div class="form-row">
+            <label>MIN_LAP_TIME (сек)</label>
+            <input type="number" id="s-min-lap" step="1" min="5" max="3600">
+            <div class="form-hint">Антидребезг между проездами</div>
+          </div>
+        </div>
+        <div style="margin-top:4px; padding-top:6px; border-top:1px solid var(--border);">
+          <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim); margin-bottom:6px;">Эмулятор</div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label>Режим</label>
+              <div class="checkbox-row" style="padding-top:2px">
+                <label class="cb-item"><input type="checkbox" id="s-use-emulator"> Включён</label>
+              </div>
+              <div class="form-hint">Ридер не подключается при эмуляции</div>
+            </div>
+            <div class="form-row">
+              <label>Мин. время круга (сек)</label>
+              <input type="number" id="s-emu-lap" step="1" min="5">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-system" style="display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:14px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim);">Система</span>
+        </div>
+        <div class="info-row" style="margin-bottom:0; flex:1;">
+          <div class="info-item">БД: <b id="si-db">—</b></div>
+          <div class="info-item">Лог: <b id="si-log">—</b></div>
+          <div class="info-item">Бэкапы: <b id="si-bk">—</b></div>
+          <div class="info-item">Race: <b id="si-race">—</b></div>
+          <div class="info-item">Участников: <b id="si-riders">—</b></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-green" onclick="backupDB()">Бэкап БД</button>
+          <button class="btn btn-danger" onclick="resetRace()">Сбросить гонку</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -403,13 +435,11 @@ async function loadSysInfo() {
   try {
     const resp = await api('/api/settings/sys-info', 'GET');
     const info = await resp.json();
-    const el = document.getElementById('sys-info');
-    el.innerHTML =
-      '<div class="info-item">БД: <b>' + info.db_size + '</b></div>' +
-      '<div class="info-item">Лог: <b>' + info.log_size + '</b></div>' +
-      '<div class="info-item">Бэкапы: <b>' + info.backups_count + '</b></div>' +
-      '<div class="info-item">Race ID: <b>' + (info.race_id || '—') + '</b></div>' +
-      '<div class="info-item">Участников: <b>' + info.riders_count + '</b></div>';
+    document.getElementById('si-db').textContent = info.db_size;
+    document.getElementById('si-log').textContent = info.log_size;
+    document.getElementById('si-bk').textContent = info.backups_count;
+    document.getElementById('si-race').textContent = info.race_id || '—';
+    document.getElementById('si-riders').textContent = info.riders_count;
   } catch (e) {}
 }
 

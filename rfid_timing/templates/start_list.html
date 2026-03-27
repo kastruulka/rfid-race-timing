@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Стартовый лист</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/start_list.css') }}">
+</head>
+<body>
+
+  <nav class="topnav">
+    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+    <a href="/start-list" class="active">Стартовый лист</a>
+    <a href="/">Хронометраж</a>
+    <a href="/protocol">Протокол</a>
+    <a href="/settings">Настройки</a>
+    <a href="/judge">Судья</a>
+  </nav>
+
+  <div class="page">
+
+    <div class="sidebar">
+      <div class="panel-header">
+        Категории
+        <button class="btn btn-sm btn-accent" onclick="openCatModal()">+ Добавить</button>
+      </div>
+      <div class="cat-list" id="cat-list">
+        <div class="cat-item active" data-id="" onclick="selectCategory(this, '')">
+          <div>
+            <div class="cat-name">Все участники</div>
+            <div class="cat-meta">показать всех</div>
+          </div>
+          <div class="cat-count" id="cnt-all">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="toolbar">
+        <input type="text" class="search-box" id="search-input"
+               placeholder="Поиск по номеру, фамилии, клубу…"
+               oninput="applySearch()">
+        <button class="btn btn-accent" onclick="openRiderModal()">+ Участник</button>
+        <button class="btn" onclick="exportCSV()">↓ CSV</button>
+        <label class="btn" style="margin:0">
+          ↑ Импорт
+          <input type="file" accept=".csv" style="display:none" onchange="importCSV(event)">
+        </label>
+      </div>
+      <div class="stat-row" id="stat-row">
+        <div class="stat-item">Всего: <b id="stat-total">0</b></div>
+        <div class="stat-item">С EPC: <b id="stat-epc">0</b></div>
+        <div class="stat-item">Без EPC: <b id="stat-noepc">0</b></div>
+      </div>
+      <div class="table-scroll">
+        <table class="rtable">
+          <thead>
+            <tr>
+              <th class="c" style="width:56px">Номер</th>
+              <th>Фамилия</th>
+              <th>Имя</th>
+              <th class="c">Год</th>
+              <th>Город</th>
+              <th>Команда</th>
+              <th>Категория</th>
+              <th>EPC</th>
+              <th class="c" style="width:100px">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="riders-body"></tbody>
+        </table>
+        <div class="empty-state" id="empty-state" style="display:none">
+          <div class="icon">🏁</div>
+          <div class="msg">Нет участников</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="cat-modal">
+    <div class="modal">
+      <h2 id="cat-modal-title"><span>Новая</span> категория</h2>
+      <input type="hidden" id="cat-edit-id">
+      <div class="form-row">
+        <label>Название</label>
+        <input type="text" id="cat-name" placeholder="М18-29">
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Кругов</label>
+          <input type="number" id="cat-laps" value="5" min="1">
+        </div>
+        <div class="form-row">
+          <label>Дистанция круга (км)</label>
+          <input type="number" id="cat-dist" value="5" step="0.1" min="0">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn" onclick="closeCatModal()">Отмена</button>
+        <button class="btn btn-accent" onclick="saveCat()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="rider-modal">
+    <div class="modal">
+      <h2 id="rider-modal-title"><span>Новый</span> участник</h2>
+      <input type="hidden" id="rider-edit-id">
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Стартовый номер</label>
+          <input type="number" id="r-number" min="1">
+        </div>
+        <div class="form-row">
+          <label>Категория</label>
+          <select id="r-category"></select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Фамилия</label>
+          <input type="text" id="r-lastname">
+        </div>
+        <div class="form-row">
+          <label>Имя</label>
+          <input type="text" id="r-firstname">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Год рождения</label>
+          <input type="number" id="r-year" min="1940" max="2020">
+        </div>
+        <div class="form-row">
+          <label>Город</label>
+          <input type="text" id="r-city">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Команда / клуб</label>
+          <input type="text" id="r-club">
+        </div>
+        <div class="form-row">
+          <label>EPC метки</label>
+          <input type="text" id="r-epc" placeholder="оставьте пустым" class="mono" style="font-size:12px">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn" onclick="closeRiderModal()">Отмена</button>
+        <button class="btn btn-accent" onclick="saveRider()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script src="{{ url_for('static', filename='js/start_list.js') }}"></script>
+</body>
+</html>
