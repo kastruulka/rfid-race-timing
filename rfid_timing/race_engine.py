@@ -79,7 +79,7 @@ class RaceEngine:
     def individual_start(self, rider_id: int,
                          start_time: float = None) -> Dict[str, Any]:
         if start_time is None:
-            start_time = time.time()
+            start_time = time.time() * 1000
 
         rider = self.db.get_rider(rider_id)
         if not rider:

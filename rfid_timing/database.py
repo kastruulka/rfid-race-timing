@@ -88,10 +88,23 @@ class Database:
                 created_at  REAL    NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS start_protocol (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                race_id     INTEGER REFERENCES race(id),
+                category_id INTEGER REFERENCES category(id),
+                rider_id    INTEGER NOT NULL REFERENCES rider(id),
+                position    INTEGER NOT NULL,
+                interval_sec REAL   NOT NULL DEFAULT 30,
+                planned_time REAL,
+                actual_time  REAL,
+                status      TEXT    NOT NULL DEFAULT 'WAITING'
+            );
+
             CREATE INDEX IF NOT EXISTS idx_rider_epc      ON rider(epc);
             CREATE INDEX IF NOT EXISTS idx_result_rider    ON result(rider_id);
             CREATE INDEX IF NOT EXISTS idx_lap_result      ON lap(result_id);
             CREATE INDEX IF NOT EXISTS idx_penalty_result  ON penalty(result_id);
+            CREATE INDEX IF NOT EXISTS idx_sp_race         ON start_protocol(race_id);
         """)
         self._commit()
         self._migrate()
@@ -162,6 +175,24 @@ class Database:
         self._exec(
             "CREATE INDEX IF NOT EXISTS idx_note_race"
             " ON note(race_id)")
+        self._commit()
+
+        self._exec("""
+            CREATE TABLE IF NOT EXISTS start_protocol (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                race_id     INTEGER REFERENCES race(id),
+                category_id INTEGER REFERENCES category(id),
+                rider_id    INTEGER NOT NULL REFERENCES rider(id),
+                position    INTEGER NOT NULL,
+                interval_sec REAL   NOT NULL DEFAULT 30,
+                planned_time REAL,
+                actual_time  REAL,
+                status      TEXT    NOT NULL DEFAULT 'WAITING'
+            )
+        """)
+        self._exec(
+            "CREATE INDEX IF NOT EXISTS idx_sp_race"
+            " ON start_protocol(race_id)")
         self._commit()
 
     def create_race(self, label: str = "") -> int:
@@ -585,3 +616,65 @@ class Database:
         self._exec("DELETE FROM note WHERE id=?", (note_id,))
         self._commit()
         return True
+
+    def save_start_protocol(self, category_id: int,
+                            entries: List[Dict],
+                            race_id: int = None) -> int:
+        """Save/replace start protocol for a category.
+        entries: [{"rider_id": int, "position": int, "interval_sec": float}, ...]
+        """
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        # clear old
+        self._exec(
+            "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
+            (race_id, category_id))
+        count = 0
+        for e in entries:
+            self._exec(
+                """INSERT INTO start_protocol
+                   (race_id, category_id, rider_id, position,
+                    interval_sec, status)
+                   VALUES (?,?,?,?,?,?)""",
+                (race_id, category_id, e["rider_id"],
+                 e["position"], e.get("interval_sec", 30), "WAITING"))
+            count += 1
+        self._commit()
+        return count
+
+    def get_start_protocol(self, category_id: int,
+                           race_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
+        rows = self._exec("""
+            SELECT sp.*, rd.number as rider_number,
+                   rd.last_name, rd.first_name,
+                   rd.club, rd.city
+            FROM start_protocol sp
+            JOIN rider rd ON sp.rider_id = rd.id
+            WHERE sp.race_id=? AND sp.category_id=?
+            ORDER BY sp.position
+        """, (race_id, category_id)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_start_protocol_entry(self, entry_id: int, **kw):
+        ok = {"planned_time", "actual_time", "status"}
+        f = {k: v for k, v in kw.items() if k in ok}
+        if not f:
+            return
+        sql = ("UPDATE start_protocol SET "
+               + ",".join(f"{k}=?" for k in f)
+               + " WHERE id=?")
+        self._exec(sql, (*f.values(), entry_id))
+        self._commit()
+
+    def clear_start_protocol(self, category_id: int,
+                             race_id: int = None):
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        self._exec(
+            "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
+            (race_id, category_id))
+        self._commit()

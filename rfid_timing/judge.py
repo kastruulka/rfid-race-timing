@@ -122,6 +122,164 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
+    @app.route("/api/judge/individual-start", methods=["POST"])
+    def api_judge_individual_start():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        rid = data.get("rider_id")
+        if not rid:
+            return jsonify({"error": "Участник не выбран"}), 400
+        try:
+            info = engine.individual_start(int(rid))
+            return jsonify({"ok": True, "info": info})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    # ── Start Protocol API ──
+
+    @app.route("/api/judge/start-protocol", methods=["GET"])
+    def api_start_protocol_get():
+        cat_id = request.args.get("category_id", type=int)
+        if not cat_id:
+            return jsonify([])
+        entries = db.get_start_protocol(cat_id)
+        return jsonify(entries)
+
+    @app.route("/api/judge/start-protocol", methods=["POST"])
+    def api_start_protocol_save():
+        data = request.get_json(force=True)
+        cat_id = data.get("category_id")
+        if not cat_id:
+            return jsonify({"error": "Категория не выбрана"}), 400
+        interval = float(data.get("interval_sec", 30))
+        rider_ids = data.get("rider_ids", [])
+        entries = []
+        for i, rid in enumerate(rider_ids):
+            entries.append({
+                "rider_id": int(rid),
+                "position": i + 1,
+                "interval_sec": interval,
+            })
+        count = db.save_start_protocol(int(cat_id), entries)
+        return jsonify({"ok": True, "count": count})
+
+    @app.route("/api/judge/start-protocol", methods=["DELETE"])
+    def api_start_protocol_clear():
+        cat_id = request.args.get("category_id", type=int)
+        if cat_id:
+            db.clear_start_protocol(cat_id)
+        return jsonify({"ok": True})
+
+    @app.route("/api/judge/start-protocol/auto-fill", methods=["POST"])
+    def api_start_protocol_autofill():
+        data = request.get_json(force=True)
+        cat_id = data.get("category_id")
+        if not cat_id:
+            return jsonify({"error": "Категория не выбрана"}), 400
+        interval = float(data.get("interval_sec", 30))
+        riders_list = db.get_riders(category_id=int(cat_id))
+        entries = []
+        for i, r in enumerate(riders_list):
+            entries.append({
+                "rider_id": r["id"],
+                "position": i + 1,
+                "interval_sec": interval,
+            })
+        count = db.save_start_protocol(int(cat_id), entries)
+        return jsonify({"ok": True, "count": count})
+
+    @app.route("/api/judge/start-protocol/launch", methods=["POST"])
+    def api_start_protocol_launch():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        cat_id = data.get("category_id")
+        if not cat_id:
+            return jsonify({"error": "Категория не выбрана"}), 400
+
+        entries = db.get_start_protocol(int(cat_id))
+        if not entries:
+            return jsonify({"error": "Стартовый протокол пуст"}), 400
+
+        now_ms = time.time() * 1000
+
+        planned = []
+        for i, e in enumerate(entries):
+            interval = e.get("interval_sec", 30)
+            offset_ms = i * interval * 1000
+            planned_time = now_ms + offset_ms
+            db.update_start_protocol_entry(
+                e["id"],
+                planned_time=planned_time,
+                status="PLANNED")
+            planned.append({
+                "entry_id": e["id"],
+                "rider_id": e["rider_id"],
+                "rider_number": e["rider_number"],
+                "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
+                "position": e["position"],
+                "planned_time": planned_time,
+                "offset_sec": i * interval,
+            })
+
+        return jsonify({"ok": True, "planned": planned,
+                        "first_start_ms": now_ms})
+
+    @app.route("/api/judge/start-protocol/status", methods=["GET"])
+    def api_start_protocol_status():
+        """Return current state of a launched protocol for recovery after reload."""
+        cat_id = request.args.get("category_id", type=int)
+        if not cat_id:
+            return jsonify({"running": False})
+        entries = db.get_start_protocol(cat_id)
+        if not entries:
+            return jsonify({"running": False})
+        # Check if any entry has PLANNED or STARTED status
+        has_planned = any(e["status"] == "PLANNED" for e in entries)
+        has_started = any(e["status"] == "STARTED" for e in entries)
+        if not has_planned and not has_started:
+            return jsonify({"running": False})
+
+        planned = []
+        for e in entries:
+            planned.append({
+                "entry_id": e["id"],
+                "rider_id": e["rider_id"],
+                "rider_number": e["rider_number"],
+                "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
+                "position": e["position"],
+                "planned_time": e.get("planned_time"),
+                "actual_time": e.get("actual_time"),
+                "status": e["status"],
+            })
+        return jsonify({
+            "running": has_planned,
+            "planned": planned,
+        })
+
+    @app.route("/api/judge/start-protocol/start-rider", methods=["POST"])
+    def api_start_protocol_start_rider():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        entry_id = data.get("entry_id")
+        rider_id = data.get("rider_id")
+        if not rider_id:
+            return jsonify({"error": "rider_id required"}), 400
+        try:
+            info = engine.individual_start(int(rider_id))
+            if entry_id:
+                db.update_start_protocol_entry(
+                    int(entry_id),
+                    actual_time=time.time() * 1000,
+                    status="STARTED")
+            return jsonify({"ok": True, "info": info})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    # ── rest of judge endpoints ──
+
     @app.route("/api/judge/unfinish-rider", methods=["POST"])
     def api_judge_unfinish_rider():
         if not engine:

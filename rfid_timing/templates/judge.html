@@ -5,6 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Панель судьи</title>
   <link rel="stylesheet" href="/static/css/judge.css">
+  <style>
+    .sp-list { max-height: 260px; overflow-y: auto; }
+    .sp-item {
+      display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+      border-bottom: 1px solid rgba(42,53,72,0.3); font-size: 11px;
+      cursor: grab; user-select: none;
+    }
+    .sp-item:active { cursor: grabbing; }
+    .sp-item.dragging { opacity: 0.4; }
+    .sp-item.drag-over { border-top: 2px solid var(--accent); }
+    .sp-item .sp-pos {
+      font-family: var(--mono); font-weight: 700; color: var(--text-dim);
+      width: 20px; text-align: center;
+    }
+    .sp-item .sp-num {
+      font-family: var(--mono); font-weight: 700; color: var(--accent);
+      min-width: 32px;
+    }
+    .sp-item .sp-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+    .sp-item .sp-time {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      min-width: 44px; text-align: right;
+    }
+    .sp-item .sp-del {
+      font-size: 10px; color: var(--text-dim); cursor: pointer;
+      padding: 1px 4px; border-radius: 3px;
+    }
+    .sp-item .sp-del:hover { color: var(--red); background: var(--red-glow); }
+
+    .sp-item.sp-started { opacity: 0.5; }
+    .sp-item.sp-started .sp-pos { color: var(--green); }
+    .sp-item.sp-active { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+
+    .sp-countdown {
+      font-family: var(--mono); font-size: 28px; font-weight: 700;
+      color: var(--accent); text-align: center; padding: 8px 0;
+      text-shadow: 0 0 20px var(--accent-glow);
+    }
+    .sp-countdown.go { color: var(--green); text-shadow: 0 0 20px var(--green-glow); }
+
+    .sp-next-info {
+      text-align: center; font-size: 11px; color: var(--text-dim);
+      padding: 2px 0;
+    }
+    .sp-next-info b { color: var(--accent); font-family: var(--mono); }
+
+    .sp-add-row {
+      display: flex; gap: 4px; margin-top: 6px;
+    }
+    .sp-add-row select {
+      flex: 1; padding: 4px 6px; font-size: 11px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); font-family: var(--sans);
+    }
+  </style>
 </head>
 <body>
   <nav class="topnav">
@@ -28,10 +84,80 @@
           <span>Финиш: <b id="rs-finished" style="color:var(--green);font-family:var(--mono)">0</b></span> ·
           <span>DNF: <b id="rs-dnf" style="color:var(--red);font-family:var(--mono)">0</b></span>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1">▶ Старт</button>
-          <button class="btn" onclick="doFinishRace()" id="btn-finish-race" style="flex:1" disabled>■ Завершить</button>
+
+        <div style="margin-bottom:6px">
+          <div style="display:flex;gap:2px;background:var(--surface2);border-radius:5px;padding:2px;border:1px solid var(--border)">
+            <button class="start-mode-btn active" id="btn-mode-mass" onclick="setStartMode('mass')"
+                    style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
+                           background:var(--accent);color:var(--bg);transition:all .15s">
+              Групповой
+            </button>
+            <button class="start-mode-btn" id="btn-mode-individual" onclick="setStartMode('individual')"
+                    style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
+                           background:transparent;color:var(--text-dim);transition:all .15s">
+              Индивидуальный
+            </button>
+          </div>
         </div>
+
+        <!-- Mass start section -->
+        <div id="mass-start-section">
+          <div class="btn-row">
+            <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1">▶ Масс-старт</button>
+            <button class="btn" onclick="doFinishRace()" id="btn-finish-race" style="flex:1" disabled>■ Завершить</button>
+          </div>
+        </div>
+
+        <!-- Individual start section -->
+        <div id="individual-start-section" style="display:none">
+          <!-- Interval + controls -->
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;color:var(--text-dim);white-space:nowrap">Интервал:</span>
+            <input type="number" id="sp-interval" value="30" min="5" max="600" step="5"
+                   style="width:56px;padding:4px 6px;font-size:11px;font-family:var(--mono);text-align:center;
+                          background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+            <span style="font-size:10px;color:var(--text-dim)">сек</span>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="spAutoFill()" style="padding:4px 8px;font-size:10px" title="Заполнить всеми участниками категории">Авто</button>
+            <button class="btn" onclick="spClear()" style="padding:4px 8px;font-size:10px;color:var(--red)" title="Очистить протокол">✕</button>
+          </div>
+
+          <!-- Add rider to protocol -->
+          <div class="sp-add-row">
+            <select id="sp-add-rider">
+              <option value="">+ Добавить участника…</option>
+            </select>
+            <button class="btn" onclick="spAddRider()" style="padding:4px 8px;font-size:10px">+</button>
+          </div>
+
+          <!-- Protocol list -->
+          <div class="sp-list" id="sp-list">
+            <div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">
+              Протокол пуст — нажмите «Авто» или добавьте участников
+            </div>
+          </div>
+
+          <!-- Countdown display (visible during launch) -->
+          <div id="sp-countdown-area" style="display:none">
+            <div class="sp-countdown" id="sp-countdown-timer">00:00</div>
+            <div class="sp-next-info" id="sp-next-info"></div>
+          </div>
+
+          <!-- Launch / finish buttons -->
+          <div class="btn-row" style="margin-top:6px">
+            <button class="btn btn-accent" onclick="spLaunch()" id="btn-sp-launch" style="flex:1">▶ Запустить протокол</button>
+            <button class="btn" onclick="spStop()" id="btn-sp-stop" style="flex:1;display:none;color:var(--red)">■ Остановить</button>
+            <button class="btn" onclick="doFinishRace()" id="btn-finish-race-ind" style="flex:1" disabled>■ Завершить</button>
+          </div>
+
+          <!-- Manual single start -->
+          <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
+            <button class="btn btn-full" onclick="doIndividualStart()" id="btn-individual-start" style="font-size:10px">
+              ▶ Ручной старт выбранного участника
+            </button>
+          </div>
+        </div>
+
         <button class="btn btn-full" onclick="doNewRace()" id="btn-new-race" style="margin-top:4px">Новая сессия</button>
       </div>
 
