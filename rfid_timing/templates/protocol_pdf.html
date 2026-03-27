@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4 landscape; margin: 14mm 12mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      font-size: 11px; color: #1a1a1a; line-height: 1.35;
+    }
+    .protocol-header { text-align: center; margin-bottom: 16px; }
+    .protocol-title {
+      font-size: 16px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.03em; margin-bottom: 4px;
+    }
+    .protocol-subtitle { font-size: 12px; color: #444; margin-bottom: 2px; }
+    .protocol-meta {
+      display: flex; justify-content: center; gap: 24px;
+      font-size: 10px; color: #666; margin-top: 6px; flex-wrap: wrap;
+    }
+    .protocol-category {
+      font-size: 14px; font-weight: 700; margin: 12px 0 8px;
+      padding-bottom: 4px; border-bottom: 2px solid #333;
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 10.5px;
+    }
+    th {
+      background: #f0f0f0; padding: 5px 6px; text-align: left;
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; border-bottom: 2px solid #999;
+    }
+    td {
+      padding: 4px 6px; border-bottom: 1px solid #ddd;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+    .c { text-align: center; }
+    .r { text-align: right; }
+    .mono { font-family: 'Consolas', 'Courier New', monospace; }
+    .place-1 td { background: #fff9db; }
+    .place-2 td { background: #f0f0f0; }
+    .place-3 td { background: #fdf0ec; }
+    .status-dnf td, .status-dsq td, .status-dns td { color: #999; }
+    .lap-details { font-size: 9px; color: #666; font-family: monospace; }
+    .footer {
+      margin-top: 28px; display: flex; justify-content: space-between;
+      font-size: 10px; color: #444;
+    }
+    .footer-line { border-top: 1px solid #aaa; padding-top: 4px; min-width: 200px; }
+    .footer-label { font-size: 9px; color: #888; }
+  </style>
+</head>
+<body>
+  {% include 'protocol_content.html' %}
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Генератор протоколов</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/protocol.css') }}">
+</head>
+<body>
+
+  <nav class="topnav">
+    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+    <a href="/start-list">Стартовый лист</a>
+    <a href="/">Хронометраж</a>
+    <a href="/protocol" class="active">Протокол</a>
+    <a href="/settings">Настройки</a>
+    <a href="/judge">Судья</a>
+  </nav>
+
+  <div class="page">
+    <div class="sidebar">
+      <h2><span>Генератор</span> протоколов</h2>
+
+      <div class="section-title">Категория</div>
+      <div class="form-row">
+        <select id="p-category">
+          <option value="">— Выберите категорию —</option>
+        </select>
+      </div>
+
+      <div class="section-title">Метаданные гонки</div>
+      <div class="form-row">
+        <label>Название гонки</label>
+        <input type="text" id="p-title" placeholder="Кубок города по велоспорту">
+      </div>
+      <div class="form-row">
+        <label>Подзаголовок</label>
+        <input type="text" id="p-subtitle" placeholder="III этап, шоссейная гонка">
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Дата</label>
+          <input type="text" id="p-date" placeholder="23 марта 2026">
+        </div>
+        <div class="form-row">
+          <label>Место</label>
+          <input type="text" id="p-location" placeholder="г. Москва">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Погода</label>
+          <input type="text" id="p-weather" placeholder="+15°C, ветер 3 м/с">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label>Главный судья</label>
+          <input type="text" id="p-judge" placeholder="Иванов И.И.">
+        </div>
+        <div class="form-row">
+          <label>Секретарь</label>
+          <input type="text" id="p-secretary" placeholder="Петрова А.С.">
+        </div>
+      </div>
+
+      <div class="section-title">Столбцы протокола</div>
+      <div class="checkbox-group">
+        <label class="cb-item"><input type="checkbox" id="col-place" checked> Место</label>
+        <label class="cb-item"><input type="checkbox" id="col-number" checked> Номер</label>
+        <label class="cb-item"><input type="checkbox" id="col-name" checked> Имя</label>
+        <label class="cb-item"><input type="checkbox" id="col-birth_year"> Год рожд.</label>
+        <label class="cb-item"><input type="checkbox" id="col-club" checked> Команда</label>
+        <label class="cb-item"><input type="checkbox" id="col-city" checked> Город</label>
+        <label class="cb-item"><input type="checkbox" id="col-time" checked> Время</label>
+        <label class="cb-item"><input type="checkbox" id="col-gap" checked> Отстав.</label>
+        <label class="cb-item"><input type="checkbox" id="col-laps"> Круги</label>
+        <label class="cb-item"><input type="checkbox" id="col-speed"> Ср. скорость</label>
+        <label class="cb-item"><input type="checkbox" id="col-status" checked> Статус</label>
+      </div>
+
+      <div class="actions-bar">
+        <button class="btn btn-accent" onclick="generatePreview()">Предпросмотр</button>
+        <button class="btn btn-green" onclick="downloadPDF()">↓ PDF</button>
+      </div>
+    </div>
+
+    <div class="preview-area">
+      <div class="preview-header">
+        <span>Предпросмотр</span>
+      </div>
+      <div class="preview-scroll" id="preview-scroll">
+        <div class="preview-empty" id="preview-empty">
+          <div class="icon">📋</div>
+          <div>Выберите категорию и нажмите «Предпросмотр»</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/protocol.js') }}"></script>
+</body>
+</html>

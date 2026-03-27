@@ -1,0 +1,63 @@
+<div class="protocol-header">
+  <div class="protocol-title">{{ meta.title or 'Протокол результатов' }}</div>
+  {% if meta.subtitle %}<div class="protocol-subtitle">{{ meta.subtitle }}</div>{% endif %}
+  <div class="protocol-meta">
+    {% if meta.date %}<span>{{ meta.date }}</span>{% endif %}
+    {% if meta.location %}<span>{{ meta.location }}</span>{% endif %}
+    {% if meta.weather %}<span>{{ meta.weather }}</span>{% endif %}
+  </div>
+</div>
+
+<div class="protocol-category">{{ category.name }} — {{ category.laps }} кр.{% if category.distance_km %}, {{ category.distance_km }} км/кр.{% endif %}</div>
+
+<table>
+  <thead>
+    <tr>
+      {% if cols.place %}<th class="c" style="width:36px">М</th>{% endif %}
+      {% if cols.number %}<th class="c" style="width:44px">№</th>{% endif %}
+      {% if cols.name %}<th>Участник</th>{% endif %}
+      {% if cols.birth_year %}<th class="c" style="width:44px">Год</th>{% endif %}
+      {% if cols.club %}<th>Команда</th>{% endif %}
+      {% if cols.city %}<th>Город</th>{% endif %}
+      {% if cols.time %}<th class="r" style="width:72px">Время</th>{% endif %}
+      {% if cols.gap %}<th class="r" style="width:72px">Отстав.</th>{% endif %}
+      {% if cols.laps %}<th>Круги</th>{% endif %}
+      {% if cols.speed %}<th class="r" style="width:56px">Ср.ск.</th>{% endif %}
+      {% if cols.status %}<th class="c" style="width:56px">Статус</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{% if r.place == 1 %}place-1{% elif r.place == 2 %}place-2{% elif r.place == 3 %}place-3{% endif %} {% if r.status in ('DNF','DSQ','DNS') %}status-{{ r.status|lower }}{% endif %}">
+      {% if cols.place %}<td class="c mono" style="font-weight:700">{{ r.place or '—' }}</td>{% endif %}
+      {% if cols.number %}<td class="c mono" style="font-weight:700">{{ r.number }}</td>{% endif %}
+      {% if cols.name %}<td style="font-weight:600">{{ r.name }}</td>{% endif %}
+      {% if cols.birth_year %}<td class="c">{{ r.birth_year or '' }}</td>{% endif %}
+      {% if cols.club %}<td>{{ r.club }}</td>{% endif %}
+      {% if cols.city %}<td>{{ r.city }}</td>{% endif %}
+      {% if cols.time %}<td class="r mono">{{ r.total_time_str if r.status == 'FINISHED' else '—' }}{% if r.penalty_str %}<br><span style="font-size:8px;color:#999">шт. {{ r.penalty_str }}</span>{% endif %}</td>{% endif %}
+      {% if cols.gap %}<td class="r mono">{{ r.gap_str }}</td>{% endif %}
+      {% if cols.laps %}<td class="lap-details">{{ r.lap_details | map(attribute='time') | join(' / ') if r.lap_details else '—' }}</td>{% endif %}
+      {% if cols.speed %}<td class="r mono">{{ r.avg_speed if r.status == 'FINISHED' else '—' }}</td>{% endif %}
+      {% if cols.status %}<td class="c">{{ r.status }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if meta.chief_judge or meta.secretary %}
+<div class="footer">
+  <div>
+    {% if meta.chief_judge %}
+    <div class="footer-line">{{ meta.chief_judge }}</div>
+    <div class="footer-label">Главный судья</div>
+    {% endif %}
+  </div>
+  <div>
+    {% if meta.secretary %}
+    <div class="footer-line">{{ meta.secretary }}</div>
+    <div class="footer-label">Секретарь</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
