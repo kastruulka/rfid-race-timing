@@ -24,6 +24,7 @@ function getConfig() {
       birth_year: document.getElementById('col-birth_year').checked,
       club: document.getElementById('col-club').checked,
       city: document.getElementById('col-city').checked,
+      start_time: document.getElementById('col-start_time').checked,
       time: document.getElementById('col-time').checked,
       gap: document.getElementById('col-gap').checked,
       laps: document.getElementById('col-laps').checked,

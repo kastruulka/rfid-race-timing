@@ -274,6 +274,12 @@ async function spLaunch() {
     await spStartOneRider(first);
   }
 
+  const clientNow = Date.now();
+  for (let i = 0; i < spPlanned.length; i++) {
+    const interval = spPlanned[i].offset_sec || 0;
+    spPlanned[i].planned_time = clientNow + interval * 1000;
+  }
+
   spSaveState();
   spShowRunningUI();
 
@@ -331,7 +337,7 @@ async function spStartOneRider(entry) {
   }
 }
 
-let spStarting = false; 
+let spStarting = false;
 
 function spTickCountdown() {
   if (!spRunning || !spPlanned || !spPlanned.length || spStarting) return;

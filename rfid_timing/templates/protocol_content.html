@@ -8,7 +8,7 @@
   </div>
 </div>
 
-<div class="protocol-category">{{ category.name }} — {{ category.laps }} кр.{% if category.distance_km %}, {{ category.distance_km }} км/кр.{% endif %}</div>
+<div class="protocol-category">{{ category.name }} — {{ category.laps }} кр.{% if category.distance_km %}, {{ category.distance_km }} км/кр.{% endif %}{% if extra.is_individual_start %} · индивидуальный старт{% endif %}</div>
 
 <table>
   <thead>
@@ -19,6 +19,7 @@
       {% if cols.birth_year %}<th class="c" style="width:44px">Год</th>{% endif %}
       {% if cols.club %}<th>Команда</th>{% endif %}
       {% if cols.city %}<th>Город</th>{% endif %}
+      {% if cols.start_time %}<th class="c" style="width:64px">Старт</th>{% endif %}
       {% if cols.time %}<th class="r" style="width:72px">Время</th>{% endif %}
       {% if cols.gap %}<th class="r" style="width:72px">Отстав.</th>{% endif %}
       {% if cols.laps %}<th>Круги</th>{% endif %}
@@ -35,6 +36,7 @@
       {% if cols.birth_year %}<td class="c">{{ r.birth_year or '' }}</td>{% endif %}
       {% if cols.club %}<td>{{ r.club }}</td>{% endif %}
       {% if cols.city %}<td>{{ r.city }}</td>{% endif %}
+      {% if cols.start_time %}<td class="c mono" style="font-size:10px">{{ r.start_time_abs }}{% if r.start_time_offset and r.start_time_offset != '00:00' %}<br><span style="font-size:8px;color:#999">{{ r.start_time_offset }}</span>{% endif %}</td>{% endif %}
       {% if cols.time %}<td class="r mono">{{ r.total_time_str if r.status == 'FINISHED' else '—' }}{% if r.penalty_str %}<br><span style="font-size:8px;color:#999">шт. {{ r.penalty_str }}</span>{% endif %}</td>{% endif %}
       {% if cols.gap %}<td class="r mono">{{ r.gap_str }}</td>{% endif %}
       {% if cols.laps %}<td class="lap-details">{{ r.lap_details | map(attribute='time') | join(' / ') if r.lap_details else '—' }}</td>{% endif %}
