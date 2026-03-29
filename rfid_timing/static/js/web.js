@@ -10,6 +10,7 @@ let serverElapsedMs = null;   // elapsed на момент последнего 
 let perfAtSync = null;        // performance.now() в момент синхронизации
 let clockTimer = null;
 let lastFeedIds = '';         // для предотвращения мигания
+let raceStopped = false;      // флаг для глушения таймера при закрытой гонке
 
 function updateClock() {
   if (serverElapsedMs === null) return;
@@ -29,18 +30,26 @@ async function fetchState() {
     const qs = catId ? '?category_id=' + encodeURIComponent(catId) : '';
     const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
-
     if (data.race_closed) {
-      if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+      raceStopped = true;
+      if (clockTimer) { 
+        clearInterval(clockTimer); 
+        clockTimer = null; 
+      }
       if (data.server_elapsed_ms !== null) {
         document.getElementById('main-clock').textContent = fmtMs(data.server_elapsed_ms);
         document.getElementById('main-clock').style.color = 'var(--text-dim)';
       }
-    } else if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
-      serverElapsedMs = data.server_elapsed_ms;
-      perfAtSync = performance.now();
-      document.getElementById('main-clock').style.color = '';
-      if (!clockTimer) clockTimer = setInterval(updateClock, 100);
+    } else {
+      raceStopped = false;
+      if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
+        serverElapsedMs = data.server_elapsed_ms;
+        perfAtSync = performance.now();
+        document.getElementById('main-clock').style.color = '';
+        if (!clockTimer) {
+           clockTimer = setInterval(updateClock, 100);
+        }
+      }
     }
 
     updateFeed(data.feed);
