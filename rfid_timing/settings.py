@@ -52,7 +52,8 @@ class ConfigState:
         return self._data.get(key, self.DEFAULTS.get(key))
 
 
-def register_settings(app, db: Database, config_state: ConfigState):
+def register_settings(app, db: Database, config_state: ConfigState,
+                      reader_mgr=None):
 
     @app.route("/settings")
     def settings_page():
@@ -60,13 +61,44 @@ def register_settings(app, db: Database, config_state: ConfigState):
 
     @app.route("/api/settings", methods=["GET"])
     def api_settings_get():
-        return jsonify(config_state.get_all())
+        data = config_state.get_all()
+        if reader_mgr:
+            data["_reader_status"] = reader_mgr.get_status()
+        return jsonify(data)
 
     @app.route("/api/settings", methods=["PUT"])
     def api_settings_put():
         data = request.get_json(force=True)
         config_state.update(**data)
         return jsonify({"ok": True})
+
+    @app.route("/api/settings/apply", methods=["POST"])
+    def api_settings_apply():
+        data = request.get_json(force=True)
+        if data:
+            config_state.update(**data)
+
+        if not reader_mgr:
+            return jsonify({"ok": True,
+                            "message": "Настройки сохранены (менеджер ридера недоступен)"})
+
+        try:
+            info = reader_mgr.restart()
+            mode_label = "эмулятор" if info["new_mode"] == "emulator" else "ридер"
+            msg = f"Ридер перезапущен в режиме: {mode_label}"
+            if info["switched"]:
+                old = "эмулятор" if info["old_mode"] == "emulator" else "ридер"
+                msg = f"Переключено: {old} → {mode_label}"
+            return jsonify({"ok": True, "message": msg, "info": info})
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": f"Ошибка перезапуска: {e}"}), 500
+
+    @app.route("/api/settings/reader-status", methods=["GET"])
+    def api_reader_status():
+        if reader_mgr:
+            return jsonify(reader_mgr.get_status())
+        return jsonify({"running": False, "mode": "none"})
 
     @app.route("/api/settings/check-reader", methods=["POST"])
     def api_check_reader():
@@ -75,16 +107,33 @@ def register_settings(app, db: Database, config_state: ConfigState):
         if config_state["use_emulator"]:
             return jsonify({"ok": True,
                             "message": "Режим эмулятора — ридер не нужен"})
+
         try:
             import socket
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(3)
             s.connect((ip, int(port)))
-            s.close()
-            return jsonify({"ok": True})
         except Exception as e:
             return jsonify({"ok": False,
-                            "error": f"Нет связи с {ip}:{port} — {e}"})
+                            "error": f"Нет TCP-связи с {ip}:{port} — {e}"})
+
+        try:
+            s.settimeout(3)
+            data = s.recv(1024)
+            s.close()
+            if data and len(data) >= 10:
+                return jsonify({"ok": True,
+                                "message": f"LLRP ридер на {ip}:{port} — ответ {len(data)} байт"})
+            elif data:
+                return jsonify({"ok": True,
+                                "message": f"Соединение установлено ({len(data)} байт)"})
+            else:
+                return jsonify({"ok": True,
+                                "message": f"TCP-соединение с {ip}:{port} — нет данных (возможно не LLRP)"})
+        except Exception:
+            s.close()
+            return jsonify({"ok": True,
+                            "message": f"TCP до {ip}:{port} ОК (LLRP-ответ не получен за 3 сек)"})
 
     @app.route("/api/settings/backup", methods=["POST"])
     def api_backup():

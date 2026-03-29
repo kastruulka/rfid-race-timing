@@ -49,13 +49,33 @@ async function saveSettings() {
     emulator_min_lap_sec: parseFloat(document.getElementById('s-emu-lap').value) || 15,
   };
 
-  const resp = await api('/api/settings', 'PUT', body);
+  const resp = await api('/api/settings/apply', 'POST', body);
   const data = await resp.json();
   if (data.ok) {
-    toast('Настройки сохранены');
+    toast(data.message || 'Настройки применены');
+    loadReaderStatus();
   } else {
     toast(data.error || 'Ошибка', true);
   }
+}
+
+async function loadReaderStatus() {
+  try {
+    const resp = await api('/api/settings/reader-status', 'GET');
+    const st = await resp.json();
+    const el = document.getElementById('reader-mode-badge');
+    if (!el) return;
+    if (!st.running) {
+      el.className = 'status-badge err';
+      el.textContent = 'Остановлен';
+    } else if (st.mode === 'emulator') {
+      el.className = 'status-badge wait';
+      el.textContent = 'Эмулятор';
+    } else {
+      el.className = 'status-badge ok';
+      el.textContent = 'Ридер ' + (st.reader_ip || '');
+    }
+  } catch(e) {}
 }
 
 async function checkConnection() {
@@ -68,10 +88,13 @@ async function checkConnection() {
     const data = await resp.json();
     if (data.ok) {
       badge.className = 'status-badge ok';
-      badge.textContent = 'Подключён';
+      badge.textContent = data.message || 'Подключён';
+      badge.title = data.message || '';
     } else {
       badge.className = 'status-badge err';
-      badge.textContent = data.error || 'Нет связи';
+      badge.textContent = 'Нет связи';
+      badge.title = data.error || '';
+      toast(data.error || 'Нет связи', true);
     }
   } catch (e) {
     badge.className = 'status-badge err';
@@ -121,3 +144,4 @@ async function loadSysInfo() {
 }
 
 loadSettings();
+loadReaderStatus();

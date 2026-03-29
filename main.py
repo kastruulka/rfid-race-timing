@@ -3,36 +3,34 @@ import signal
 import sys
 import time
 
-from rfid_timing.config import (
-    READER_IP, READER_PORT, FINISH_ANTENNAS, MAX_EVENTS,
-    WEB_HOST, WEB_PORT, RSSI_WINDOW_SEC, MIN_LAP_TIME_SEC,
-    USE_EMULATOR, EMULATOR_MIN_LAP_TIME_SEC, EMULATOR_TAGS,
-    TARGET_LAPS, DB_PATH,
-)
+from rfid_timing.settings import ConfigState
 from rfid_timing.event_store import EventStore
-from rfid_timing.reader import RFIDReader
-from rfid_timing.emulator import EmulatorReader
+from rfid_timing.reader_manager import ReaderManager
 from rfid_timing.web import create_app
 from rfid_timing.database import Database
 from rfid_timing.logger import RawLogger
 from rfid_timing.race_engine import RaceEngine
+from rfid_timing.config import (
+    MAX_EVENTS, WEB_HOST, WEB_PORT, EMULATOR_TAGS, TARGET_LAPS, DB_PATH,
+)
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+config_state = ConfigState()
 event_store = EventStore(max_events=MAX_EVENTS)
-reader = None
 db = Database(DB_PATH)
 raw_logger = RawLogger()
 engine = RaceEngine(db=db, raw_logger=raw_logger)
+reader_mgr = None
 
 
 def setup_dummy_data():
     race_id = db.new_race(label="auto")
     logging.info("Новая гоночная сессия: race_id=%d", race_id)
-    
+
     cats = db.get_categories()
     if not cats:
         cat_id = db.add_category(name="М18-29", laps=TARGET_LAPS,
@@ -55,7 +53,6 @@ def setup_dummy_data():
             )
 
     engine.reload_epc_map()
-    #engine.mass_start(category_id=cat_id)
 
 
 def on_new_event(event):
@@ -69,48 +66,37 @@ def on_new_event(event):
 
 
 def shutdown(*_args):
-    global reader
+    global reader_mgr
     print("\nОстановка приложения...")
-    if reader is not None:
-        reader.stop()
+    if reader_mgr is not None:
+        reader_mgr.stop()
     raw_logger.close()
     sys.exit(0)
 
 
 def main():
-    global reader
+    global reader_mgr
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
     setup_dummy_data()
 
-    if USE_EMULATOR:
-        logging.info("Запуск в режиме ЭМУЛЯТОРА")
-        reader = EmulatorReader(
-            on_event=on_new_event,
-            db=db,
-            rssi_window_sec=RSSI_WINDOW_SEC,
-            min_lap_time_sec=EMULATOR_MIN_LAP_TIME_SEC,
-        )
-    else:
-        logging.info("Запуск с ридером Impinj")
-        reader = RFIDReader(
-            ip=READER_IP, port=READER_PORT,
-            finish_antennas=FINISH_ANTENNAS,
-            on_event=on_new_event,
-            rssi_window_sec=RSSI_WINDOW_SEC,
-            min_lap_time_sec=MIN_LAP_TIME_SEC,
-        )
-
-    reader.start()
+    reader_mgr = ReaderManager(
+        config_state=config_state,
+        on_event=on_new_event,
+        db=db,
+    )
+    reader_mgr.start()
 
     app = create_app(
         event_store=event_store,
-        reader_ip=READER_IP if not USE_EMULATOR else "ЭМУЛЯТОР",
-        antennas=FINISH_ANTENNAS,
+        reader_ip=config_state["reader_ip"],
+        antennas=set(config_state["antennas"]),
         db=db,
         engine=engine,
+        config_state=config_state,
+        reader_mgr=reader_mgr,
     )
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False)
 

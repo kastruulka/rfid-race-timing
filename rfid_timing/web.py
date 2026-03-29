@@ -14,16 +14,23 @@ def create_app(event_store: EventStore, reader_ip: str,
                antennas: set[int],
                db: Database = None,
                engine: RaceEngine = None,
-               config_state: ConfigState = None) -> Flask:
+               config_state: ConfigState = None,
+               reader_mgr=None) -> Flask:
 
     app = Flask(__name__)
 
     @app.route("/")
     def index():
+        if config_state:
+            display_ip = "ЭМУЛЯТОР" if config_state["use_emulator"] else config_state["reader_ip"]
+            display_ant = ", ".join(str(a) for a in sorted(config_state["antennas"]))
+        else:
+            display_ip = reader_ip
+            display_ant = ", ".join(str(a) for a in sorted(antennas))
         return render_template(
             "web.html",
-            reader_ip=reader_ip,
-            antennas=", ".join(str(a) for a in sorted(antennas)),
+            reader_ip=display_ip,
+            antennas=display_ant,
         )
 
     @app.route("/api/state")
@@ -72,12 +79,12 @@ def create_app(event_store: EventStore, reader_ip: str,
 
                 if total_time is not None and penalty_time_ms:
                     total_time += penalty_time_ms
-                
+
                 total_required = cat["laps"] + extra_laps
                 laps_complete = (r["status"] == "RACING"
                                  and r.get("finish_time") is not None
                                  and laps_done >= total_required)
-                
+
                 all_results.append({
                     "rider_id": r["rider_id"],
                     "number": r["number"],
@@ -179,8 +186,10 @@ def create_app(event_store: EventStore, reader_ip: str,
     register_protocol(app, db, engine)
 
     if config_state is None:
-        config_state = ConfigState()
-    register_settings(app, db, config_state)
+        config_state_local = ConfigState()
+    else:
+        config_state_local = config_state
+    register_settings(app, db, config_state_local, reader_mgr=reader_mgr)
 
     register_judge(app, db, engine)
 

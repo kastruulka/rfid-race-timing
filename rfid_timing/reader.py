@@ -8,6 +8,11 @@ from .models import TagEvent
 from .processor import TagProcessor
 
 
+def dbm_to_power_index(dbm: float) -> int:
+    idx = int((dbm - 10.0) * 4) + 1
+    return max(1, min(idx, 91))  
+
+
 class RFIDReader:
     def __init__(
         self,
@@ -15,6 +20,8 @@ class RFIDReader:
             port: int,
             finish_antennas: set[int],
             on_event: Callable[[TagEvent], None],
+            tx_power: float = 30.0,
+            antennas: list[int] = None,
             rssi_window_sec: float = 2.0,
             min_lap_time_sec: float = 120.0,
     ) -> None:
@@ -22,6 +29,8 @@ class RFIDReader:
         self.port = port
         self.finish_antennas = finish_antennas
         self.on_event = on_event
+        self.tx_power = tx_power
+        self.antennas = antennas or [1, 2, 3, 4]
 
         self._client: Optional[LLRPReaderClient] = None
         self._thread: Optional[threading.Thread] = None
@@ -29,7 +38,6 @@ class RFIDReader:
 
         self._logger = logging.getLogger(self.__class__.__name__)
 
-        # Инициализация процессора для фильтрации считываний
         self.processor = TagProcessor(
             rssi_window_sec=rssi_window_sec,
             min_lap_time_sec=min_lap_time_sec,
@@ -71,21 +79,27 @@ class RFIDReader:
             if isinstance(ant, int) and ant not in self.finish_antennas:
                 continue
 
-            # числовое значение RSSI для поиска максимума
             try:
                 rssi = float(rssi_raw)
             except (ValueError, TypeError):
-                rssi = -100.0  # дефолтное низкое значение, если ридер не отдал RSSI
+                rssi = -100.0
 
-            # сырое считывание в процессор на фильтрацию
             self.processor.feed(epc, rssi, ant, timestamp=now)
 
     def _reader_loop(self):
         from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
 
         config = LLRPReaderConfig()
-        config.antennas = [1, 2, 3, 4]
-        config.tx_power = {1: 87, 2: 87, 3: 87, 4: 87}
+
+        config.antennas = list(self.antennas)
+
+        power_idx = dbm_to_power_index(self.tx_power)
+        config.tx_power = {ant: power_idx for ant in self.antennas}
+
+        self._logger.info(
+            "Конфигурация ридера: TX=%.1f dBm (idx=%d), антенны=%s",
+            self.tx_power, power_idx, self.antennas)
+
         config.mode_identifier = 1004
         config.session = 2
         config.tag_population = 1
@@ -116,17 +130,13 @@ class RFIDReader:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_flag = False
-        
-        # фоновый тик процессора
         self.processor.start()
-        
         self._thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop_flag = True
         self.processor.stop()
-        
         if self._client is not None:
             try:
                 self._client.disconnect()

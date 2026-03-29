@@ -19,9 +19,12 @@
 
   <div class="page-content">
     <div class="page-header">
-      <div class="page-title"><span>Настройки</span> системы</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="page-title"><span>Настройки</span> системы</div>
+        <span class="status-badge wait" id="reader-mode-badge">—</span>
+      </div>
       <button class="btn btn-accent" onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
-        Сохранить настройки
+        Сохранить и применить
       </button>
     </div>
 
@@ -41,7 +44,7 @@
         <div class="form-row">
           <label>TX Power (dBm)</label>
           <input type="number" id="s-tx-power" step="0.5" min="0" max="32.5" placeholder="30.0">
-          <div class="form-hint">Рекомендуется 27–31 dBm</div>
+          <div class="form-hint">27 dBm — ближняя зона (~3 м), 30 — средняя (~5–6 м), 32.5 — макс.</div>
         </div>
         <div class="form-row">
           <label>Активные антенны</label>
@@ -64,12 +67,12 @@
           <div class="form-row">
             <label>RSSI Window (сек)</label>
             <input type="number" id="s-rssi-window" step="0.1" min="0.5" max="10">
-            <div class="form-hint">Окно сбора считываний метки (по умолч. 2.0)</div>
+            <div class="form-hint">Сколько секунд собирать считывания метки в один проезд. Больше — точнее пик RSSI, но дольше задержка.</div>
           </div>
           <div class="form-row">
-            <label>MIN_LAP_TIME (сек)</label>
+            <label>Антидребезг ридера (сек)</label>
             <input type="number" id="s-min-lap" step="1" min="5" max="3600">
-            <div class="form-hint">Антидребезг между проездами</div>
+            <div class="form-hint">Мин. время между проездами одной метки. Работает и для ридера, и для эмулятора.</div>
           </div>
         </div>
         <div style="margin-top:4px; padding-top:6px; border-top:1px solid var(--border);">
@@ -83,8 +86,9 @@
               <div class="form-hint">Ридер не подключается при эмуляции</div>
             </div>
             <div class="form-row">
-              <label>Мин. время круга (сек)</label>
+              <label>Антидребезг эмулятора (сек)</label>
               <input type="number" id="s-emu-lap" step="1" min="5">
+              <div class="form-hint">Короткий интервал для быстрого тестирования</div>
             </div>
           </div>
         </div>

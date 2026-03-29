@@ -1,9 +1,4 @@
-READER_IP = "169.254.1.1"
-
-from sllurp.llrp import LLRP_DEFAULT_PORT
-READER_PORT = LLRP_DEFAULT_PORT
-
-# какие антенны считаем финишной аркой
+# какие антенны считаем финишной аркой (по умолчанию, переопределяется из settings.json)
 FINISH_ANTENNAS = {1, 2, 3, 4}
 
 # сколько последних событий держим в памяти
@@ -13,15 +8,7 @@ MAX_EVENTS = 500
 WEB_HOST = "0.0.0.0"
 WEB_PORT = 8000
 
-# окно сбора считываний одной метки (в секундах)
-RSSI_WINDOW_SEC = 2.0
-
-# минимальное время круга (в секундах) - антидребезг
-MIN_LAP_TIME_SEC = 120.0
-
-# настройки эмулятора
-USE_EMULATOR = True
-EMULATOR_MIN_LAP_TIME_SEC = 15.0  # короткий круг 15 сек
+# теги эмулятора (используются только для автозаполнения тестовых данных)
 EMULATOR_TAGS = ["EMU_RIDER_0001", "EMU_RIDER_0002", "EMU_RIDER_0003"]
 TARGET_LAPS = 5
 
