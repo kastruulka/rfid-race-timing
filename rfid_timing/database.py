@@ -100,11 +100,21 @@ class Database:
                 status      TEXT    NOT NULL DEFAULT 'WAITING'
             );
 
+            CREATE TABLE IF NOT EXISTS category_state (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                race_id     INTEGER NOT NULL REFERENCES race(id),
+                category_id INTEGER NOT NULL REFERENCES category(id),
+                started_at  REAL,
+                closed_at   REAL,
+                UNIQUE(race_id, category_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_rider_epc      ON rider(epc);
             CREATE INDEX IF NOT EXISTS idx_result_rider    ON result(rider_id);
             CREATE INDEX IF NOT EXISTS idx_lap_result      ON lap(result_id);
             CREATE INDEX IF NOT EXISTS idx_penalty_result  ON penalty(result_id);
             CREATE INDEX IF NOT EXISTS idx_sp_race         ON start_protocol(race_id);
+            CREATE INDEX IF NOT EXISTS idx_catstate_race   ON category_state(race_id);
         """)
         self._commit()
         self._migrate()
@@ -195,6 +205,22 @@ class Database:
             " ON start_protocol(race_id)")
         self._commit()
 
+        self._exec("""
+            CREATE TABLE IF NOT EXISTS category_state (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                race_id     INTEGER NOT NULL REFERENCES race(id),
+                category_id INTEGER NOT NULL REFERENCES category(id),
+                started_at  REAL,
+                closed_at   REAL,
+                UNIQUE(race_id, category_id)
+            )
+        """)
+        self._exec(
+            "CREATE INDEX IF NOT EXISTS idx_catstate_race"
+            " ON category_state(race_id)")
+        self._commit()
+
+
     def create_race(self, label: str = "") -> int:
         cur = self._exec(
             "INSERT INTO race (created_at, label) VALUES (?, ?)",
@@ -229,6 +255,90 @@ class Database:
         r = self._exec("SELECT closed_at FROM race WHERE id=?",
                         (race_id,)).fetchone()
         return r is not None and r["closed_at"] is not None
+
+
+    def set_category_started(self, category_id: int, started_at: float,
+                             race_id: int = None):
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return
+        existing = self._exec(
+            "SELECT id, started_at FROM category_state WHERE race_id=? AND category_id=?",
+            (race_id, category_id)).fetchone()
+        if existing:
+            if existing["started_at"] is None:
+                self._exec(
+                    "UPDATE category_state SET started_at=? WHERE id=?",
+                    (started_at, existing["id"]))
+        else:
+            self._exec(
+                "INSERT INTO category_state (race_id, category_id, started_at) VALUES (?,?,?)",
+                (race_id, category_id, started_at))
+        self._commit()
+
+    def close_category(self, category_id: int, race_id: int = None):
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return
+        now = time.time()
+        existing = self._exec(
+            "SELECT id FROM category_state WHERE race_id=? AND category_id=?",
+            (race_id, category_id)).fetchone()
+        if existing:
+            self._exec(
+                "UPDATE category_state SET closed_at=? WHERE id=?",
+                (now, existing["id"]))
+        else:
+            self._exec(
+                "INSERT INTO category_state (race_id, category_id, closed_at) VALUES (?,?,?)",
+                (race_id, category_id, now))
+        self._commit()
+
+    def is_category_closed(self, category_id: int, race_id: int = None) -> bool:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return False
+        r = self._exec(
+            "SELECT closed_at FROM category_state WHERE race_id=? AND category_id=?",
+            (race_id, category_id)).fetchone()
+        return r is not None and r["closed_at"] is not None
+
+    def get_category_state(self, category_id: int,
+                           race_id: int = None) -> Optional[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return None
+        r = self._exec(
+            "SELECT * FROM category_state WHERE race_id=? AND category_id=?",
+            (race_id, category_id)).fetchone()
+        return dict(r) if r else None
+
+    def get_all_category_states(self, race_id: int = None) -> List[Dict]:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return []
+        rows = self._exec(
+            "SELECT * FROM category_state WHERE race_id=?",
+            (race_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def are_all_categories_closed(self, race_id: int = None) -> bool:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return False
+        states = self.get_all_category_states(race_id)
+        if not states:
+            return False
+        for s in states:
+            if s["started_at"] is not None and s["closed_at"] is None:
+                return False
+        return True
 
 
     def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
@@ -467,6 +577,7 @@ class Database:
                            penalty_time_ms=total_time_ms,
                            extra_laps=total_extra_laps)
 
+
     def record_lap(self, result_id: int, lap_number: int,
                    timestamp: float, lap_time: float = None,
                    segment: str = '{}', source: str = "RFID") -> int:
@@ -507,17 +618,17 @@ class Database:
         self._exec(sql, (*f.values(), lap_id))
         self._commit()
         return True
- 
+
     def delete_lap(self, lap_id: int) -> bool:
         self._exec("DELETE FROM lap WHERE id=?", (lap_id,))
         self._commit()
         return True
- 
+
     def get_lap_by_id(self, lap_id: int) -> Optional[Dict]:
         r = self._exec("SELECT * FROM lap WHERE id=?",
                         (lap_id,)).fetchone()
         return dict(r) if r else None
-    
+
     def get_flat_results(self) -> List[Dict]:
         rows = self._exec("""
             SELECT r.rider_id as user_id, r.category_id, rd.number,
@@ -586,6 +697,7 @@ class Database:
 
         return [dict(r) for r in rows]
 
+
     def add_note(self, text: str, rider_id: int = None,
                  race_id: int = None) -> int:
         if race_id is None:
@@ -596,7 +708,7 @@ class Database:
             (race_id, rider_id, text, time.time()))
         self._commit()
         return cur.lastrowid
- 
+
     def get_notes(self, race_id: int = None) -> List[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
@@ -611,21 +723,18 @@ class Database:
             ORDER BY n.created_at DESC
         """, (race_id,)).fetchall()
         return [dict(r) for r in rows]
- 
+
     def delete_note(self, note_id: int) -> bool:
         self._exec("DELETE FROM note WHERE id=?", (note_id,))
         self._commit()
         return True
 
+
     def save_start_protocol(self, category_id: int,
                             entries: List[Dict],
                             race_id: int = None) -> int:
-        """Save/replace start protocol for a category.
-        entries: [{"rider_id": int, "position": int, "interval_sec": float}, ...]
-        """
         if race_id is None:
             race_id = self.get_current_race_id()
-        # clear old
         self._exec(
             "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
             (race_id, category_id))

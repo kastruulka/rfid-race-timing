@@ -12,6 +12,8 @@ let clockTimer = null;
 let lastFeedIds = '';         // для предотвращения мигания
 let raceStopped = false;      // флаг для глушения таймера при закрытой гонке
 
+let catTimerData = {};        // category_id -> {elapsed, perfRef, closed, name}
+
 function updateClock() {
   if (serverElapsedMs === null) return;
   const localDelta = performance.now() - perfAtSync;
@@ -30,24 +32,51 @@ async function fetchState() {
     const qs = catId ? '?category_id=' + encodeURIComponent(catId) : '';
     const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
-    if (data.race_closed) {
-      raceStopped = true;
-      if (clockTimer) { 
-        clearInterval(clockTimer); 
-        clockTimer = null; 
-      }
-      if (data.server_elapsed_ms !== null) {
-        document.getElementById('main-clock').textContent = fmtMs(data.server_elapsed_ms);
-        document.getElementById('main-clock').style.color = 'var(--text-dim)';
-      }
-    } else {
-      raceStopped = false;
-      if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
-        serverElapsedMs = data.server_elapsed_ms;
+
+    const catStates = data.category_states || {};
+    const catClosed = data.category_closed;
+
+    if (catId && catStates[String(catId)]) {
+      const cs = catStates[String(catId)];
+      if (cs.closed) {
+        raceStopped = true;
+        if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+        if (cs.elapsed_ms !== null) {
+          document.getElementById('main-clock').textContent = fmtMs(cs.elapsed_ms);
+          document.getElementById('main-clock').style.color = 'var(--text-dim)';
+        }
+      } else if (cs.elapsed_ms !== null) {
+        raceStopped = false;
+        serverElapsedMs = cs.elapsed_ms;
         perfAtSync = performance.now();
         document.getElementById('main-clock').style.color = '';
         if (!clockTimer) {
-           clockTimer = setInterval(updateClock, 100);
+          clockTimer = setInterval(updateClock, 100);
+        }
+      }
+    } else if (catId && !catStates[String(catId)]) {
+      raceStopped = false;
+      serverElapsedMs = null;
+      if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+      document.getElementById('main-clock').textContent = '00:00.0';
+      document.getElementById('main-clock').style.color = '';
+    } else {
+      if (data.race_closed) {
+        raceStopped = true;
+        if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+        if (data.server_elapsed_ms !== null) {
+          document.getElementById('main-clock').textContent = fmtMs(data.server_elapsed_ms);
+          document.getElementById('main-clock').style.color = 'var(--text-dim)';
+        }
+      } else {
+        raceStopped = false;
+        if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
+          serverElapsedMs = data.server_elapsed_ms;
+          perfAtSync = performance.now();
+          document.getElementById('main-clock').style.color = '';
+          if (!clockTimer) {
+            clockTimer = setInterval(updateClock, 100);
+          }
         }
       }
     }
@@ -158,6 +187,12 @@ function updateCategories(cats) {
 }
 
 document.getElementById('category-select').addEventListener('change', () => {
+  serverElapsedMs = null;
+  perfAtSync = null;
+  raceStopped = false;
+  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+  document.getElementById('main-clock').textContent = '00:00.0';
+  document.getElementById('main-clock').style.color = '';
   fetchState();
 });
 fetchState();

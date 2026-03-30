@@ -60,6 +60,11 @@
       background: var(--surface2); border: 1px solid var(--border);
       border-radius: 4px; color: var(--text); font-family: var(--sans);
     }
+
+    .cat-timers-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px;
+    }
   </style>
 </head>
 <body>
@@ -74,6 +79,13 @@
 
   <div class="page">
     <div class="col-left">
+      <div class="cat-timers-card">
+        <div class="card-title" style="color:var(--green)">Таймеры категорий</div>
+        <div id="cat-timers">
+          <div style="font-size:11px;color:var(--text-dim);padding:4px 0">Нет запущенных категорий</div>
+        </div>
+      </div>
+
       <div class="card" id="race-control">
         <div class="card-title green">Управление гонкой</div>
         <select id="race-category" style="margin-bottom:6px">
@@ -100,7 +112,6 @@
           </div>
         </div>
 
-        <!-- Mass start section -->
         <div id="mass-start-section">
           <div class="btn-row">
             <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1">▶ Масс-старт</button>
@@ -108,9 +119,7 @@
           </div>
         </div>
 
-        <!-- Individual start section -->
         <div id="individual-start-section" style="display:none">
-          <!-- Interval + controls -->
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
             <span style="font-size:10px;color:var(--text-dim);white-space:nowrap">Интервал:</span>
             <input type="number" id="sp-interval" value="30" min="5" max="600" step="5"
@@ -122,7 +131,6 @@
             <button class="btn" onclick="spClear()" style="padding:4px 8px;font-size:10px;color:var(--red)" title="Очистить протокол">✕</button>
           </div>
 
-          <!-- Add rider to protocol -->
           <div class="sp-add-row">
             <select id="sp-add-rider">
               <option value="">+ Добавить участника…</option>
@@ -130,27 +138,23 @@
             <button class="btn" onclick="spAddRider()" style="padding:4px 8px;font-size:10px">+</button>
           </div>
 
-          <!-- Protocol list -->
           <div class="sp-list" id="sp-list">
             <div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">
               Протокол пуст — нажмите «Авто» или добавьте участников
             </div>
           </div>
 
-          <!-- Countdown display (visible during launch) -->
           <div id="sp-countdown-area" style="display:none">
             <div class="sp-countdown" id="sp-countdown-timer">00:00</div>
             <div class="sp-next-info" id="sp-next-info"></div>
           </div>
 
-          <!-- Launch / finish buttons -->
           <div class="btn-row" style="margin-top:6px">
             <button class="btn btn-accent" onclick="spLaunch()" id="btn-sp-launch" style="flex:1">▶ Запустить протокол</button>
             <button class="btn" onclick="spStop()" id="btn-sp-stop" style="flex:1;display:none;color:var(--red)">■ Остановить</button>
             <button class="btn" onclick="doFinishRace()" id="btn-finish-race-ind" style="flex:1" disabled>■ Завершить</button>
           </div>
 
-          <!-- Manual single start -->
           <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
             <button class="btn btn-full" onclick="doIndividualStart()" id="btn-individual-start" style="font-size:10px">
               ▶ Ручной старт выбранного участника

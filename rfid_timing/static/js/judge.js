@@ -9,6 +9,11 @@ let spTimer = null;
 let spStartedSet = new Set();
 let spNextIndex = 0;
 
+let catTimerElapsed = {};   // category_id -> elapsed_ms from server
+let catTimerPerf = {};      // category_id -> performance.now() at sync
+let catTimerClosed = {};    // category_id -> bool
+let globalTimerRef = null;
+
 function toast(msg, isError) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -27,6 +32,14 @@ async function api(url, method, body) {
 async function loadRiders() {
   const data = await api('/api/riders', 'GET');
   riders = Array.isArray(data) ? data : [];
+}
+
+function fmtMs(ms) {
+  if (ms === null || ms === undefined) return '—';
+  const totalSec = Math.abs(ms) / 1000;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
 }
 
 
@@ -559,6 +572,53 @@ async function loadLog() {
 }
 
 
+
+function updateCategoryTimers() {
+  const timersEl = document.getElementById('cat-timers');
+  if (!timersEl) return;
+
+  const catId = document.getElementById('race-category').value;
+  let html = '';
+
+  const entries = Object.entries(catTimerElapsed);
+  if (!entries.length) {
+    timersEl.innerHTML = '';
+    return;
+  }
+
+  entries.forEach(([cid, elapsed]) => {
+    const isClosed = catTimerClosed[cid] || false;
+    const perfRef = catTimerPerf[cid];
+
+    let displayMs = elapsed;
+    if (!isClosed && perfRef) {
+      displayMs = elapsed + (performance.now() - perfRef);
+    }
+
+    const isSelected = String(cid) === String(catId);
+    const catInfo = (window._catNameMap || {})[cid] || ('Кат. ' + cid);
+
+    const color = isClosed ? 'var(--text-dim)' : (isSelected ? 'var(--accent)' : 'var(--green)');
+    const label = isClosed ? '✓ ' + catInfo : catInfo;
+
+    html += '<div class="cat-timer-item" style="' +
+      (isSelected ? 'background:var(--accent-glow);border:1px solid rgba(56,189,248,0.3);' : '') +
+      'padding:4px 8px;border-radius:4px;display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
+      '<span style="font-size:10px;font-weight:700;color:' + color + ';min-width:80px;white-space:nowrap">' + label + '</span>' +
+      '<span style="font-family:var(--mono);font-size:16px;font-weight:700;color:' + color + '">' + fmtMs(displayMs) + '</span>' +
+      (isClosed ? '<span style="font-size:9px;color:var(--text-dim)">завершена</span>' : '') +
+      '</div>';
+  });
+
+  timersEl.innerHTML = html;
+}
+
+function startGlobalTimerTick() {
+  if (globalTimerRef) return;
+  globalTimerRef = setInterval(updateCategoryTimers, 100);
+}
+
+
 async function initJudge() {
   await loadRiders();
   loadLog();
@@ -580,6 +640,8 @@ async function initJudge() {
       spTimer = setInterval(spTickCountdown, 100);
     }
   }
+
+  startGlobalTimerTick();
 }
 
 initJudge();
@@ -597,7 +659,14 @@ async function loadCategoriesAndRestore() {
   const cats = await api('/api/categories', 'GET');
   const sel = document.getElementById('race-category');
   sel.innerHTML = '<option value="">— Выберите категорию —</option>';
-  cats.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + ' (' + c.laps + ' кр.)'; sel.appendChild(o); });
+  window._catNameMap = {};
+  cats.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name + ' (' + c.laps + ' кр.)';
+    sel.appendChild(o);
+    window._catNameMap[String(c.id)] = c.name;
+  });
   const saved = sessionStorage.getItem('judge_cat_id');
   if (saved && sel.querySelector('option[value="'+saved+'"]')) sel.value = saved;
   else if (cats.length === 1) sel.value = cats[0].id;
@@ -607,36 +676,72 @@ async function loadCategoriesAndRestore() {
 async function loadRaceStatus() {
   const catId = document.getElementById('race-category').value;
   if (catId) sessionStorage.setItem('judge_cat_id', catId);
-  if (!catId) {
-    document.getElementById('race-status-bar').style.display = 'none';
-    document.getElementById('btn-mass-start').disabled = false;
-    document.getElementById('btn-finish-race').disabled = true;
-    document.getElementById('btn-finish-race-ind').disabled = true;
-    return;
-  }
+
   try {
-    const resp = await fetch('/api/state?category_id='+catId);
+    const qs = catId ? '?category_id=' + catId : '';
+    const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
-    const st = data.status||{};
-    const racing = st.RACING||0; const finished = st.FINISHED||0; const dnf = (st.DNF||0)+(st.DSQ||0); const total = racing+finished+dnf;
+    const st = data.status || {};
+    const catStates = data.category_states || {};
+
+    if (data.categories) {
+      data.categories.forEach(c => {
+        window._catNameMap = window._catNameMap || {};
+        window._catNameMap[String(c.id)] = c.name;
+      });
+    }
+
+    const now = performance.now();
+    Object.entries(catStates).forEach(([cid, cs]) => {
+      if (cs.elapsed_ms !== null && cs.elapsed_ms !== undefined) {
+        catTimerElapsed[cid] = cs.elapsed_ms;
+        catTimerPerf[cid] = now;
+        catTimerClosed[cid] = cs.closed;
+      }
+    });
+
+    if (!catId) {
+      document.getElementById('race-status-bar').style.display = 'none';
+      document.getElementById('btn-mass-start').disabled = false;
+      document.getElementById('btn-finish-race').disabled = true;
+      document.getElementById('btn-finish-race-ind').disabled = true;
+      return;
+    }
+
+    const racing = st.RACING || 0;
+    const finished = st.FINISHED || 0;
+    const dnf = (st.DNF || 0) + (st.DSQ || 0);
+    const total = racing + finished + dnf;
     document.getElementById('rs-racing').textContent = racing;
     document.getElementById('rs-finished').textContent = finished;
     document.getElementById('rs-dnf').textContent = dnf;
     document.getElementById('race-status-bar').style.display = 'block';
+
+    const thisCatClosed = data.category_closed === true;
+    const thisCatStarted = data.category_started === true;
     const raceClosed = data.race_closed === true;
-    document.getElementById('btn-mass-start').disabled = total > 0;
-    document.getElementById('btn-finish-race').disabled = total === 0 || raceClosed;
-    document.getElementById('btn-finish-race-ind').disabled = total === 0 || raceClosed;
+    const effectivelyClosed = thisCatClosed || raceClosed;
+
+    document.getElementById('btn-mass-start').disabled = thisCatStarted || effectivelyClosed;
+    document.getElementById('btn-finish-race').disabled = !thisCatStarted || effectivelyClosed;
+    document.getElementById('btn-finish-race-ind').disabled = !thisCatStarted || effectivelyClosed;
+
     const startBtn = document.getElementById('btn-mass-start');
-    if (raceClosed) startBtn.textContent = 'Гонка завершена';
-    else if (total > 0) startBtn.textContent = racing > 0 ? 'Гонка идёт' : 'Гонка активна';
+    if (effectivelyClosed) startBtn.textContent = 'Категория завершена';
+    else if (thisCatStarted) startBtn.textContent = racing > 0 ? 'Гонка идёт' : 'Гонка активна';
     else startBtn.textContent = '▶ Масс-старт';
-    document.getElementById('btn-individual-start').disabled = raceClosed;
-    document.getElementById('btn-sp-launch').disabled = raceClosed;
+
+    document.getElementById('btn-individual-start').disabled = effectivelyClosed;
+    document.getElementById('btn-sp-launch').disabled = effectivelyClosed;
+
     const finBtn = document.getElementById('btn-finish-race');
-    finBtn.textContent = raceClosed ? 'Гонка завершена' : '■ Завершить гонку';
-    document.getElementById('btn-finish-race-ind').textContent = raceClosed ? 'Гонка завершена' : '■ Завершить';
-    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => { b.disabled = raceClosed; });
+    finBtn.textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить категорию';
+    document.getElementById('btn-finish-race-ind').textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить';
+
+    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => {
+      b.disabled = effectivelyClosed;
+    });
+
   } catch(e) {}
 }
 
@@ -689,14 +794,22 @@ async function loadNotes() {
 async function doFinishRace() {
   const catId = document.getElementById('race-category').value;
   if (!catId) { toast('Выберите категорию', true); return; }
-  if (!confirm('Завершить гонку?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер остановится')) return;
+  if (!confirm('Завершить категорию?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер категории остановится')) return;
   const res = await api('/api/judge/finish-race', 'POST', { category_id: parseInt(catId) });
-  if (res.ok) { toast('Гонка завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0)); if (spRunning) spStop(); loadRaceStatus(); loadLog(); }
+  if (res.ok) { toast('Категория завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0)); if (spRunning) spStop(); loadRaceStatus(); loadLog(); }
   else toast(res.error||'Ошибка', true);
 }
 async function doNewRace() {
   if (!confirm('Создать новую гоночную сессию?\nТекущие результаты останутся в архиве.')) return;
   const res = await api('/api/settings/reset-race', 'POST');
-  if (res.ok) { toast('Новая сессия #'+res.race_id); if (spRunning) spStop(); spEntries=[]; spRenderList(); loadRaceStatus(); loadLog(); }
+  if (res.ok) {
+    toast('Новая сессия #'+res.race_id);
+    if (spRunning) spStop();
+    spEntries=[]; spRenderList();
+    catTimerElapsed = {};
+    catTimerPerf = {};
+    catTimerClosed = {};
+    loadRaceStatus(); loadLog();
+  }
   else toast(res.error||'Ошибка', true);
 }

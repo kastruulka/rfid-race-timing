@@ -136,7 +136,6 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
-    # ── Start Protocol API ──
 
     @app.route("/api/judge/start-protocol", methods=["GET"])
     def api_start_protocol_get():
@@ -228,14 +227,12 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/judge/start-protocol/status", methods=["GET"])
     def api_start_protocol_status():
-        """Return current state of a launched protocol for recovery after reload."""
         cat_id = request.args.get("category_id", type=int)
         if not cat_id:
             return jsonify({"running": False})
         entries = db.get_start_protocol(cat_id)
         if not entries:
             return jsonify({"running": False})
-        # Check if any entry has PLANNED or STARTED status
         has_planned = any(e["status"] == "PLANNED" for e in entries)
         has_started = any(e["status"] == "STARTED" for e in entries)
         if not has_planned and not has_started:
@@ -278,7 +275,6 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
-    # ── rest of judge endpoints ──
 
     @app.route("/api/judge/unfinish-rider", methods=["POST"])
     def api_judge_unfinish_rider():
@@ -291,7 +287,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         ok = engine.unfinish_rider(int(rid))
         if not ok:
             return jsonify({"error":
-                "Невозможно — участник не FINISHED или гонка закрыта"}), 400
+                "Невозможно — участник не FINISHED или категория закрыта"}), 400
         return jsonify({"ok": True})
 
     @app.route("/api/judge/finish-race", methods=["POST"])
@@ -322,7 +318,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         ok = engine.edit_finish_time(int(rid), absolute_finish)
         if not ok:
             return jsonify({"error":
-                "Невозможно — гонка закрыта или участник не FINISHED"}), 400
+                "Невозможно — категория закрыта или участник не FINISHED"}), 400
         return jsonify({"ok": True})
 
     @app.route("/api/judge/notes", methods=["GET"])
@@ -356,26 +352,37 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/judge/lap/<int:lap_id>", methods=["PUT"])
     def api_judge_update_lap(lap_id):
-        if db.is_race_closed():
-            return jsonify({"error": "Гонка закрыта"}), 400
+        # Check per-category closure
+        lap = db.get_lap_by_id(lap_id)
+        if not lap:
+            return jsonify({"error": "Круг не найден"}), 404
+        result_row = db._exec(
+            "SELECT category_id FROM result WHERE id=?",
+            (lap["result_id"],)).fetchone()
+        if result_row and result_row["category_id"]:
+            if db.is_category_closed(result_row["category_id"]):
+                return jsonify({"error": "Категория закрыта"}), 400
+
         data = request.get_json(force=True)
         lap_time_ms = data.get("lap_time_ms")
         if lap_time_ms is None:
             return jsonify({"error": "Время не указано"}), 400
-        lap = db.get_lap_by_id(lap_id)
-        if not lap:
-            return jsonify({"error": "Круг не найден"}), 404
         db.update_lap(lap_id, lap_time=int(lap_time_ms), source="EDITED")
         _recalc_lap_timestamps(db, lap["result_id"])
         return jsonify({"ok": True})
 
     @app.route("/api/judge/lap/<int:lap_id>", methods=["DELETE"])
     def api_judge_delete_lap(lap_id):
-        if db.is_race_closed():
-            return jsonify({"error": "Гонка закрыта"}), 400
         lap = db.get_lap_by_id(lap_id)
         if not lap:
             return jsonify({"error": "Круг не найден"}), 404
+        result_row = db._exec(
+            "SELECT category_id FROM result WHERE id=?",
+            (lap["result_id"],)).fetchone()
+        if result_row and result_row["category_id"]:
+            if db.is_category_closed(result_row["category_id"]):
+                return jsonify({"error": "Категория закрыта"}), 400
+
         db.delete_lap(lap_id)
         _renumber_laps(db, lap["result_id"])
         return jsonify({"ok": True})
@@ -384,12 +391,15 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     def api_judge_manual_lap():
         if not engine:
             return jsonify({"error": "Engine unavailable"}), 500
-        if db.is_race_closed():
-            return jsonify({"error": "Гонка закрыта"}), 400
         data = request.get_json(force=True)
         rid = data.get("rider_id")
         if not rid:
             return jsonify({"error": "Участник не выбран"}), 400
+        # Check per-category closure for the rider
+        rider = db.get_rider(int(rid))
+        if rider and rider.get("category_id"):
+            if db.is_category_closed(rider["category_id"]):
+                return jsonify({"error": "Категория закрыта"}), 400
         result = engine.manual_lap(int(rid))
         if not result:
             return jsonify({"error": "Невозможно — участник не в гонке"}), 400

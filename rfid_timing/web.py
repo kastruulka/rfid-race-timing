@@ -39,7 +39,8 @@ def create_app(event_store: EventStore, reader_ip: str,
             return jsonify({"feed": [], "results": [], "status": {
                 "RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0},
                 "categories": [], "start_time": None,
-                "server_elapsed_ms": None, "race_closed": False})
+                "server_elapsed_ms": None, "race_closed": False,
+                "category_states": {}})
 
         now_ms = int(time.time() * 1000)
 
@@ -47,6 +48,27 @@ def create_app(event_store: EventStore, reader_ip: str,
         cat_id = request.args.get("category_id", type=int)
 
         race_closed = db.is_race_closed()
+
+        cat_states_list = db.get_all_category_states()
+        category_states = {}
+        for cs in cat_states_list:
+            cid = cs["category_id"]
+            cat_started_at = cs.get("started_at")
+            cat_closed_at = cs.get("closed_at")
+
+            cat_elapsed = None
+            if cat_started_at is not None:
+                if cat_closed_at is not None:
+                    cat_elapsed = int(cat_closed_at * 1000) - int(cat_started_at)
+                else:
+                    cat_elapsed = now_ms - int(cat_started_at)
+
+            category_states[str(cid)] = {
+                "started_at": cat_started_at,
+                "closed_at": cat_closed_at,
+                "closed": cat_closed_at is not None,
+                "elapsed_ms": cat_elapsed,
+            }
 
         start_time_ms = None
         for cat in categories:
@@ -61,8 +83,10 @@ def create_app(event_store: EventStore, reader_ip: str,
         if start_time_ms is not None:
             if race_closed:
                 race_id = db.get_current_race_id()
-                closed_at_row = db._exec("SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone() if race_id else None
-                
+                closed_at_row = db._exec(
+                    "SELECT closed_at FROM race WHERE id=?",
+                    (race_id,)).fetchone() if race_id else None
+
                 if closed_at_row and closed_at_row["closed_at"]:
                     closed_at_ms = int(closed_at_row["closed_at"] * 1000)
                     server_elapsed_ms = closed_at_ms - start_time_ms
@@ -150,6 +174,13 @@ def create_app(event_store: EventStore, reader_ip: str,
 
         status = engine.get_race_status(cat_id)
 
+        cat_closed = False
+        cat_started = False
+        if cat_id:
+            cat_closed = db.is_category_closed(cat_id)
+            cs = db.get_category_state(cat_id)
+            cat_started = cs is not None and cs.get("started_at") is not None
+
         return jsonify({
             "feed": feed,
             "results": all_results,
@@ -159,6 +190,9 @@ def create_app(event_store: EventStore, reader_ip: str,
             "start_time": start_time_ms,
             "server_elapsed_ms": server_elapsed_ms,
             "race_closed": race_closed,
+            "category_closed": cat_closed,
+            "category_started": cat_started,
+            "category_states": category_states,
         })
 
     @app.route("/api/events")
