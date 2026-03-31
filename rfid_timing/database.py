@@ -341,6 +341,57 @@ class Database:
         return True
 
 
+    def reset_category(self, category_id: int, race_id: int = None) -> dict:
+        if race_id is None:
+            race_id = self.get_current_race_id()
+        if race_id is None:
+            return {"error": "no race"}
+ 
+        results = self._exec(
+            "SELECT id FROM result WHERE category_id=? AND race_id=?",
+            (category_id, race_id)).fetchall()
+        result_ids = [r["id"] for r in results]
+ 
+        deleted_laps = 0
+        deleted_penalties = 0
+        deleted_results = len(result_ids)
+ 
+        for rid in result_ids:
+            c = self._exec(
+                "SELECT COUNT(*) as cnt FROM lap WHERE result_id=?",
+                (rid,)).fetchone()
+            deleted_laps += c["cnt"] if c else 0
+            self._exec("DELETE FROM lap WHERE result_id=?", (rid,))
+            self._exec("DELETE FROM penalty WHERE result_id=?", (rid,))
+ 
+        if result_ids:
+            placeholders = ",".join("?" * len(result_ids))
+            self._exec(
+                f"DELETE FROM result WHERE id IN ({placeholders})",
+                tuple(result_ids))
+ 
+        self._exec(
+            "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
+            (race_id, category_id))
+ 
+        self._exec(
+            "DELETE FROM category_state WHERE race_id=? AND category_id=?",
+            (race_id, category_id))
+ 
+        race_row = self._exec(
+            "SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone()
+        if race_row and race_row["closed_at"] is not None:
+            self._exec(
+                "UPDATE race SET closed_at=NULL WHERE id=?", (race_id,))
+ 
+        self._commit()
+ 
+        return {
+            "deleted_results": deleted_results,
+            "deleted_laps": deleted_laps,
+        }
+
+
     def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
         cur = self._exec("INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)", (name, laps, distance_km))
         self._commit()
@@ -549,11 +600,14 @@ class Database:
         if race_id is None:
             return []
         rows = self._exec("""
-            SELECT p.*, r.rider_id, rd.number as rider_number,
-                   rd.last_name, rd.first_name
+            SELECT p.*, r.rider_id, r.category_id,
+                   rd.number as rider_number,
+                   rd.last_name, rd.first_name,
+                   c.name as category_name
             FROM penalty p
             JOIN result r ON p.result_id = r.id
             JOIN rider rd ON r.rider_id = rd.id
+            LEFT JOIN category c ON r.category_id = c.id
             WHERE r.race_id = ?
             ORDER BY p.created_at DESC
         """, (race_id,)).fetchall()

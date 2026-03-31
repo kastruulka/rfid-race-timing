@@ -301,6 +301,20 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         result = engine.finish_all(int(cat_id))
         return jsonify({"ok": True, **result})
 
+    @app.route("/api/judge/reset-category", methods=["POST"])
+    def api_judge_reset_category():
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        data = request.get_json(force=True)
+        cat_id = data.get("category_id")
+        if not cat_id:
+            return jsonify({"error": "Категория не выбрана"}), 400
+        try:
+            info = engine.reset_category(int(cat_id))
+            return jsonify({"ok": True, **info})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+    
     @app.route("/api/judge/edit-finish-time", methods=["POST"])
     def api_judge_edit_finish_time():
         if not engine:

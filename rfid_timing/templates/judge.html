@@ -132,10 +132,13 @@
           </div>
 
           <div class="sp-add-row">
-            <select id="sp-add-rider">
-              <option value="">+ Добавить участника…</option>
-            </select>
-            <button class="btn" onclick="spAddRider()" style="padding:4px 8px;font-size:10px">+</button>
+            <div class="rider-selector" style="flex:1;position:relative">
+              <input type="text" id="sp-search" placeholder="Номер или фамилия…"
+                     oninput="spOnSearchInput()" onfocus="spOnSearchFocus()"
+                     onkeydown="spOnSearchKey(event)" autocomplete="off"
+                     style="width:100%;padding:4px 8px;font-size:11px">
+              <div class="rider-dropdown" id="sp-dropdown"></div>
+            </div>
           </div>
 
           <div class="sp-list" id="sp-list">
@@ -162,7 +165,10 @@
           </div>
         </div>
 
-        <button class="btn btn-full" onclick="doNewRace()" id="btn-new-race" style="margin-top:4px">Новая сессия</button>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button class="btn btn-full" onclick="doResetCategory()" id="btn-reset-cat" style="flex:2;font-size:10px;color:var(--yellow)">↺ Сбросить категорию</button>
+          <button class="btn" onclick="doNewRace()" id="btn-new-race" style="flex:1;font-size:9px;color:var(--text-dim)" title="Создать полностью новую гоночную сессию для всех категорий">Новая сессия</button>
+        </div>
       </div>
 
       <div class="card">
@@ -173,6 +179,11 @@
                  onkeydown="onSearchKey(event)" autocomplete="off">
           <div class="rider-dropdown" id="rider-dropdown"></div>
         </div>
+        <label style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;font-weight:600;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="search-filter-cat" onchange="onSearchInput()"
+                 style="width:13px;height:13px;accent-color:var(--accent);cursor:pointer">
+          Только текущая категория
+        </label>
       </div>
 
       <div class="selected-rider" id="selected-info">

@@ -561,6 +561,29 @@ class RaceEngine:
                     category_id, len(finished))
 
 
+    def reset_category(self, category_id: int) -> dict:
+        category = self.db.get_category(category_id)
+        if not category:
+            raise ValueError(f"Категория {category_id} не найдена")
+ 
+        info = self.db.reset_category(category_id)
+ 
+        self.raw_logger.log_event(
+            "RESET_CATEGORY",
+            details=f"cat={category['name']},results={info.get('deleted_results',0)},"
+                    f"laps={info.get('deleted_laps',0)}")
+ 
+        logger.info("Категория '%s' сброшена: %d результатов, %d кругов удалено",
+                    category["name"],
+                    info.get("deleted_results", 0),
+                    info.get("deleted_laps", 0))
+ 
+        return {
+            "category": category["name"],
+            "category_id": category_id,
+            **info,
+        }
+    
     def get_race_status(self, category_id: int = None) -> Dict[str, int]:
         if category_id:
             results = self.db.get_results_by_category(category_id)

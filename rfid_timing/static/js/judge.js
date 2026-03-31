@@ -102,47 +102,130 @@ function setStartMode(mode) {
     massBtn.style.background = 'transparent'; massBtn.style.color = 'var(--text-dim)';
     massSection.style.display = 'none'; indSection.style.display = 'block';
     spLoadProtocol();
-    spUpdateAddSelect();
+
   }
 }
 
 
-function spUpdateAddSelect() {
-  const sel = document.getElementById('sp-add-rider');
+let spDdIndex = -1;
+let spDdFiltered = [];
+
+function spGetAvailableRiders() {
   const catId = document.getElementById('race-category').value;
   const inList = new Set(spEntries.map(e => e.rider_id));
-  sel.innerHTML = '<option value="">+ Добавить участника…</option>';
-  riders.filter(r => {
+  return riders.filter(r => {
     if (inList.has(r.id)) return false;
     if (catId && r.category_id != catId) return false;
     return true;
-  }).forEach(r => {
-    const o = document.createElement('option');
-    o.value = r.id;
-    o.textContent = '#' + r.number + ' ' + (r.last_name || '') + ' ' + (r.first_name || '');
-    sel.appendChild(o);
   });
 }
 
-function spAddRider() {
-  const sel = document.getElementById('sp-add-rider');
-  const rid = parseInt(sel.value);
-  if (!rid) return;
-  const r = riders.find(x => x.id === rid);
+function spOnSearchInput() {
+  spDdIndex = -1;
+  spRenderSearchDropdown();
+  document.getElementById('sp-dropdown').classList.add('open');
+}
+
+function spOnSearchFocus() {
+  const input = document.getElementById('sp-search');
+  input.select();
+  spDdIndex = -1;
+  spRenderSearchDropdown();
+  document.getElementById('sp-dropdown').classList.add('open');
+}
+
+function spOnSearchKey(e) {
+  const dd = document.getElementById('sp-dropdown');
+  const isOpen = dd.classList.contains('open');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!isOpen) { spRenderSearchDropdown(); dd.classList.add('open'); }
+    spDdIndex = Math.min(spDdIndex + 1, spDdFiltered.length - 1);
+    spHighlightSearchItem();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    spDdIndex = Math.max(spDdIndex - 1, 0);
+    spHighlightSearchItem();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (spDdIndex >= 0 && spDdIndex < spDdFiltered.length) {
+      spSelectFromSearch(spDdFiltered[spDdIndex].id);
+    } else if (spDdFiltered.length === 1) {
+      spSelectFromSearch(spDdFiltered[0].id);
+    }
+  } else if (e.key === 'Escape') {
+    dd.classList.remove('open');
+    document.getElementById('sp-search').blur();
+  }
+}
+
+function spHighlightSearchItem() {
+  document.querySelectorAll('#sp-dropdown .rider-dropdown-item').forEach((el, i) => {
+    el.classList.toggle('active', i === spDdIndex);
+    if (i === spDdIndex) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function spRenderSearchDropdown() {
+  const query = (document.getElementById('sp-search').value || '').toLowerCase();
+  const dd = document.getElementById('sp-dropdown');
+  const available = spGetAvailableRiders();
+
+  spDdFiltered = available.filter(r => {
+    if (!query) return true;
+    return String(r.number).includes(query) ||
+           (r.last_name || '').toLowerCase().includes(query) ||
+           (r.first_name || '').toLowerCase().includes(query);
+  });
+
+  if (!spDdFiltered.length) {
+    dd.innerHTML = '<div style="padding:8px 10px;color:var(--text-dim);font-size:11px">' +
+      (available.length === 0 ? 'Все участники уже в протоколе' : 'Не найдено') + '</div>';
+    return;
+  }
+
+  dd.innerHTML = spDdFiltered.map((r, i) =>
+    '<div class="rider-dropdown-item' + (i === spDdIndex ? ' active' : '') +
+    '" onclick="spSelectFromSearch(' + r.id + ')" style="padding:4px 8px;font-size:11px">' +
+    '<span class="rdi-num" style="min-width:28px">#' + r.number + '</span>' +
+    '<span class="rdi-name">' + (r.last_name || '') + ' ' + (r.first_name || '') + '</span></div>'
+  ).join('');
+}
+
+function spSelectFromSearch(riderId) {
+  const r = riders.find(x => x.id === riderId);
   if (!r) return;
+  document.getElementById('sp-dropdown').classList.remove('open');
+  document.getElementById('sp-search').value = '';
+
+  if (spEntries.some(e => e.rider_id === r.id)) {
+    toast('Участник уже в протоколе', true);
+    return;
+  }
+
   spEntries.push({
     rider_id: r.id, rider_number: r.number,
     last_name: r.last_name || '', first_name: r.first_name || '',
   });
   spRenderList();
-  spUpdateAddSelect();
   spSaveToServer();
+  toast('#' + r.number + ' ' + (r.last_name || '') + ' добавлен');
 }
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.rider-selector')) {
+    document.getElementById('rider-dropdown').classList.remove('open');
+  }
+  if (!e.target.closest('#individual-start-section .rider-selector')) {
+    const spDd = document.getElementById('sp-dropdown');
+    if (spDd) spDd.classList.remove('open');
+  }
+});
 
 function spRemoveEntry(index) {
   spEntries.splice(index, 1);
   spRenderList();
-  spUpdateAddSelect();
+
   spSaveToServer();
 }
 
@@ -231,7 +314,7 @@ async function spClear() {
   await api('/api/judge/start-protocol?category_id=' + catId, 'DELETE');
   spEntries = [];
   spRenderList();
-  spUpdateAddSelect();
+
   toast('Протокол очищен');
 }
 
@@ -434,11 +517,20 @@ function highlightItem() { document.querySelectorAll('.rider-dropdown-item').for
 function renderDropdown() {
   const query = (document.getElementById('rider-search').value || '').toLowerCase();
   const dd = document.getElementById('rider-dropdown');
-  ddFiltered = riders.filter(r => { if (!query) return true; return String(r.number).includes(query) || (r.last_name||'').toLowerCase().includes(query) || (r.first_name||'').toLowerCase().includes(query); });
+  const filterByCat = document.getElementById('search-filter-cat').checked;
+  const catId = document.getElementById('race-category').value;
+
+  ddFiltered = riders.filter(r => {
+    if (filterByCat && catId && String(r.category_id) !== String(catId)) return false;
+    if (!query) return true;
+    return String(r.number).includes(query) || (r.last_name||'').toLowerCase().includes(query) || (r.first_name||'').toLowerCase().includes(query);
+  });
   if (!ddFiltered.length) { dd.innerHTML = '<div style="padding:12px 14px;color:var(--text-dim);font-size:12px">Не найдено</div>'; return; }
   dd.innerHTML = ddFiltered.map((r, i) =>
     '<div class="rider-dropdown-item' + (i === ddIndex ? ' active' : '') + '" onclick="selectRider(' + r.id + ')">' +
-    '<span class="rdi-num">#' + r.number + '</span><span class="rdi-name">' + (r.last_name||'') + ' ' + (r.first_name||'') + '</span></div>'
+    '<span class="rdi-num">#' + r.number + '</span><span class="rdi-name">' + (r.last_name||'') + ' ' + (r.first_name||'') + '</span>' +
+    (!filterByCat && r.category_name ? '<span style="font-size:9px;color:var(--text-dim);margin-left:auto">' + r.category_name + '</span>' : '') +
+    '</div>'
   ).join('');
 }
 
@@ -482,7 +574,6 @@ async function loadRiderFinishInfo(riderId) {
   } catch(e) { document.getElementById('current-finish-info').style.display = 'none'; document.getElementById('no-finish-info').style.display = 'none'; }
 }
 
-document.addEventListener('click', function(e) { if (!e.target.closest('.rider-selector')) document.getElementById('rider-dropdown').classList.remove('open'); });
 
 function fmtLapMs(ms) {
   if (ms === null || ms === undefined) return '—';
@@ -560,14 +651,36 @@ async function loadLog() {
     const list = document.getElementById('log-list');
     if (!log.length) { list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-dim)">Нет записей</div>'; return; }
     const typeLabels = { TIME_PENALTY:'Штраф', EXTRA_LAP:'Доп. круг', WARNING:'Предупр.', DSQ:'DSQ', DNF:'DNF' };
-    list.innerHTML = log.map(item => {
-      const timeStr = new Date(item.created_at*1000).toLocaleTimeString('ru-RU');
-      return '<div class="log-item"><div class="li-badge '+item.type+'">'+(typeLabels[item.type]||item.type)+'</div>' +
-        '<div class="li-info"><div class="li-rider">#'+item.rider_number+' '+item.last_name+'</div>' +
-        '<div class="li-detail">'+(item.reason||item.type)+'</div></div>' +
-        '<div class="li-time">'+timeStr+'</div>' +
-        '<div class="li-delete" onclick="deletePenalty('+item.id+')" title="Отменить">✕</div></div>';
-    }).join('');
+
+    const groups = {};
+    const order = [];
+    log.forEach(item => {
+      const catName = item.category_name || 'Без категории';
+      const catId = item.category_id || 0;
+      const key = String(catId);
+      if (!groups[key]) {
+        groups[key] = { name: catName, items: [] };
+        order.push(key);
+      }
+      groups[key].items.push(item);
+    });
+
+    let html = '';
+    order.forEach(key => {
+      const g = groups[key];
+      html += '<div style="padding:5px 12px;font-size:9px;font-weight:700;text-transform:uppercase;' +
+        'letter-spacing:0.08em;color:var(--accent);background:var(--surface2);border-bottom:1px solid var(--border)">' +
+        g.name + '</div>';
+      g.items.forEach(item => {
+        const timeStr = new Date(item.created_at*1000).toLocaleTimeString('ru-RU');
+        html += '<div class="log-item"><div class="li-badge '+item.type+'">'+(typeLabels[item.type]||item.type)+'</div>' +
+          '<div class="li-info"><div class="li-rider">#'+item.rider_number+' '+item.last_name+'</div>' +
+          '<div class="li-detail">'+(item.reason||item.type)+'</div></div>' +
+          '<div class="li-time">'+timeStr+'</div>' +
+          '<div class="li-delete" onclick="deletePenalty('+item.id+')" title="Отменить">✕</div></div>';
+      });
+    });
+    list.innerHTML = html;
   } catch(e) {}
 }
 
@@ -747,7 +860,7 @@ async function loadRaceStatus() {
 
 document.getElementById('race-category').addEventListener('change', function() {
   loadRaceStatus();
-  if (startMode === 'individual') { spLoadProtocol(); spUpdateAddSelect(); }
+  if (startMode === 'individual') { spLoadProtocol(); }
 });
 document.getElementById('sp-interval').addEventListener('change', function() { sessionStorage.setItem('sp_interval', this.value); spRenderList(); });
 document.getElementById('sp-interval').addEventListener('input', function() { sessionStorage.setItem('sp_interval', this.value); spRenderList(); });
@@ -794,13 +907,35 @@ async function loadNotes() {
 async function doFinishRace() {
   const catId = document.getElementById('race-category').value;
   if (!catId) { toast('Выберите категорию', true); return; }
-  if (!confirm('Завершить категорию?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер категории остановится')) return;
+  const catName = (window._catNameMap || {})[catId] || catId;
+  if (!confirm('Завершить категорию «' + catName + '»?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер категории остановится')) return;
   const res = await api('/api/judge/finish-race', 'POST', { category_id: parseInt(catId) });
   if (res.ok) { toast('Категория завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0)); if (spRunning) spStop(); loadRaceStatus(); loadLog(); }
   else toast(res.error||'Ошибка', true);
 }
+
+async function doResetCategory() {
+  const catId = document.getElementById('race-category').value;
+  if (!catId) { toast('Выберите категорию для сброса', true); return; }
+  const catName = (window._catNameMap || {})[catId] || catId;
+  if (!confirm('Сбросить категорию «' + catName + '»?\n\nВсе результаты, круги и штрафы этой категории будут удалены.\nУчастники останутся в стартовом листе.\nДругие категории не затрагиваются.')) return;
+  const res = await api('/api/judge/reset-category', 'POST', { category_id: parseInt(catId) });
+  if (res.ok) {
+    toast('Категория «' + (res.category || catName) + '» сброшена: ' +
+      (res.deleted_results || 0) + ' результатов удалено');
+    if (spRunning) spStop();
+    spEntries = []; spRenderList();
+    delete catTimerElapsed[catId];
+    delete catTimerPerf[catId];
+    delete catTimerClosed[catId];
+    loadRaceStatus(); loadLog();
+  } else {
+    toast(res.error || 'Ошибка', true);
+  }
+}
+
 async function doNewRace() {
-  if (!confirm('Создать новую гоночную сессию?\nТекущие результаты останутся в архиве.')) return;
+  if (!confirm('Создать полностью новую гоночную сессию?\nРезультаты ВСЕХ категорий будут архивированы.\n\nДля сброса одной категории используйте «Сбросить категорию».')) return;
   const res = await api('/api/settings/reset-race', 'POST');
   if (res.ok) {
     toast('Новая сессия #'+res.race_id);
