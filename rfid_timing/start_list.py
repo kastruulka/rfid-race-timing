@@ -1,14 +1,10 @@
 import csv
 import io
 import time
-from flask import (
-    render_template,
-    jsonify,
-    request,
-    Response,
-)
+from flask import render_template, jsonify, request, Response
 from .database import Database
 from .race_engine import RaceEngine
+from .request_helpers import get_json_body
 
 
 def register_start_list(app, db: Database, engine: RaceEngine = None):
@@ -27,7 +23,9 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/categories", methods=["POST"])
     def api_categories_create():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         name = data.get("name", "").strip()
         if not name:
             return jsonify({"error": "Название обязательно"}), 400
@@ -38,7 +36,9 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/categories/<int:cid>", methods=["PUT"])
     def api_categories_update(cid):
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         db.update_category(cid, **data)
         return jsonify({"ok": True})
 
@@ -59,7 +59,9 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/riders", methods=["POST"])
     def api_riders_create():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         number = data.get("number")
         last_name = data.get("last_name", "").strip()
         if not number or not last_name:
@@ -124,7 +126,9 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/riders/<int:rid>", methods=["PUT"])
     def api_riders_update(rid):
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
 
         if "number" in data:
             existing = db.get_rider_by_number(int(data["number"]))

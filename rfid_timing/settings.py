@@ -1,9 +1,13 @@
 import json
+import logging
 import os
 import shutil
 import time
-from flask import render_template, jsonify, request
+from flask import render_template, jsonify
 from .database import Database
+from .request_helpers import get_json_body
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigState:
@@ -66,13 +70,17 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
 
     @app.route("/api/settings", methods=["PUT"])
     def api_settings_put():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         config_state.update(**data)
         return jsonify({"ok": True})
 
     @app.route("/api/settings/apply", methods=["POST"])
     def api_settings_apply():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         if data:
             config_state.update(**data)
 
@@ -92,8 +100,9 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
                 old = "эмулятор" if info["old_mode"] == "emulator" else "ридер"
                 msg = f"Переключено: {old} → {mode_label}"
             return jsonify({"ok": True, "message": msg, "info": info})
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"Ошибка перезапуска: {e}"}), 500
+        except Exception:
+            logger.exception("Ошибка перезапуска ридера")
+            return jsonify({"ok": False, "error": "Ошибка перезапуска ридера"}), 500
 
     @app.route("/api/settings/reader-status", methods=["GET"])
     def api_reader_status():
@@ -114,8 +123,8 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(3)
             s.connect((ip, int(port)))
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"Нет TCP-связи с {ip}:{port} — {e}"})
+        except Exception:
+            return jsonify({"ok": False, "error": f"Нет TCP-связи с {ip}:{port}"})
 
         try:
             s.settimeout(3)
@@ -139,7 +148,7 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
                 return jsonify(
                     {
                         "ok": True,
-                        "message": f"TCP-соединение с {ip}:{port} — нет данных (возможно не LLRP)",
+                        "message": f"TCP-соединение с {ip}:{port} — нет данных",
                     }
                 )
         except Exception:
@@ -161,16 +170,18 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
             backup_path = os.path.join("backups", backup_name)
             shutil.copy2(db_path, backup_path)
             return jsonify({"ok": True, "filename": backup_name})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)})
+        except Exception:
+            logger.exception("Ошибка создания бэкапа")
+            return jsonify({"ok": False, "error": "Ошибка создания бэкапа"})
 
     @app.route("/api/settings/reset-race", methods=["POST"])
     def api_reset_race():
         try:
             race_id = db.new_race(label="manual_reset")
             return jsonify({"ok": True, "race_id": race_id})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)})
+        except Exception:
+            logger.exception("Ошибка сброса гонки")
+            return jsonify({"ok": False, "error": "Ошибка сброса гонки"})
 
     @app.route("/api/settings/sys-info", methods=["GET"])
     def api_sys_info():

@@ -1,13 +1,12 @@
 import io
+import logging
 import time
-from flask import (
-    render_template,
-    jsonify,
-    request,
-    send_file,
-)
+from flask import render_template, jsonify, send_file
 from .database import Database
 from .race_engine import RaceEngine
+from .request_helpers import get_json_body
+
+logger = logging.getLogger(__name__)
 
 
 def fmt_ms(ms):
@@ -35,8 +34,7 @@ def fmt_speed(distance_km, time_ms):
 def fmt_start_time(start_time_ms):
     if start_time_ms is None:
         return "—"
-    ts_sec = start_time_ms / 1000.0
-    return time.strftime("%H:%M:%S", time.localtime(ts_sec))
+    return time.strftime("%H:%M:%S", time.localtime(start_time_ms / 1000.0))
 
 
 def fmt_start_offset(start_time_ms, first_start_ms):
@@ -46,9 +44,7 @@ def fmt_start_offset(start_time_ms, first_start_ms):
     if diff_ms <= 0:
         return "00:00"
     total_sec = diff_ms / 1000.0
-    m = int(total_sec // 60)
-    s = int(total_sec) % 60
-    return f"+{m:02d}:{s:02d}"
+    return f"+{int(total_sec // 60):02d}:{int(total_sec) % 60:02d}"
 
 
 def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
@@ -61,22 +57,16 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
     results = db.get_results_by_category(category_id)
     distance_total = (category.get("distance_km") or 0) * category["laps"]
 
-    rows = []
-    leader_time = None
-
-    start_times = set()
-    for r in results:
-        st = r.get("start_time")
-        if st:
-            start_times.add(int(st))
-
+    start_times = {int(r["start_time"]) for r in results if r.get("start_time")}
     is_individual_start = len(start_times) > 1
     first_start_ms = min(start_times) if start_times else None
 
+    rows = []
+    leader_time = None
+
     for r in results:
         laps = db.get_laps(r["id"])
-        laps_done = sum(1 for l in laps if l["lap_number"] > 0)
-
+        laps_done = sum(1 for lap in laps if lap["lap_number"] > 0)
         penalty_time_ms = r.get("penalty_time_ms") or 0
 
         total_time = None
@@ -86,8 +76,9 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
             elif laps and r.get("start_time"):
                 total_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
         elif laps and r.get("start_time"):
-            raw_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
-            total_time = raw_time + penalty_time_ms
+            total_time = (
+                int(laps[-1]["timestamp"]) - int(r["start_time"]) + penalty_time_ms
+            )
 
         if r["status"] == "FINISHED" and leader_time is None:
             leader_time = total_time
@@ -101,17 +92,14 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
         ):
             gap = total_time - leader_time
 
-        lap_details = []
-        for l in laps:
-            if l["lap_number"] > 0:
-                lap_details.append(
-                    {
-                        "number": l["lap_number"],
-                        "time": fmt_ms(
-                            int(l["lap_time"]) if l.get("lap_time") else None
-                        ),
-                    }
-                )
+        lap_details = [
+            {
+                "number": lap["lap_number"],
+                "time": fmt_ms(int(lap["lap_time"]) if lap.get("lap_time") else None),
+            }
+            for lap in laps
+            if lap["lap_number"] > 0
+        ]
 
         rider_start_ms = int(r["start_time"]) if r.get("start_time") else None
 
@@ -147,8 +135,30 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
         "is_individual_start": is_individual_start,
         "first_start_ms": first_start_ms,
     }
-
     return category, rows, extra
+
+
+def _build_columns(cols_raw: dict, is_individual_start: bool) -> dict:
+    col_keys = [
+        "place",
+        "number",
+        "name",
+        "birth_year",
+        "club",
+        "city",
+        "start_time",
+        "time",
+        "gap",
+        "laps",
+        "speed",
+        "status",
+    ]
+    cols = {
+        k: cols_raw.get(k, k == "start_time" and is_individual_start) for k in col_keys
+    }
+    if "start_time" in cols_raw:
+        cols["start_time"] = cols_raw["start_time"]
+    return cols
 
 
 def register_protocol(app, db: Database, engine: RaceEngine = None):
@@ -159,7 +169,9 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/protocol/preview", methods=["POST"])
     def api_protocol_preview():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         cat_id = data.get("category_id")
         if not cat_id:
             return jsonify({"error": "Категория не выбрана"}), 400
@@ -168,35 +180,12 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
         if not category:
             return jsonify({"error": "Категория не найдена"}), 404
 
-        meta = data.get("meta", {})
-        cols_raw = data.get("columns", {})
-
-        default_start_time = extra.get("is_individual_start", False)
-
-        cols = {
-            k: cols_raw.get(k, k == "start_time" and default_start_time)
-            for k in [
-                "place",
-                "number",
-                "name",
-                "birth_year",
-                "club",
-                "city",
-                "start_time",
-                "time",
-                "gap",
-                "laps",
-                "speed",
-                "status",
-            ]
-        }
-
-        if "start_time" in cols_raw:
-            cols["start_time"] = cols_raw["start_time"]
-
+        cols = _build_columns(
+            data.get("columns", {}), extra.get("is_individual_start", False)
+        )
         html = render_template(
             "protocol_content.html",
-            meta=meta,
+            meta=data.get("meta", {}),
             category=category,
             rows=rows,
             cols=cols,
@@ -206,7 +195,9 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
 
     @app.route("/api/protocol/pdf", methods=["POST"])
     def api_protocol_pdf():
-        data = request.get_json(force=True)
+        data, err = get_json_body()
+        if err:
+            return err
         cat_id = data.get("category_id")
         if not cat_id:
             return jsonify({"error": "Категория не выбрана"}), 400
@@ -215,33 +206,12 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
         if not category:
             return jsonify({"error": "Категория не найдена"}), 404
 
-        meta = data.get("meta", {})
-        cols_raw = data.get("columns", {})
-
-        default_start_time = extra.get("is_individual_start", False)
-        cols = {
-            k: cols_raw.get(k, k == "start_time" and default_start_time)
-            for k in [
-                "place",
-                "number",
-                "name",
-                "birth_year",
-                "club",
-                "city",
-                "start_time",
-                "time",
-                "gap",
-                "laps",
-                "speed",
-                "status",
-            ]
-        }
-        if "start_time" in cols_raw:
-            cols["start_time"] = cols_raw["start_time"]
-
+        cols = _build_columns(
+            data.get("columns", {}), extra.get("is_individual_start", False)
+        )
         html = render_template(
             "protocol_pdf.html",
-            meta=meta,
+            meta=data.get("meta", {}),
             category=category,
             rows=rows,
             cols=cols,
@@ -253,14 +223,10 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
 
             pdf_bytes = WeasyprintHTML(string=html).write_pdf()
         except ImportError:
-            return jsonify(
-                {
-                    "error": "weasyprint не установлен. "
-                    "Установите: pip install weasyprint"
-                }
-            ), 500
-        except Exception as e:
-            return jsonify({"error": f"Ошибка PDF: {str(e)}"}), 500
+            return jsonify({"error": "weasyprint не установлен"}), 500
+        except Exception:
+            logger.exception("Ошибка генерации PDF")
+            return jsonify({"error": "Ошибка генерации PDF"}), 500
 
         return send_file(
             io.BytesIO(pdf_bytes),

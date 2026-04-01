@@ -4,7 +4,7 @@ import time
 from typing import Callable, Optional
 
 from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
-from .models import TagEvent
+from .models import TagEvent, make_tag_event
 from .processor import TagProcessor
 
 
@@ -35,7 +35,6 @@ class RFIDReader:
         self._client: Optional[LLRPReaderClient] = None
         self._thread: Optional[threading.Thread] = None
         self._stop_flag = False
-
         self._logger = logging.getLogger(self.__class__.__name__)
 
         self.processor = TagProcessor(
@@ -45,23 +44,13 @@ class RFIDReader:
         )
 
     def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
-        ts_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
-        epc_short = f"...{epc[-4:]}" if len(epc) >= 4 else epc
-
-        event = TagEvent(
-            timestamp_str=ts_str,
-            epc=epc,
-            epc_short=epc_short,
-            rssi=rssi,
-            antenna=antenna,
-        )
-
+        event = make_tag_event(epc, timestamp, rssi, antenna)
         self._logger.debug(
             "Processed valid pass: time=%s ant=%s rssi=%s epc=%s",
-            ts_str,
+            event.timestamp_str,
             antenna,
             rssi,
-            epc_short,
+            event.epc_short,
         )
         self.on_event(event)
 
@@ -75,12 +64,11 @@ class RFIDReader:
             else:
                 epc = str(epc)
 
-            rssi_raw = tag.get("PeakRSSI", "N/A")
             ant = tag.get("AntennaID", "N/A")
-
             if isinstance(ant, int) and ant not in self.finish_antennas:
                 continue
 
+            rssi_raw = tag.get("PeakRSSI", "N/A")
             try:
                 rssi = float(rssi_raw)
             except (ValueError, TypeError):
@@ -92,7 +80,6 @@ class RFIDReader:
         from sllurp.llrp import LLRPReaderClient
 
         config = LLRPReaderConfig()
-
         config.antennas = list(self.antennas)
 
         power_idx = dbm_to_power_index(self.tx_power)
@@ -109,7 +96,6 @@ class RFIDReader:
         config.session = 2
         config.tag_population = 1
         config.report_every_n_tags = 1
-
         config.tag_content_selector["EnableAntennaID"] = True
         config.tag_content_selector["EnablePeakRSSI"] = True
 

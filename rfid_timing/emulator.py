@@ -3,7 +3,7 @@ import random
 import threading
 from typing import Callable, Optional
 
-from .models import TagEvent
+from .models import TagEvent, make_tag_event
 from .processor import TagProcessor
 
 
@@ -36,29 +36,18 @@ class EmulatorReader:
         return list(self._static_epc_list)
 
     def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
-        ts_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
-        epc_short = f"...{epc[-4:]}" if len(epc) >= 4 else epc
-
-        event = TagEvent(
-            timestamp_str=ts_str,
-            epc=epc,
-            epc_short=epc_short,
-            rssi=round(rssi, 1),
-            antenna=antenna,
-        )
-        self.on_event(event)
+        self.on_event(make_tag_event(epc, timestamp, round(rssi, 1), antenna))
 
     def _simulate_pass(self, epc: str):
         num_reads = random.randint(5, 15)
         antenna = random.choice([1, 2, 3, 4])
         base_rssi = random.uniform(-120.0, -30.0)
 
-        for i in range(num_reads):
+        for _ in range(num_reads):
             if self._stop_flag:
                 break
             noise = random.uniform(-5.0, 5.0)
-            current_rssi = base_rssi + noise
-            self.processor.feed(epc, current_rssi, antenna, timestamp=time.time())
+            self.processor.feed(epc, base_rssi + noise, antenna, timestamp=time.time())
             time.sleep(random.uniform(0.01, 0.05))
 
     def _run_loop(self):
@@ -66,7 +55,6 @@ class EmulatorReader:
         lap = 1
 
         while not self._stop_flag:
-            # обновление список EPC перед каждым кругом
             current_epcs = self._get_epc_list()
 
             if not current_epcs:

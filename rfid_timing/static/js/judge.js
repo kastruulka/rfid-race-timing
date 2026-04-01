@@ -24,7 +24,14 @@ async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const r = await fetch(url, opts);
-  try { return await r.json(); } catch(e) { return { error: 'Ошибка сервера', _status: r.status }; }
+  try {
+    const data = await r.json();
+    data._status = r.status;
+    data._httpOk = r.ok;
+    return data;
+  } catch(e) {
+    return { error: 'Ошибка сервера', _status: r.status, _httpOk: r.ok };
+  }
 }
 
 async function loadRiders() {
@@ -337,19 +344,8 @@ async function spLaunch() {
   spSaveAllStates();
   spUpdateUI();
   spEnsureGlobalTick();
-
-  if (st.planned.length > 0) {
-    await spStartOneRider(catId, st.planned[0]);
-  }
-
-  if (st.planned.length <= 1 || st.startedSet.size >= st.planned.length) {
-    st.running = false;
-    spSaveAllStates();
-    spUpdateUI();
-    toast('Все участники стартовали!');
-    return;
-  }
 }
+
 
 function spStop() {
   const catId = getCatId();
