@@ -4,7 +4,6 @@ from typing import Callable, Optional, Dict, List, Tuple
 
 
 class TagProcessor:
-
     def __init__(
         self,
         rssi_window_sec: float = 2.0,
@@ -40,14 +39,11 @@ class TagProcessor:
 
     def _schedule_tick(self):
         if self._running:
-            self._ticker = threading.Timer(
-                self._tick_interval, self._tick
-            )
+            self._ticker = threading.Timer(self._tick_interval, self._tick)
             self._ticker.daemon = True
             self._ticker.start()
 
-    def feed(self, epc: str, rssi: float, antenna: int,
-             timestamp: float = None):
+    def feed(self, epc: str, rssi: float, antenna: int, timestamp: float = None):
         if timestamp is None:
             timestamp = time.time()
 

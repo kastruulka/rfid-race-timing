@@ -2,12 +2,11 @@ import json
 import os
 import shutil
 import time
-from flask import render_template, jsonify, request, send_file
+from flask import render_template, jsonify, request
 from .database import Database
 
 
 class ConfigState:
-
     DEFAULTS = {
         "reader_ip": "169.254.1.1",
         "reader_port": 5084,
@@ -52,8 +51,7 @@ class ConfigState:
         return self._data.get(key, self.DEFAULTS.get(key))
 
 
-def register_settings(app, db: Database, config_state: ConfigState,
-                      reader_mgr=None):
+def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=None):
 
     @app.route("/settings")
     def settings_page():
@@ -79,8 +77,12 @@ def register_settings(app, db: Database, config_state: ConfigState,
             config_state.update(**data)
 
         if not reader_mgr:
-            return jsonify({"ok": True,
-                            "message": "Настройки сохранены (менеджер ридера недоступен)"})
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": "Настройки сохранены (менеджер ридера недоступен)",
+                }
+            )
 
         try:
             info = reader_mgr.restart()
@@ -91,8 +93,7 @@ def register_settings(app, db: Database, config_state: ConfigState,
                 msg = f"Переключено: {old} → {mode_label}"
             return jsonify({"ok": True, "message": msg, "info": info})
         except Exception as e:
-            return jsonify({"ok": False,
-                            "error": f"Ошибка перезапуска: {e}"}), 500
+            return jsonify({"ok": False, "error": f"Ошибка перезапуска: {e}"}), 500
 
     @app.route("/api/settings/reader-status", methods=["GET"])
     def api_reader_status():
@@ -105,35 +106,50 @@ def register_settings(app, db: Database, config_state: ConfigState,
         ip = config_state["reader_ip"]
         port = config_state["reader_port"]
         if config_state["use_emulator"]:
-            return jsonify({"ok": True,
-                            "message": "Режим эмулятора — ридер не нужен"})
+            return jsonify({"ok": True, "message": "Режим эмулятора — ридер не нужен"})
 
         try:
             import socket
+
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(3)
             s.connect((ip, int(port)))
         except Exception as e:
-            return jsonify({"ok": False,
-                            "error": f"Нет TCP-связи с {ip}:{port} — {e}"})
+            return jsonify({"ok": False, "error": f"Нет TCP-связи с {ip}:{port} — {e}"})
 
         try:
             s.settimeout(3)
             data = s.recv(1024)
             s.close()
             if data and len(data) >= 10:
-                return jsonify({"ok": True,
-                                "message": f"LLRP ридер на {ip}:{port} — ответ {len(data)} байт"})
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": f"LLRP ридер на {ip}:{port} — ответ {len(data)} байт",
+                    }
+                )
             elif data:
-                return jsonify({"ok": True,
-                                "message": f"Соединение установлено ({len(data)} байт)"})
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": f"Соединение установлено ({len(data)} байт)",
+                    }
+                )
             else:
-                return jsonify({"ok": True,
-                                "message": f"TCP-соединение с {ip}:{port} — нет данных (возможно не LLRP)"})
+                return jsonify(
+                    {
+                        "ok": True,
+                        "message": f"TCP-соединение с {ip}:{port} — нет данных (возможно не LLRP)",
+                    }
+                )
         except Exception:
             s.close()
-            return jsonify({"ok": True,
-                            "message": f"TCP до {ip}:{port} ОК (LLRP-ответ не получен за 3 сек)"})
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": f"TCP до {ip}:{port} ОК (LLRP-ответ не получен за 3 сек)",
+                }
+            )
 
     @app.route("/api/settings/backup", methods=["POST"])
     def api_backup():
@@ -172,15 +188,16 @@ def register_settings(app, db: Database, config_state: ConfigState,
 
         backups_count = 0
         if os.path.isdir("backups"):
-            backups_count = len([f for f in os.listdir("backups")
-                                 if f.endswith(".db")])
+            backups_count = len([f for f in os.listdir("backups") if f.endswith(".db")])
 
         riders = db.get_riders()
 
-        return jsonify({
-            "db_size": file_size(db._db_path),
-            "log_size": file_size("data/raw_log.csv"),
-            "backups_count": backups_count,
-            "race_id": db.get_current_race_id(),
-            "riders_count": len(riders),
-        })
+        return jsonify(
+            {
+                "db_size": file_size(db._db_path),
+                "log_size": file_size("data/raw_log.csv"),
+                "backups_count": backups_count,
+                "race_id": db.get_current_race_id(),
+                "riders_count": len(riders),
+            }
+        )

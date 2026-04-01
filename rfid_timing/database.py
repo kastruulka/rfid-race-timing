@@ -2,8 +2,8 @@ import sqlite3
 import threading
 import time
 import os
-import shutil
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
+
 
 class Database:
     def __init__(self, db_path: str = "data/race.db"):
@@ -120,30 +120,26 @@ class Database:
         self._migrate()
 
     def _migrate(self):
-        cols = [row[1] for row in
-                self._exec("PRAGMA table_info(result)").fetchall()]
+        cols = [row[1] for row in self._exec("PRAGMA table_info(result)").fetchall()]
 
         if "race_id" not in cols:
             self._exec(
-                "ALTER TABLE result ADD COLUMN race_id INTEGER"
-                " REFERENCES race(id)")
+                "ALTER TABLE result ADD COLUMN race_id INTEGER REFERENCES race(id)"
+            )
             self._commit()
 
         if "dnf_reason" not in cols:
-            self._exec(
-                "ALTER TABLE result ADD COLUMN dnf_reason TEXT DEFAULT ''")
+            self._exec("ALTER TABLE result ADD COLUMN dnf_reason TEXT DEFAULT ''")
             self._commit()
 
         if "penalty_time_ms" not in cols:
             self._exec(
-                "ALTER TABLE result ADD COLUMN penalty_time_ms"
-                " INTEGER DEFAULT 0")
+                "ALTER TABLE result ADD COLUMN penalty_time_ms INTEGER DEFAULT 0"
+            )
             self._commit()
 
         if "extra_laps" not in cols:
-            self._exec(
-                "ALTER TABLE result ADD COLUMN extra_laps"
-                " INTEGER DEFAULT 0")
+            self._exec("ALTER TABLE result ADD COLUMN extra_laps INTEGER DEFAULT 0")
             self._commit()
 
         self._exec("""
@@ -158,19 +154,15 @@ class Database:
         """)
         self._commit()
 
+        self._exec("CREATE INDEX IF NOT EXISTS idx_result_race ON result(race_id)")
         self._exec(
-            "CREATE INDEX IF NOT EXISTS idx_result_race"
-            " ON result(race_id)")
-        self._exec(
-            "CREATE INDEX IF NOT EXISTS idx_penalty_result"
-            " ON penalty(result_id)")
+            "CREATE INDEX IF NOT EXISTS idx_penalty_result ON penalty(result_id)"
+        )
         self._commit()
 
-        race_cols = [row[1] for row in
-                     self._exec("PRAGMA table_info(race)").fetchall()]
+        race_cols = [row[1] for row in self._exec("PRAGMA table_info(race)").fetchall()]
         if "closed_at" not in race_cols:
-            self._exec(
-                "ALTER TABLE race ADD COLUMN closed_at REAL DEFAULT NULL")
+            self._exec("ALTER TABLE race ADD COLUMN closed_at REAL DEFAULT NULL")
             self._commit()
 
         self._exec("""
@@ -182,9 +174,7 @@ class Database:
                 created_at  REAL    NOT NULL
             )
         """)
-        self._exec(
-            "CREATE INDEX IF NOT EXISTS idx_note_race"
-            " ON note(race_id)")
+        self._exec("CREATE INDEX IF NOT EXISTS idx_note_race ON note(race_id)")
         self._commit()
 
         self._exec("""
@@ -200,9 +190,7 @@ class Database:
                 status      TEXT    NOT NULL DEFAULT 'WAITING'
             )
         """)
-        self._exec(
-            "CREATE INDEX IF NOT EXISTS idx_sp_race"
-            " ON start_protocol(race_id)")
+        self._exec("CREATE INDEX IF NOT EXISTS idx_sp_race ON start_protocol(race_id)")
         self._commit()
 
         self._exec("""
@@ -216,10 +204,9 @@ class Database:
             )
         """)
         self._exec(
-            "CREATE INDEX IF NOT EXISTS idx_catstate_race"
-            " ON category_state(race_id)")
+            "CREATE INDEX IF NOT EXISTS idx_catstate_race ON category_state(race_id)"
+        )
         self._commit()
-
 
     def create_race(self, label: str = "") -> int:
         cur = self._exec(
@@ -230,9 +217,7 @@ class Database:
         return cur.lastrowid
 
     def get_current_race_id(self) -> Optional[int]:
-        r = self._exec(
-            "SELECT id FROM race ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        r = self._exec("SELECT id FROM race ORDER BY id DESC LIMIT 1").fetchone()
         return r["id"] if r else None
 
     def new_race(self, label: str = "") -> int:
@@ -243,8 +228,7 @@ class Database:
             race_id = self.get_current_race_id()
         if race_id is None:
             return
-        self._exec("UPDATE race SET closed_at=? WHERE id=?",
-                    (time.time(), race_id))
+        self._exec("UPDATE race SET closed_at=? WHERE id=?", (time.time(), race_id))
         self._commit()
 
     def is_race_closed(self, race_id: int = None) -> bool:
@@ -252,29 +236,31 @@ class Database:
             race_id = self.get_current_race_id()
         if race_id is None:
             return False
-        r = self._exec("SELECT closed_at FROM race WHERE id=?",
-                        (race_id,)).fetchone()
+        r = self._exec("SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone()
         return r is not None and r["closed_at"] is not None
 
-
-    def set_category_started(self, category_id: int, started_at: float,
-                             race_id: int = None):
+    def set_category_started(
+        self, category_id: int, started_at: float, race_id: int = None
+    ):
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
             return
         existing = self._exec(
             "SELECT id, started_at FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id)).fetchone()
+            (race_id, category_id),
+        ).fetchone()
         if existing:
             if existing["started_at"] is None:
                 self._exec(
                     "UPDATE category_state SET started_at=? WHERE id=?",
-                    (started_at, existing["id"]))
+                    (started_at, existing["id"]),
+                )
         else:
             self._exec(
                 "INSERT INTO category_state (race_id, category_id, started_at) VALUES (?,?,?)",
-                (race_id, category_id, started_at))
+                (race_id, category_id, started_at),
+            )
         self._commit()
 
     def close_category(self, category_id: int, race_id: int = None):
@@ -285,15 +271,18 @@ class Database:
         now = time.time()
         existing = self._exec(
             "SELECT id FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id)).fetchone()
+            (race_id, category_id),
+        ).fetchone()
         if existing:
             self._exec(
                 "UPDATE category_state SET closed_at=? WHERE id=?",
-                (now, existing["id"]))
+                (now, existing["id"]),
+            )
         else:
             self._exec(
                 "INSERT INTO category_state (race_id, category_id, closed_at) VALUES (?,?,?)",
-                (race_id, category_id, now))
+                (race_id, category_id, now),
+            )
         self._commit()
 
     def is_category_closed(self, category_id: int, race_id: int = None) -> bool:
@@ -303,18 +292,21 @@ class Database:
             return False
         r = self._exec(
             "SELECT closed_at FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id)).fetchone()
+            (race_id, category_id),
+        ).fetchone()
         return r is not None and r["closed_at"] is not None
 
-    def get_category_state(self, category_id: int,
-                           race_id: int = None) -> Optional[Dict]:
+    def get_category_state(
+        self, category_id: int, race_id: int = None
+    ) -> Optional[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
             return None
         r = self._exec(
             "SELECT * FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id)).fetchone()
+            (race_id, category_id),
+        ).fetchone()
         return dict(r) if r else None
 
     def get_all_category_states(self, race_id: int = None) -> List[Dict]:
@@ -323,8 +315,8 @@ class Database:
         if race_id is None:
             return []
         rows = self._exec(
-            "SELECT * FROM category_state WHERE race_id=?",
-            (race_id,)).fetchall()
+            "SELECT * FROM category_state WHERE race_id=?", (race_id,)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def are_all_categories_closed(self, race_id: int = None) -> bool:
@@ -340,60 +332,64 @@ class Database:
                 return False
         return True
 
-
     def reset_category(self, category_id: int, race_id: int = None) -> dict:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
             return {"error": "no race"}
- 
+
         results = self._exec(
             "SELECT id FROM result WHERE category_id=? AND race_id=?",
-            (category_id, race_id)).fetchall()
+            (category_id, race_id),
+        ).fetchall()
         result_ids = [r["id"] for r in results]
- 
+
         deleted_laps = 0
         deleted_penalties = 0
         deleted_results = len(result_ids)
- 
+
         for rid in result_ids:
             c = self._exec(
-                "SELECT COUNT(*) as cnt FROM lap WHERE result_id=?",
-                (rid,)).fetchone()
+                "SELECT COUNT(*) as cnt FROM lap WHERE result_id=?", (rid,)
+            ).fetchone()
             deleted_laps += c["cnt"] if c else 0
             self._exec("DELETE FROM lap WHERE result_id=?", (rid,))
             self._exec("DELETE FROM penalty WHERE result_id=?", (rid,))
- 
+
         if result_ids:
             placeholders = ",".join("?" * len(result_ids))
             self._exec(
-                f"DELETE FROM result WHERE id IN ({placeholders})",
-                tuple(result_ids))
- 
+                f"DELETE FROM result WHERE id IN ({placeholders})", tuple(result_ids)
+            )
+
         self._exec(
             "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
-            (race_id, category_id))
- 
+            (race_id, category_id),
+        )
+
         self._exec(
             "DELETE FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id))
- 
+            (race_id, category_id),
+        )
+
         race_row = self._exec(
-            "SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone()
+            "SELECT closed_at FROM race WHERE id=?", (race_id,)
+        ).fetchone()
         if race_row and race_row["closed_at"] is not None:
-            self._exec(
-                "UPDATE race SET closed_at=NULL WHERE id=?", (race_id,))
- 
+            self._exec("UPDATE race SET closed_at=NULL WHERE id=?", (race_id,))
+
         self._commit()
- 
+
         return {
             "deleted_results": deleted_results,
             "deleted_laps": deleted_laps,
         }
 
-
     def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
-        cur = self._exec("INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)", (name, laps, distance_km))
+        cur = self._exec(
+            "INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)",
+            (name, laps, distance_km),
+        )
         self._commit()
         return cur.lastrowid
 
@@ -402,17 +398,15 @@ class Database:
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return False
-        sql = ("UPDATE category SET "
-               + ",".join(f"{k}=?" for k in f)
-               + " WHERE id=?")
+        sql = "UPDATE category SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
         self._exec(sql, (*f.values(), cid))
         self._commit()
         return True
 
     def delete_category(self, cid: int) -> bool:
         r = self._exec(
-            "SELECT COUNT(*) as cnt FROM rider WHERE category_id=?",
-            (cid,)).fetchone()
+            "SELECT COUNT(*) as cnt FROM rider WHERE category_id=?", (cid,)
+        ).fetchone()
         if r and r["cnt"] > 0:
             return False
         self._exec("DELETE FROM category WHERE id=?", (cid,))
@@ -420,35 +414,61 @@ class Database:
         return True
 
     def get_categories(self) -> List[Dict]:
-        return [dict(r) for r in self._exec("SELECT * FROM category ORDER BY id").fetchall()]
+        return [
+            dict(r) for r in self._exec("SELECT * FROM category ORDER BY id").fetchall()
+        ]
 
     def get_category(self, cid: int) -> Optional[Dict]:
         r = self._exec("SELECT * FROM category WHERE id=?", (cid,)).fetchone()
         return dict(r) if r else None
 
-
-    def add_rider(self, number: int, last_name: str, first_name: str = "",
-                  birth_year: int = None, city: str = "", club: str = "",
-                  model: str = "", category_id: int = None,
-                  epc: str = None) -> int:
+    def add_rider(
+        self,
+        number: int,
+        last_name: str,
+        first_name: str = "",
+        birth_year: int = None,
+        city: str = "",
+        club: str = "",
+        model: str = "",
+        category_id: int = None,
+        epc: str = None,
+    ) -> int:
         cur = self._exec(
             """INSERT INTO rider (number, last_name, first_name, birth_year,
                city, club, model, category_id, epc)
                VALUES (?,?,?,?,?,?,?,?,?)""",
-            (number, last_name, first_name, birth_year,
-             city, club, model, category_id, epc))
+            (
+                number,
+                last_name,
+                first_name,
+                birth_year,
+                city,
+                club,
+                model,
+                category_id,
+                epc,
+            ),
+        )
         self._commit()
         return cur.lastrowid
 
     def update_rider(self, rid: int, **kw) -> bool:
-        ok = {"number", "last_name", "first_name", "birth_year",
-              "city", "club", "model", "category_id", "epc"}
+        ok = {
+            "number",
+            "last_name",
+            "first_name",
+            "birth_year",
+            "city",
+            "club",
+            "model",
+            "category_id",
+            "epc",
+        }
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return False
-        sql = ("UPDATE rider SET "
-               + ",".join(f"{k}=?" for k in f)
-               + " WHERE id=?")
+        sql = "UPDATE rider SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
         self._exec(sql, (*f.values(), rid))
         self._commit()
         return True
@@ -476,21 +496,24 @@ class Database:
         if category_id:
             rows = self._exec(
                 "SELECT * FROM rider WHERE category_id=? ORDER BY number",
-                (category_id,)).fetchall()
+                (category_id,),
+            ).fetchall()
         else:
-            rows = self._exec(
-                "SELECT * FROM rider ORDER BY number").fetchall()
+            rows = self._exec("SELECT * FROM rider ORDER BY number").fetchall()
         return [dict(r) for r in rows]
 
     def get_riders_with_category(self, category_id: int = None) -> List[Dict]:
         if category_id:
-            rows = self._exec("""
+            rows = self._exec(
+                """
                 SELECT r.*, c.name as category_name
                 FROM rider r
                 LEFT JOIN category c ON r.category_id = c.id
                 WHERE r.category_id = ?
                 ORDER BY r.number
-            """, (category_id,)).fetchall()
+            """,
+                (category_id,),
+            ).fetchall()
         else:
             rows = self._exec("""
                 SELECT r.*, c.name as category_name
@@ -505,8 +528,7 @@ class Database:
         return dict(r) if r else None
 
     def get_rider_by_number(self, number: int) -> Optional[Dict]:
-        r = self._exec("SELECT * FROM rider WHERE number=?",
-                        (number,)).fetchone()
+        r = self._exec("SELECT * FROM rider WHERE number=?", (number,)).fetchone()
         return dict(r) if r else None
 
     def get_epc_map(self) -> Dict[str, Dict]:
@@ -515,22 +537,26 @@ class Database:
         ).fetchall()
         return {r["epc"]: dict(r) for r in rows}
 
-
-    def create_result(self, rider_id: int, category_id: int,
-                      start_time: float = None, status: str = "DNS",
-                      race_id: int = None) -> int:
+    def create_result(
+        self,
+        rider_id: int,
+        category_id: int,
+        start_time: float = None,
+        status: str = "DNS",
+        race_id: int = None,
+    ) -> int:
         if race_id is None:
             race_id = self.get_current_race_id()
         cur = self._exec(
             """INSERT INTO result
                (rider_id, category_id, race_id, start_time, status)
                VALUES (?,?,?,?,?)""",
-            (rider_id, category_id, race_id, start_time, status))
+            (rider_id, category_id, race_id, start_time, status),
+        )
         self._commit()
         return cur.lastrowid
 
-    def get_result_by_rider(self, rider_id: int,
-                            race_id: int = None) -> Optional[Dict]:
+    def get_result_by_rider(self, rider_id: int, race_id: int = None) -> Optional[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
@@ -539,11 +565,13 @@ class Database:
             """SELECT * FROM result
                WHERE rider_id=? AND race_id=?
                ORDER BY id DESC LIMIT 1""",
-            (rider_id, race_id)).fetchone()
+            (rider_id, race_id),
+        ).fetchone()
         return dict(r) if r else None
 
-    def get_results_by_category(self, category_id: int,
-                                race_id: int = None) -> List[Dict]:
+    def get_results_by_category(
+        self, category_id: int, race_id: int = None
+    ) -> List[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
@@ -563,35 +591,42 @@ class Database:
                    WHEN 'DSQ'      THEN 4
                  END,
                  r.finish_time ASC NULLS LAST""",
-            (category_id, race_id)).fetchall()
+            (category_id, race_id),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def update_result(self, result_id: int, **kw):
-        ok = {"start_time", "finish_time", "status", "place",
-              "dnf_reason", "penalty_time_ms", "extra_laps"}
+        ok = {
+            "start_time",
+            "finish_time",
+            "status",
+            "place",
+            "dnf_reason",
+            "penalty_time_ms",
+            "extra_laps",
+        }
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return
-        sql = ("UPDATE result SET "
-               + ",".join(f"{k}=?" for k in f)
-               + " WHERE id=?")
+        sql = "UPDATE result SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
         self._exec(sql, (*f.values(), result_id))
         self._commit()
 
-
-    def add_penalty(self, result_id: int, penalty_type: str,
-                    value: float = 0, reason: str = "") -> int:
+    def add_penalty(
+        self, result_id: int, penalty_type: str, value: float = 0, reason: str = ""
+    ) -> int:
         cur = self._exec(
             """INSERT INTO penalty (result_id, type, value, reason, created_at)
                VALUES (?,?,?,?,?)""",
-            (result_id, penalty_type, value, reason, time.time()))
+            (result_id, penalty_type, value, reason, time.time()),
+        )
         self._commit()
         return cur.lastrowid
 
     def get_penalties(self, result_id: int) -> List[Dict]:
         rows = self._exec(
-            "SELECT * FROM penalty WHERE result_id=? ORDER BY created_at",
-            (result_id,)).fetchall()
+            "SELECT * FROM penalty WHERE result_id=? ORDER BY created_at", (result_id,)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def get_penalties_by_race(self, race_id: int = None) -> List[Dict]:
@@ -599,7 +634,8 @@ class Database:
             race_id = self.get_current_race_id()
         if race_id is None:
             return []
-        rows = self._exec("""
+        rows = self._exec(
+            """
             SELECT p.*, r.rider_id, r.category_id,
                    rd.number as rider_number,
                    rd.last_name, rd.first_name,
@@ -610,7 +646,9 @@ class Database:
             LEFT JOIN category c ON r.category_id = c.id
             WHERE r.race_id = ?
             ORDER BY p.created_at DESC
-        """, (race_id,)).fetchall()
+        """,
+            (race_id,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def delete_penalty(self, penalty_id: int) -> bool:
@@ -627,38 +665,46 @@ class Database:
                 total_time_ms += int(p["value"] * 1000)
             elif p["type"] == "EXTRA_LAP":
                 total_extra_laps += int(p["value"])
-        self.update_result(result_id,
-                           penalty_time_ms=total_time_ms,
-                           extra_laps=total_extra_laps)
+        self.update_result(
+            result_id, penalty_time_ms=total_time_ms, extra_laps=total_extra_laps
+        )
 
-
-    def record_lap(self, result_id: int, lap_number: int,
-                   timestamp: float, lap_time: float = None,
-                   segment: str = '{}', source: str = "RFID") -> int:
+    def record_lap(
+        self,
+        result_id: int,
+        lap_number: int,
+        timestamp: float,
+        lap_time: float = None,
+        segment: str = "{}",
+        source: str = "RFID",
+    ) -> int:
         cur = self._exec(
             """INSERT INTO lap
                (result_id, lap_number, timestamp, lap_time, segment, source)
                VALUES (?,?,?,?,?,?)""",
-            (result_id, lap_number, timestamp, lap_time, segment, source))
+            (result_id, lap_number, timestamp, lap_time, segment, source),
+        )
         self._commit()
         return cur.lastrowid
 
     def get_laps(self, result_id: int) -> List[Dict]:
         rows = self._exec(
-            "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number",
-            (result_id,)).fetchall()
+            "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number", (result_id,)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def count_laps(self, result_id: int) -> int:
         r = self._exec(
             "SELECT COUNT(*) as cnt FROM lap WHERE result_id=? AND lap_number>0",
-            (result_id,)).fetchone()
+            (result_id,),
+        ).fetchone()
         return r["cnt"] if r else 0
 
     def get_last_lap(self, result_id: int) -> Optional[Dict]:
         r = self._exec(
             "SELECT * FROM lap WHERE result_id=? ORDER BY lap_number DESC LIMIT 1",
-            (result_id,)).fetchone()
+            (result_id,),
+        ).fetchone()
         return dict(r) if r else None
 
     def update_lap(self, lap_id: int, **kw) -> bool:
@@ -666,9 +712,7 @@ class Database:
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return False
-        sql = ("UPDATE lap SET "
-               + ",".join(f"{k}=?" for k in f)
-               + " WHERE id=?")
+        sql = "UPDATE lap SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
         self._exec(sql, (*f.values(), lap_id))
         self._commit()
         return True
@@ -679,8 +723,7 @@ class Database:
         return True
 
     def get_lap_by_id(self, lap_id: int) -> Optional[Dict]:
-        r = self._exec("SELECT * FROM lap WHERE id=?",
-                        (lap_id,)).fetchone()
+        r = self._exec("SELECT * FROM lap WHERE id=?", (lap_id,)).fetchone()
         return dict(r) if r else None
 
     def get_flat_results(self) -> List[Dict]:
@@ -699,17 +742,17 @@ class Database:
         """).fetchall()
         return [dict(r) for r in rows]
 
-
-    def get_feed_history(self, limit: int = 50,
-                         race_id: int = None,
-                         category_id: int = None) -> List[Dict]:
+    def get_feed_history(
+        self, limit: int = 50, race_id: int = None, category_id: int = None
+    ) -> List[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
             return []
 
         if category_id:
-            rows = self._exec("""
+            rows = self._exec(
+                """
                 SELECT
                     l.id as lap_id,
                     l.lap_number,
@@ -727,9 +770,12 @@ class Database:
                 WHERE r.race_id = ? AND r.category_id = ?
                 ORDER BY l.timestamp DESC
                 LIMIT ?
-            """, (race_id, category_id, limit)).fetchall()
+            """,
+                (race_id, category_id, limit),
+            ).fetchall()
         else:
-            rows = self._exec("""
+            rows = self._exec(
+                """
                 SELECT
                     l.id as lap_id,
                     l.lap_number,
@@ -747,19 +793,20 @@ class Database:
                 WHERE r.race_id = ?
                 ORDER BY l.timestamp DESC
                 LIMIT ?
-            """, (race_id, limit)).fetchall()
+            """,
+                (race_id, limit),
+            ).fetchall()
 
         return [dict(r) for r in rows]
 
-
-    def add_note(self, text: str, rider_id: int = None,
-                 race_id: int = None) -> int:
+    def add_note(self, text: str, rider_id: int = None, race_id: int = None) -> int:
         if race_id is None:
             race_id = self.get_current_race_id()
         cur = self._exec(
             """INSERT INTO note (race_id, rider_id, text, created_at)
                VALUES (?,?,?,?)""",
-            (race_id, rider_id, text, time.time()))
+            (race_id, rider_id, text, time.time()),
+        )
         self._commit()
         return cur.lastrowid
 
@@ -768,14 +815,17 @@ class Database:
             race_id = self.get_current_race_id()
         if race_id is None:
             return []
-        rows = self._exec("""
+        rows = self._exec(
+            """
             SELECT n.*, rd.number as rider_number,
                    rd.last_name, rd.first_name
             FROM note n
             LEFT JOIN rider rd ON n.rider_id = rd.id
             WHERE n.race_id = ?
             ORDER BY n.created_at DESC
-        """, (race_id,)).fetchall()
+        """,
+            (race_id,),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def delete_note(self, note_id: int) -> bool:
@@ -783,15 +833,15 @@ class Database:
         self._commit()
         return True
 
-
-    def save_start_protocol(self, category_id: int,
-                            entries: List[Dict],
-                            race_id: int = None) -> int:
+    def save_start_protocol(
+        self, category_id: int, entries: List[Dict], race_id: int = None
+    ) -> int:
         if race_id is None:
             race_id = self.get_current_race_id()
         self._exec(
             "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
-            (race_id, category_id))
+            (race_id, category_id),
+        )
         count = 0
         for e in entries:
             self._exec(
@@ -799,19 +849,26 @@ class Database:
                    (race_id, category_id, rider_id, position,
                     interval_sec, status)
                    VALUES (?,?,?,?,?,?)""",
-                (race_id, category_id, e["rider_id"],
-                 e["position"], e.get("interval_sec", 30), "WAITING"))
+                (
+                    race_id,
+                    category_id,
+                    e["rider_id"],
+                    e["position"],
+                    e.get("interval_sec", 30),
+                    "WAITING",
+                ),
+            )
             count += 1
         self._commit()
         return count
 
-    def get_start_protocol(self, category_id: int,
-                           race_id: int = None) -> List[Dict]:
+    def get_start_protocol(self, category_id: int, race_id: int = None) -> List[Dict]:
         if race_id is None:
             race_id = self.get_current_race_id()
         if race_id is None:
             return []
-        rows = self._exec("""
+        rows = self._exec(
+            """
             SELECT sp.*, rd.number as rider_number,
                    rd.last_name, rd.first_name,
                    rd.club, rd.city
@@ -819,7 +876,9 @@ class Database:
             JOIN rider rd ON sp.rider_id = rd.id
             WHERE sp.race_id=? AND sp.category_id=?
             ORDER BY sp.position
-        """, (race_id, category_id)).fetchall()
+        """,
+            (race_id, category_id),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def update_start_protocol_entry(self, entry_id: int, **kw):
@@ -827,17 +886,17 @@ class Database:
         f = {k: v for k, v in kw.items() if k in ok}
         if not f:
             return
-        sql = ("UPDATE start_protocol SET "
-               + ",".join(f"{k}=?" for k in f)
-               + " WHERE id=?")
+        sql = (
+            "UPDATE start_protocol SET " + ",".join(f"{k}=?" for k in f) + " WHERE id=?"
+        )
         self._exec(sql, (*f.values(), entry_id))
         self._commit()
 
-    def clear_start_protocol(self, category_id: int,
-                             race_id: int = None):
+    def clear_start_protocol(self, category_id: int, race_id: int = None):
         if race_id is None:
             race_id = self.get_current_race_id()
         self._exec(
             "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
-            (race_id, category_id))
+            (race_id, category_id),
+        )
         self._commit()

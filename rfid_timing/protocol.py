@@ -1,7 +1,10 @@
 import io
 import time
 from flask import (
-    render_template, jsonify, request, Response, send_file,
+    render_template,
+    jsonify,
+    request,
+    send_file,
 )
 from .database import Database
 from .race_engine import RaceEngine
@@ -48,8 +51,7 @@ def fmt_start_offset(start_time_ms, first_start_ms):
     return f"+{m:02d}:{s:02d}"
 
 
-def build_protocol_data(db: Database, engine: RaceEngine,
-                        category_id: int):
+def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
     category = db.get_category(category_id)
     if not category:
         return None, [], {}
@@ -91,43 +93,55 @@ def build_protocol_data(db: Database, engine: RaceEngine,
             leader_time = total_time
 
         gap = None
-        if (r["status"] == "FINISHED" and leader_time is not None
-                and total_time is not None and total_time != leader_time):
+        if (
+            r["status"] == "FINISHED"
+            and leader_time is not None
+            and total_time is not None
+            and total_time != leader_time
+        ):
             gap = total_time - leader_time
 
         lap_details = []
         for l in laps:
             if l["lap_number"] > 0:
-                lap_details.append({
-                    "number": l["lap_number"],
-                    "time": fmt_ms(int(l["lap_time"]) if l.get("lap_time") else None),
-                })
+                lap_details.append(
+                    {
+                        "number": l["lap_number"],
+                        "time": fmt_ms(
+                            int(l["lap_time"]) if l.get("lap_time") else None
+                        ),
+                    }
+                )
 
         rider_start_ms = int(r["start_time"]) if r.get("start_time") else None
 
-        rows.append({
-            "place": r.get("place") or "",
-            "number": r["number"],
-            "last_name": r["last_name"],
-            "first_name": r.get("first_name", ""),
-            "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
-            "birth_year": r.get("birth_year") or "",
-            "club": r.get("club", ""),
-            "city": r.get("city", ""),
-            "status": r["status"],
-            "laps_done": laps_done,
-            "laps_required": category["laps"],
-            "total_time": total_time,
-            "total_time_str": fmt_ms(total_time),
-            "penalty_time_ms": penalty_time_ms,
-            "penalty_str": ("+" + fmt_ms(penalty_time_ms)) if penalty_time_ms else "",
-            "gap": gap,
-            "gap_str": fmt_gap(gap),
-            "avg_speed": fmt_speed(distance_total, total_time),
-            "lap_details": lap_details,
-            "start_time_abs": fmt_start_time(rider_start_ms),
-            "start_time_offset": fmt_start_offset(rider_start_ms, first_start_ms),
-        })
+        rows.append(
+            {
+                "place": r.get("place") or "",
+                "number": r["number"],
+                "last_name": r["last_name"],
+                "first_name": r.get("first_name", ""),
+                "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
+                "birth_year": r.get("birth_year") or "",
+                "club": r.get("club", ""),
+                "city": r.get("city", ""),
+                "status": r["status"],
+                "laps_done": laps_done,
+                "laps_required": category["laps"],
+                "total_time": total_time,
+                "total_time_str": fmt_ms(total_time),
+                "penalty_time_ms": penalty_time_ms,
+                "penalty_str": ("+" + fmt_ms(penalty_time_ms))
+                if penalty_time_ms
+                else "",
+                "gap": gap,
+                "gap_str": fmt_gap(gap),
+                "avg_speed": fmt_speed(distance_total, total_time),
+                "lap_details": lap_details,
+                "start_time_abs": fmt_start_time(rider_start_ms),
+                "start_time_offset": fmt_start_offset(rider_start_ms, first_start_ms),
+            }
+        )
 
     extra = {
         "is_individual_start": is_individual_start,
@@ -159,18 +173,34 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
 
         default_start_time = extra.get("is_individual_start", False)
 
-        cols = {k: cols_raw.get(k, k == "start_time" and default_start_time)
-                for k in [
-            "place", "number", "name", "birth_year", "club",
-            "city", "start_time", "time", "gap", "laps", "speed", "status"]}
+        cols = {
+            k: cols_raw.get(k, k == "start_time" and default_start_time)
+            for k in [
+                "place",
+                "number",
+                "name",
+                "birth_year",
+                "club",
+                "city",
+                "start_time",
+                "time",
+                "gap",
+                "laps",
+                "speed",
+                "status",
+            ]
+        }
 
         if "start_time" in cols_raw:
             cols["start_time"] = cols_raw["start_time"]
 
         html = render_template(
             "protocol_content.html",
-            meta=meta, category=category, rows=rows,
-            cols=cols, extra=extra,
+            meta=meta,
+            category=category,
+            rows=rows,
+            cols=cols,
+            extra=extra,
         )
         return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
@@ -189,26 +219,46 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
         cols_raw = data.get("columns", {})
 
         default_start_time = extra.get("is_individual_start", False)
-        cols = {k: cols_raw.get(k, k == "start_time" and default_start_time)
-                for k in [
-            "place", "number", "name", "birth_year", "club",
-            "city", "start_time", "time", "gap", "laps", "speed", "status"]}
+        cols = {
+            k: cols_raw.get(k, k == "start_time" and default_start_time)
+            for k in [
+                "place",
+                "number",
+                "name",
+                "birth_year",
+                "club",
+                "city",
+                "start_time",
+                "time",
+                "gap",
+                "laps",
+                "speed",
+                "status",
+            ]
+        }
         if "start_time" in cols_raw:
             cols["start_time"] = cols_raw["start_time"]
 
         html = render_template(
             "protocol_pdf.html",
-            meta=meta, category=category, rows=rows,
-            cols=cols, extra=extra,
+            meta=meta,
+            category=category,
+            rows=rows,
+            cols=cols,
+            extra=extra,
         )
 
         try:
             from weasyprint import HTML as WeasyprintHTML
+
             pdf_bytes = WeasyprintHTML(string=html).write_pdf()
         except ImportError:
-            return jsonify({"error":
-                "weasyprint не установлен. "
-                "Установите: pip install weasyprint"}), 500
+            return jsonify(
+                {
+                    "error": "weasyprint не установлен. "
+                    "Установите: pip install weasyprint"
+                }
+            ), 500
         except Exception as e:
             return jsonify({"error": f"Ошибка PDF: {str(e)}"}), 500
 

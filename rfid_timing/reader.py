@@ -10,20 +10,20 @@ from .processor import TagProcessor
 
 def dbm_to_power_index(dbm: float) -> int:
     idx = int((dbm - 10.0) * 4) + 1
-    return max(1, min(idx, 91))  
+    return max(1, min(idx, 91))
 
 
 class RFIDReader:
     def __init__(
         self,
-            ip: str,
-            port: int,
-            finish_antennas: set[int],
-            on_event: Callable[[TagEvent], None],
-            tx_power: float = 30.0,
-            antennas: list[int] = None,
-            rssi_window_sec: float = 2.0,
-            min_lap_time_sec: float = 120.0,
+        ip: str,
+        port: int,
+        finish_antennas: set[int],
+        on_event: Callable[[TagEvent], None],
+        tx_power: float = 30.0,
+        antennas: list[int] = None,
+        rssi_window_sec: float = 2.0,
+        min_lap_time_sec: float = 120.0,
     ) -> None:
         self.ip = ip
         self.port = port
@@ -41,7 +41,7 @@ class RFIDReader:
         self.processor = TagProcessor(
             rssi_window_sec=rssi_window_sec,
             min_lap_time_sec=min_lap_time_sec,
-            on_pass=self._on_processor_pass
+            on_pass=self._on_processor_pass,
         )
 
     def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
@@ -58,12 +58,14 @@ class RFIDReader:
 
         self._logger.debug(
             "Processed valid pass: time=%s ant=%s rssi=%s epc=%s",
-            ts_str, antenna, rssi, epc_short,
+            ts_str,
+            antenna,
+            rssi,
+            epc_short,
         )
         self.on_event(event)
 
     def _tag_report_cb(self, reader, tag_reports):
-        """Сырой коллбек от ридера."""
         now = time.time()
 
         for tag in tag_reports:
@@ -87,7 +89,7 @@ class RFIDReader:
             self.processor.feed(epc, rssi, ant, timestamp=now)
 
     def _reader_loop(self):
-        from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
+        from sllurp.llrp import LLRPReaderClient
 
         config = LLRPReaderConfig()
 
@@ -98,7 +100,10 @@ class RFIDReader:
 
         self._logger.info(
             "Конфигурация ридера: TX=%.1f dBm (idx=%d), антенны=%s",
-            self.tx_power, power_idx, self.antennas)
+            self.tx_power,
+            power_idx,
+            self.antennas,
+        )
 
         config.mode_identifier = 1004
         config.session = 2

@@ -10,19 +10,26 @@ from .settings import register_settings, ConfigState
 from .judge import register_judge
 
 
-def create_app(event_store: EventStore, reader_ip: str,
-               antennas: set[int],
-               db: Database = None,
-               engine: RaceEngine = None,
-               config_state: ConfigState = None,
-               reader_mgr=None) -> Flask:
+def create_app(
+    event_store: EventStore,
+    reader_ip: str,
+    antennas: set[int],
+    db: Database = None,
+    engine: RaceEngine = None,
+    config_state: ConfigState = None,
+    reader_mgr=None,
+) -> Flask:
 
     app = Flask(__name__)
 
     @app.route("/")
     def index():
         if config_state:
-            display_ip = "ЭМУЛЯТОР" if config_state["use_emulator"] else config_state["reader_ip"]
+            display_ip = (
+                "ЭМУЛЯТОР"
+                if config_state["use_emulator"]
+                else config_state["reader_ip"]
+            )
             display_ant = ", ".join(str(a) for a in sorted(config_state["antennas"]))
         else:
             display_ip = reader_ip
@@ -36,11 +43,18 @@ def create_app(event_store: EventStore, reader_ip: str,
     @app.route("/api/state")
     def api_state():
         if not db or not engine:
-            return jsonify({"feed": [], "results": [], "status": {
-                "RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0},
-                "categories": [], "start_time": None,
-                "server_elapsed_ms": None, "race_closed": False,
-                "category_states": {}})
+            return jsonify(
+                {
+                    "feed": [],
+                    "results": [],
+                    "status": {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0},
+                    "categories": [],
+                    "start_time": None,
+                    "server_elapsed_ms": None,
+                    "race_closed": False,
+                    "category_states": {},
+                }
+            )
 
         now_ms = int(time.time() * 1000)
 
@@ -83,9 +97,13 @@ def create_app(event_store: EventStore, reader_ip: str,
         if start_time_ms is not None:
             if race_closed:
                 race_id = db.get_current_race_id()
-                closed_at_row = db._exec(
-                    "SELECT closed_at FROM race WHERE id=?",
-                    (race_id,)).fetchone() if race_id else None
+                closed_at_row = (
+                    db._exec(
+                        "SELECT closed_at FROM race WHERE id=?", (race_id,)
+                    ).fetchone()
+                    if race_id
+                    else None
+                )
 
                 if closed_at_row and closed_at_row["closed_at"]:
                     closed_at_ms = int(closed_at_row["closed_at"] * 1000)
@@ -96,7 +114,9 @@ def create_app(event_store: EventStore, reader_ip: str,
                 server_elapsed_ms = now_ms - start_time_ms
 
         all_results = []
-        target_cats = [c for c in categories if c["id"] == cat_id] if cat_id else categories
+        target_cats = (
+            [c for c in categories if c["id"] == cat_id] if cat_id else categories
+        )
 
         for cat in target_cats:
             for r in db.get_results_by_category(cat["id"]):
@@ -117,26 +137,34 @@ def create_app(event_store: EventStore, reader_ip: str,
                     total_time += penalty_time_ms
 
                 total_required = cat["laps"] + extra_laps
-                laps_complete = (r["status"] == "RACING"
-                                 and r.get("finish_time") is not None
-                                 and laps_done >= total_required)
+                laps_complete = (
+                    r["status"] == "RACING"
+                    and r.get("finish_time") is not None
+                    and laps_done >= total_required
+                )
 
-                all_results.append({
-                    "rider_id": r["rider_id"],
-                    "number": r["number"],
-                    "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
-                    "club": r.get("club", ""),
-                    "status": r["status"],
-                    "laps_done": laps_done,
-                    "laps_required": cat["laps"],
-                    "total_time": total_time,
-                    "last_lap_time": int(last["lap_time"]) if last and last["lap_time"] else None,
-                    "finish_time": int(r["finish_time"]) if r.get("finish_time") else None,
-                    "penalty_time_ms": penalty_time_ms,
-                    "extra_laps": extra_laps,
-                    "dnf_reason": r.get("dnf_reason", ""),
-                    "laps_complete": laps_complete,
-                })
+                all_results.append(
+                    {
+                        "rider_id": r["rider_id"],
+                        "number": r["number"],
+                        "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
+                        "club": r.get("club", ""),
+                        "status": r["status"],
+                        "laps_done": laps_done,
+                        "laps_required": cat["laps"],
+                        "total_time": total_time,
+                        "last_lap_time": int(last["lap_time"])
+                        if last and last["lap_time"]
+                        else None,
+                        "finish_time": int(r["finish_time"])
+                        if r.get("finish_time")
+                        else None,
+                        "penalty_time_ms": penalty_time_ms,
+                        "extra_laps": extra_laps,
+                        "dnf_reason": r.get("dnf_reason", ""),
+                        "laps_complete": laps_complete,
+                    }
+                )
 
         def sort_key(r):
             if r["status"] == "FINISHED":
@@ -155,22 +183,24 @@ def create_app(event_store: EventStore, reader_ip: str,
         db_history = db.get_feed_history(limit=50, category_id=cat_id)
         for item in db_history:
             ts_sec = item["timestamp"] / 1000.0
-            time_str = time.strftime('%H:%M:%S', time.localtime(ts_sec))
+            time_str = time.strftime("%H:%M:%S", time.localtime(ts_sec))
 
             lap_number = item["lap_number"]
             laps_required = item["laps_required"] if item.get("laps_required") else 1
-            is_finish_lap = (lap_number > 0 and lap_number >= laps_required)
+            is_finish_lap = lap_number > 0 and lap_number >= laps_required
 
-            feed.append({
-                "lap_id": item["lap_id"],
-                "rider_number": item["rider_number"],
-                "rider_name": f"{item['last_name']} {item.get('first_name', '')}".strip(),
-                "lap_number": lap_number,
-                "lap_time": int(item["lap_time"]) if item.get("lap_time") else None,
-                "laps_required": laps_required,
-                "time_str": time_str,
-                "is_finish_lap": is_finish_lap,
-            })
+            feed.append(
+                {
+                    "lap_id": item["lap_id"],
+                    "rider_number": item["rider_number"],
+                    "rider_name": f"{item['last_name']} {item.get('first_name', '')}".strip(),
+                    "lap_number": lap_number,
+                    "lap_time": int(item["lap_time"]) if item.get("lap_time") else None,
+                    "laps_required": laps_required,
+                    "time_str": time_str,
+                    "is_finish_lap": is_finish_lap,
+                }
+            )
 
         status = engine.get_race_status(cat_id)
 
@@ -181,27 +211,39 @@ def create_app(event_store: EventStore, reader_ip: str,
             cs = db.get_category_state(cat_id)
             cat_started = cs is not None and cs.get("started_at") is not None
 
-        return jsonify({
-            "feed": feed,
-            "results": all_results,
-            "status": status,
-            "categories": [{"id": c["id"], "name": c["name"],
-                            "laps": c["laps"]} for c in categories],
-            "start_time": start_time_ms,
-            "server_elapsed_ms": server_elapsed_ms,
-            "race_closed": race_closed,
-            "category_closed": cat_closed,
-            "category_started": cat_started,
-            "category_states": category_states,
-        })
+        return jsonify(
+            {
+                "feed": feed,
+                "results": all_results,
+                "status": status,
+                "categories": [
+                    {"id": c["id"], "name": c["name"], "laps": c["laps"]}
+                    for c in categories
+                ],
+                "start_time": start_time_ms,
+                "server_elapsed_ms": server_elapsed_ms,
+                "race_closed": race_closed,
+                "category_closed": cat_closed,
+                "category_started": cat_started,
+                "category_states": category_states,
+            }
+        )
 
     @app.route("/api/events")
     def api_events():
         events = event_store.get_events()
-        return jsonify([{
-            "timestamp": e.timestamp_str, "epc": e.epc,
-            "epc_short": e.epc_short, "rssi": e.rssi, "antenna": e.antenna,
-        } for e in events])
+        return jsonify(
+            [
+                {
+                    "timestamp": e.timestamp_str,
+                    "epc": e.epc,
+                    "epc_short": e.epc_short,
+                    "rssi": e.rssi,
+                    "antenna": e.antenna,
+                }
+                for e in events
+            ]
+        )
 
     @app.route("/api/action", methods=["POST"])
     def api_action():
@@ -211,15 +253,23 @@ def create_app(event_store: EventStore, reader_ip: str,
         action = data.get("action", "")
         try:
             if action == "mass_start":
-                return jsonify({"ok": True, "info": engine.mass_start(data["category_id"])})
+                return jsonify(
+                    {"ok": True, "info": engine.mass_start(data["category_id"])}
+                )
             elif action == "individual_start":
-                return jsonify({"ok": True, "info": engine.individual_start(data["rider_id"])})
+                return jsonify(
+                    {"ok": True, "info": engine.individual_start(data["rider_id"])}
+                )
             elif action == "manual_lap":
-                return jsonify({"ok": True, "result": engine.manual_lap(data["rider_id"])})
+                return jsonify(
+                    {"ok": True, "result": engine.manual_lap(data["rider_id"])}
+                )
             elif action == "dnf":
                 return jsonify({"ok": engine.set_dnf(data["rider_id"])})
             elif action == "dsq":
-                return jsonify({"ok": engine.set_dsq(data["rider_id"], data.get("reason", ""))})
+                return jsonify(
+                    {"ok": engine.set_dsq(data["rider_id"], data.get("reason", ""))}
+                )
             else:
                 return jsonify({"error": f"Unknown action: {action}"}), 400
         except Exception as e:

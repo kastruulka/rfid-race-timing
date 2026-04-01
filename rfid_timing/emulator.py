@@ -25,7 +25,7 @@ class EmulatorReader:
         self.processor = TagProcessor(
             rssi_window_sec=rssi_window_sec,
             min_lap_time_sec=min_lap_time_sec,
-            on_pass=self._on_processor_pass
+            on_pass=self._on_processor_pass,
         )
 
     def _get_epc_list(self) -> list[str]:

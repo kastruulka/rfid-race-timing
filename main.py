@@ -11,7 +11,12 @@ from rfid_timing.database import Database
 from rfid_timing.logger import RawLogger
 from rfid_timing.race_engine import RaceEngine
 from rfid_timing.config import (
-    MAX_EVENTS, WEB_HOST, WEB_PORT, EMULATOR_TAGS, TARGET_LAPS, DB_PATH,
+    MAX_EVENTS,
+    WEB_HOST,
+    WEB_PORT,
+    EMULATOR_TAGS,
+    TARGET_LAPS,
+    DB_PATH,
 )
 
 logging.basicConfig(
@@ -33,23 +38,27 @@ def setup_dummy_data():
 
     cats = db.get_categories()
     if not cats:
-        cat_id = db.add_category(name="М18-29", laps=TARGET_LAPS,
-                                 distance_km=5.0)
+        cat_id = db.add_category(name="М18-29", laps=TARGET_LAPS, distance_km=5.0)
     else:
         cat_id = cats[0]["id"]
 
     riders_data = [
-        (13, "Иванов",    "Алексей", "Уралхим Ski Factory", "Москва"),
-        (14, "Петров",    "Дмитрий", "Динамо", "Санкт-Петербург"),
-        (15, "Сидоров",   "Максим",  "ЦСКА", "Казань"),
+        (13, "Иванов", "Алексей", "Уралхим Ski Factory", "Москва"),
+        (14, "Петров", "Дмитрий", "Динамо", "Санкт-Петербург"),
+        (15, "Сидоров", "Максим", "ЦСКА", "Казань"),
     ]
 
     for i, (num, lname, fname, club, city) in enumerate(riders_data):
         epc = EMULATOR_TAGS[i] if i < len(EMULATOR_TAGS) else f"EMU_{num}"
         if not db.get_rider_by_epc(epc):
             db.add_rider(
-                number=num, last_name=lname, first_name=fname,
-                club=club, city=city, category_id=cat_id, epc=epc,
+                number=num,
+                last_name=lname,
+                first_name=fname,
+                club=club,
+                city=city,
+                category_id=cat_id,
+                epc=epc,
             )
 
     engine.reload_epc_map()

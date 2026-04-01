@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Callable, Optional
+from typing import Callable
 
 from .reader import RFIDReader
 from .emulator import EmulatorReader
@@ -10,9 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReaderManager:
-
-    def __init__(self, config_state: ConfigState, on_event: Callable,
-                 db=None):
+    def __init__(self, config_state: ConfigState, on_event: Callable, db=None):
         self._config = config_state
         self._on_event = on_event
         self._db = db
@@ -24,7 +22,6 @@ class ReaderManager:
         return self._reader
 
     def start(self):
-        """Create and start reader based on current settings."""
         with self._lock:
             self._create_reader()
             if self._reader:
@@ -32,7 +29,9 @@ class ReaderManager:
 
     def restart(self):
         with self._lock:
-            old_mode = "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
+            old_mode = (
+                "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
+            )
 
             if self._reader is not None:
                 try:
@@ -43,7 +42,9 @@ class ReaderManager:
                 self._reader = None
 
             self._create_reader()
-            new_mode = "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
+            new_mode = (
+                "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
+            )
 
             if self._reader:
                 self._reader.start()
@@ -80,7 +81,6 @@ class ReaderManager:
             }
 
     def _create_reader(self):
-        """Internal: create reader instance from current config."""
         use_emulator = self._config["use_emulator"]
         reader_ip = self._config["reader_ip"]
         reader_port = self._config["reader_port"]
@@ -91,8 +91,11 @@ class ReaderManager:
         emulator_min_lap_sec = self._config["emulator_min_lap_sec"]
 
         if use_emulator:
-            logger.info("Создаю EmulatorReader (RSSI=%.1f сек, мин.круг=%.1f сек)",
-                        rssi_window_sec, emulator_min_lap_sec)
+            logger.info(
+                "Создаю EmulatorReader (RSSI=%.1f сек, мин.круг=%.1f сек)",
+                rssi_window_sec,
+                emulator_min_lap_sec,
+            )
             self._reader = EmulatorReader(
                 on_event=self._on_event,
                 db=self._db,
@@ -100,10 +103,16 @@ class ReaderManager:
                 min_lap_time_sec=emulator_min_lap_sec,
             )
         else:
-            logger.info("Создаю RFIDReader %s:%d (TX=%.1f dBm, ант=%s, "
-                        "RSSI=%.1f сек, мин.круг=%.1f сек)",
-                        reader_ip, reader_port, tx_power, antennas,
-                        rssi_window_sec, min_lap_time_sec)
+            logger.info(
+                "Создаю RFIDReader %s:%d (TX=%.1f dBm, ант=%s, "
+                "RSSI=%.1f сек, мин.круг=%.1f сек)",
+                reader_ip,
+                reader_port,
+                tx_power,
+                antennas,
+                rssi_window_sec,
+                min_lap_time_sec,
+            )
             self._reader = RFIDReader(
                 ip=reader_ip,
                 port=reader_port,

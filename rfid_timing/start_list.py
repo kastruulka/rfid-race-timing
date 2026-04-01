@@ -2,7 +2,10 @@ import csv
 import io
 import time
 from flask import (
-    render_template, jsonify, request, Response,
+    render_template,
+    jsonify,
+    request,
+    Response,
 )
 from .database import Database
 from .race_engine import RaceEngine
@@ -10,11 +13,9 @@ from .race_engine import RaceEngine
 
 def register_start_list(app, db: Database, engine: RaceEngine = None):
 
-
     @app.route("/start-list")
     def start_list_page():
         return render_template("start_list.html")
-
 
     @app.route("/api/categories", methods=["GET"])
     def api_categories_list():
@@ -45,10 +46,10 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
     def api_categories_delete(cid):
         ok = db.delete_category(cid)
         if not ok:
-            return jsonify({"error":
-                "Нельзя удалить — есть участники в этой категории"}), 400
+            return jsonify(
+                {"error": "Нельзя удалить — есть участники в этой категории"}
+            ), 400
         return jsonify({"ok": True})
-
 
     @app.route("/api/riders", methods=["GET"])
     def api_riders_list():
@@ -62,20 +63,19 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         number = data.get("number")
         last_name = data.get("last_name", "").strip()
         if not number or not last_name:
-            return jsonify({"error":
-                "Номер и фамилия обязательны"}), 400
+            return jsonify({"error": "Номер и фамилия обязательны"}), 400
 
         existing = db.get_rider_by_number(int(number))
         if existing:
-            return jsonify({"error":
-                f"Номер {number} уже занят"}), 400
+            return jsonify({"error": f"Номер {number} уже занят"}), 400
 
         epc = data.get("epc")
         if epc:
             epc_existing = db.get_rider_by_epc(epc)
             if epc_existing:
-                return jsonify({"error":
-                    f"EPC уже привязан к #{epc_existing['number']}"}), 400
+                return jsonify(
+                    {"error": f"EPC уже привязан к #{epc_existing['number']}"}
+                ), 400
 
         rid = db.add_rider(
             number=int(number),
@@ -97,7 +97,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
                 cat_id = int(cat_id)
             except (ValueError, TypeError):
                 cat_id = None
- 
+
         race_id = db.get_current_race_id()
         if cat_id and race_id:
             existing_result = db.get_result_by_rider(rid)
@@ -109,10 +109,10 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
                     if st:
                         start_time = st
                         break
- 
+
                 if start_time is None:
                     start_time = time.time() * 1000
- 
+
                 db.create_result(
                     rider_id=rid,
                     category_id=cat_id,
@@ -129,14 +129,14 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         if "number" in data:
             existing = db.get_rider_by_number(int(data["number"]))
             if existing and existing["id"] != rid:
-                return jsonify({"error":
-                    f"Номер {data['number']} уже занят"}), 400
+                return jsonify({"error": f"Номер {data['number']} уже занят"}), 400
 
         if "epc" in data and data["epc"]:
             epc_existing = db.get_rider_by_epc(data["epc"])
             if epc_existing and epc_existing["id"] != rid:
-                return jsonify({"error":
-                    f"EPC уже привязан к #{epc_existing['number']}"}), 400
+                return jsonify(
+                    {"error": f"EPC уже привязан к #{epc_existing['number']}"}
+                ), 400
 
         db.update_rider(rid, **data)
 
@@ -154,33 +154,42 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
             engine.reload_epc_map()
         return jsonify({"ok": True})
 
-
     @app.route("/api/riders/export")
     def api_riders_export():
         riders = db.get_riders_with_category()
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow([
-            "number", "last_name", "first_name", "birth_year",
-            "city", "club", "category", "epc",
-        ])
+        writer.writerow(
+            [
+                "number",
+                "last_name",
+                "first_name",
+                "birth_year",
+                "city",
+                "club",
+                "category",
+                "epc",
+            ]
+        )
         for r in riders:
-            writer.writerow([
-                r["number"], r["last_name"], r["first_name"],
-                r.get("birth_year", ""), r.get("city", ""),
-                r.get("club", ""), r.get("category_name", ""),
-                r.get("epc", ""),
-            ])
+            writer.writerow(
+                [
+                    r["number"],
+                    r["last_name"],
+                    r["first_name"],
+                    r.get("birth_year", ""),
+                    r.get("city", ""),
+                    r.get("club", ""),
+                    r.get("category_name", ""),
+                    r.get("epc", ""),
+                ]
+            )
         csv_data = output.getvalue()
         return Response(
             csv_data,
             mimetype="text/csv",
-            headers={
-                "Content-Disposition":
-                    "attachment; filename=start_list.csv"
-            },
+            headers={"Content-Disposition": "attachment; filename=start_list.csv"},
         )
-
 
     @app.route("/api/riders/import", methods=["POST"])
     def api_riders_import():
@@ -203,10 +212,12 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
             cat_cache[c["name"].lower().strip()] = c["id"]
 
         for i, row in enumerate(reader_csv, start=2):
-            num_str = (row.get("number") or row.get("номер")
-                       or row.get("Number") or "").strip()
-            last_name = (row.get("last_name") or row.get("фамилия")
-                         or row.get("Фамилия") or "").strip()
+            num_str = (
+                row.get("number") or row.get("номер") or row.get("Number") or ""
+            ).strip()
+            last_name = (
+                row.get("last_name") or row.get("фамилия") or row.get("Фамилия") or ""
+            ).strip()
 
             if not num_str or not last_name:
                 errors.append(f"Строка {i}: пропущена (нет номера/фамилии)")
@@ -222,24 +233,35 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
                 errors.append(f"Строка {i}: номер {number} уже есть")
                 continue
 
-            first_name = (row.get("first_name") or row.get("имя")
-                          or row.get("Имя") or "").strip()
+            first_name = (
+                row.get("first_name") or row.get("имя") or row.get("Имя") or ""
+            ).strip()
             birth_year = None
-            by_str = (row.get("birth_year") or row.get("год")
-                      or row.get("Год") or "").strip()
+            by_str = (
+                row.get("birth_year") or row.get("год") or row.get("Год") or ""
+            ).strip()
             if by_str:
                 try:
                     birth_year = int(by_str)
                 except ValueError:
                     pass
 
-            city = (row.get("city") or row.get("город")
-                    or row.get("Город") or "").strip()
-            club = (row.get("club") or row.get("команда")
-                    or row.get("Команда") or row.get("клуб")
-                    or "").strip()
-            cat_name = (row.get("category") or row.get("категория")
-                        or row.get("Категория") or "").strip()
+            city = (
+                row.get("city") or row.get("город") or row.get("Город") or ""
+            ).strip()
+            club = (
+                row.get("club")
+                or row.get("команда")
+                or row.get("Команда")
+                or row.get("клуб")
+                or ""
+            ).strip()
+            cat_name = (
+                row.get("category")
+                or row.get("категория")
+                or row.get("Категория")
+                or ""
+            ).strip()
             epc = (row.get("epc") or row.get("EPC") or "").strip() or None
 
             cat_id = None
@@ -252,14 +274,18 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
                     cat_cache[cat_key] = cat_id
 
             if epc and db.get_rider_by_epc(epc):
-                errors.append(
-                    f"Строка {i}: EPC '{epc}' уже привязан")
+                errors.append(f"Строка {i}: EPC '{epc}' уже привязан")
                 epc = None
 
             db.add_rider(
-                number=number, last_name=last_name,
-                first_name=first_name, birth_year=birth_year,
-                city=city, club=club, category_id=cat_id, epc=epc,
+                number=number,
+                last_name=last_name,
+                first_name=first_name,
+                birth_year=birth_year,
+                city=city,
+                club=club,
+                category_id=cat_id,
+                epc=epc,
             )
             imported += 1
 

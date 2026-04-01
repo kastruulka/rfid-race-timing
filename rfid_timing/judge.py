@@ -14,20 +14,21 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     def api_judge_rider_status(rid):
         result = db.get_result_by_rider(rid)
         if not result:
-            return jsonify({"status": "DNS", "total_time_ms": None,
-                            "dnf_reason": ""})
+            return jsonify({"status": "DNS", "total_time_ms": None, "dnf_reason": ""})
         total_time_ms = None
         if result.get("finish_time") and result.get("start_time"):
             total_time_ms = int(result["finish_time"]) - int(result["start_time"])
-        return jsonify({
-            "status": result["status"],
-            "total_time_ms": total_time_ms,
-            "finish_time": result.get("finish_time"),
-            "start_time": result.get("start_time"),
-            "dnf_reason": result.get("dnf_reason", ""),
-            "penalty_time_ms": result.get("penalty_time_ms") or 0,
-            "extra_laps": result.get("extra_laps") or 0,
-        })
+        return jsonify(
+            {
+                "status": result["status"],
+                "total_time_ms": total_time_ms,
+                "finish_time": result.get("finish_time"),
+                "start_time": result.get("start_time"),
+                "dnf_reason": result.get("dnf_reason", ""),
+                "penalty_time_ms": result.get("penalty_time_ms") or 0,
+                "extra_laps": result.get("extra_laps") or 0,
+            }
+        )
 
     @app.route("/api/judge/dnf", methods=["POST"])
     def api_judge_dnf():
@@ -35,9 +36,11 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         rid = data.get("rider_id")
         if not rid or not engine:
             return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.set_dnf(int(rid),
-                            reason_code=data.get("reason_code", ""),
-                            reason_text=data.get("reason_text", ""))
+        ok = engine.set_dnf(
+            int(rid),
+            reason_code=data.get("reason_code", ""),
+            reason_text=data.get("reason_text", ""),
+        )
         if not ok:
             return jsonify({"error": "Невозможно — участник не в гонке"}), 400
         return jsonify({"ok": True})
@@ -61,7 +64,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not rid or not engine:
             return jsonify({"error": "Участник не выбран"}), 400
         result = engine.add_time_penalty(
-            int(rid), float(seconds), reason=data.get("reason", ""))
+            int(rid), float(seconds), reason=data.get("reason", "")
+        )
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
         return jsonify({"ok": True, "penalty": result})
@@ -74,7 +78,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not rid or not engine:
             return jsonify({"error": "Участник не выбран"}), 400
         result = engine.add_extra_lap(
-            int(rid), int(laps), reason=data.get("reason", ""))
+            int(rid), int(laps), reason=data.get("reason", "")
+        )
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
         return jsonify({"ok": True, "penalty": result})
@@ -85,8 +90,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         rid = data.get("rider_id")
         if not rid or not engine:
             return jsonify({"error": "Участник не выбран"}), 400
-        result = engine.add_warning(
-            int(rid), reason=data.get("reason", ""))
+        result = engine.add_warning(int(rid), reason=data.get("reason", ""))
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
         return jsonify({"ok": True, "penalty": result})
@@ -136,7 +140,6 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 
-
     @app.route("/api/judge/start-protocol", methods=["GET"])
     def api_start_protocol_get():
         cat_id = request.args.get("category_id", type=int)
@@ -155,11 +158,13 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         rider_ids = data.get("rider_ids", [])
         entries = []
         for i, rid in enumerate(rider_ids):
-            entries.append({
-                "rider_id": int(rid),
-                "position": i + 1,
-                "interval_sec": interval,
-            })
+            entries.append(
+                {
+                    "rider_id": int(rid),
+                    "position": i + 1,
+                    "interval_sec": interval,
+                }
+            )
         count = db.save_start_protocol(int(cat_id), entries)
         return jsonify({"ok": True, "count": count})
 
@@ -180,11 +185,13 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         riders_list = db.get_riders(category_id=int(cat_id))
         entries = []
         for i, r in enumerate(riders_list):
-            entries.append({
-                "rider_id": r["id"],
-                "position": i + 1,
-                "interval_sec": interval,
-            })
+            entries.append(
+                {
+                    "rider_id": r["id"],
+                    "position": i + 1,
+                    "interval_sec": interval,
+                }
+            )
         count = db.save_start_protocol(int(cat_id), entries)
         return jsonify({"ok": True, "count": count})
 
@@ -209,21 +216,21 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             offset_ms = i * interval * 1000
             planned_time = now_ms + offset_ms
             db.update_start_protocol_entry(
-                e["id"],
-                planned_time=planned_time,
-                status="PLANNED")
-            planned.append({
-                "entry_id": e["id"],
-                "rider_id": e["rider_id"],
-                "rider_number": e["rider_number"],
-                "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
-                "position": e["position"],
-                "planned_time": planned_time,
-                "offset_sec": i * interval,
-            })
+                e["id"], planned_time=planned_time, status="PLANNED"
+            )
+            planned.append(
+                {
+                    "entry_id": e["id"],
+                    "rider_id": e["rider_id"],
+                    "rider_number": e["rider_number"],
+                    "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
+                    "position": e["position"],
+                    "planned_time": planned_time,
+                    "offset_sec": i * interval,
+                }
+            )
 
-        return jsonify({"ok": True, "planned": planned,
-                        "first_start_ms": now_ms})
+        return jsonify({"ok": True, "planned": planned, "first_start_ms": now_ms})
 
     @app.route("/api/judge/start-protocol/status", methods=["GET"])
     def api_start_protocol_status():
@@ -240,20 +247,24 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
 
         planned = []
         for e in entries:
-            planned.append({
-                "entry_id": e["id"],
-                "rider_id": e["rider_id"],
-                "rider_number": e["rider_number"],
-                "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
-                "position": e["position"],
-                "planned_time": e.get("planned_time"),
-                "actual_time": e.get("actual_time"),
-                "status": e["status"],
-            })
-        return jsonify({
-            "running": has_planned,
-            "planned": planned,
-        })
+            planned.append(
+                {
+                    "entry_id": e["id"],
+                    "rider_id": e["rider_id"],
+                    "rider_number": e["rider_number"],
+                    "rider_name": f"{e['last_name']} {e.get('first_name', '')}".strip(),
+                    "position": e["position"],
+                    "planned_time": e.get("planned_time"),
+                    "actual_time": e.get("actual_time"),
+                    "status": e["status"],
+                }
+            )
+        return jsonify(
+            {
+                "running": has_planned,
+                "planned": planned,
+            }
+        )
 
     @app.route("/api/judge/start-protocol/start-rider", methods=["POST"])
     def api_start_protocol_start_rider():
@@ -268,13 +279,11 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             info = engine.individual_start(int(rider_id))
             if entry_id:
                 db.update_start_protocol_entry(
-                    int(entry_id),
-                    actual_time=time.time() * 1000,
-                    status="STARTED")
+                    int(entry_id), actual_time=time.time() * 1000, status="STARTED"
+                )
             return jsonify({"ok": True, "info": info})
         except Exception as e:
             return jsonify({"error": str(e)}), 400
-
 
     @app.route("/api/judge/unfinish-rider", methods=["POST"])
     def api_judge_unfinish_rider():
@@ -286,8 +295,9 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return jsonify({"error": "Участник не выбран"}), 400
         ok = engine.unfinish_rider(int(rid))
         if not ok:
-            return jsonify({"error":
-                "Невозможно — участник не FINISHED или категория закрыта"}), 400
+            return jsonify(
+                {"error": "Невозможно — участник не FINISHED или категория закрыта"}
+            ), 400
         return jsonify({"ok": True})
 
     @app.route("/api/judge/finish-race", methods=["POST"])
@@ -314,7 +324,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return jsonify({"ok": True, **info})
         except Exception as e:
             return jsonify({"error": str(e)}), 400
-    
+
     @app.route("/api/judge/edit-finish-time", methods=["POST"])
     def api_judge_edit_finish_time():
         if not engine:
@@ -331,8 +341,9 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         absolute_finish = int(start) + int(finish_time_ms)
         ok = engine.edit_finish_time(int(rid), absolute_finish)
         if not ok:
-            return jsonify({"error":
-                "Невозможно — категория закрыта или участник не FINISHED"}), 400
+            return jsonify(
+                {"error": "Невозможно — категория закрыта или участник не FINISHED"}
+            ), 400
         return jsonify({"ok": True})
 
     @app.route("/api/judge/notes", methods=["GET"])
@@ -371,8 +382,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not lap:
             return jsonify({"error": "Круг не найден"}), 404
         result_row = db._exec(
-            "SELECT category_id FROM result WHERE id=?",
-            (lap["result_id"],)).fetchone()
+            "SELECT category_id FROM result WHERE id=?", (lap["result_id"],)
+        ).fetchone()
         if result_row and result_row["category_id"]:
             if db.is_category_closed(result_row["category_id"]):
                 return jsonify({"error": "Категория закрыта"}), 400
@@ -391,8 +402,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not lap:
             return jsonify({"error": "Круг не найден"}), 404
         result_row = db._exec(
-            "SELECT category_id FROM result WHERE id=?",
-            (lap["result_id"],)).fetchone()
+            "SELECT category_id FROM result WHERE id=?", (lap["result_id"],)
+        ).fetchone()
         if result_row and result_row["category_id"]:
             if db.is_category_closed(result_row["category_id"]):
                 return jsonify({"error": "Категория закрыта"}), 400
@@ -423,15 +434,15 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
 def _recalc_lap_timestamps(db, result_id):
     result = db._exec(
         "SELECT start_time, status, penalty_time_ms FROM result WHERE id=?",
-        (result_id,)).fetchone()
+        (result_id,),
+    ).fetchone()
     if not result:
         return
     laps = db.get_laps(result_id)
     current_ts = int(float(result["start_time"]))
     for l in laps:
         current_ts += int(l.get("lap_time") or 0)
-        db._exec("UPDATE lap SET timestamp=? WHERE id=?",
-                 (current_ts, l["id"]))
+        db._exec("UPDATE lap SET timestamp=? WHERE id=?", (current_ts, l["id"]))
     db._commit()
     if result["status"] == "FINISHED" and laps:
         penalty_ms = result["penalty_time_ms"] or 0
@@ -443,7 +454,6 @@ def _renumber_laps(db, result_id):
     for i, l in enumerate(laps):
         new_num = 0 if i == 0 else i
         if l["lap_number"] != new_num:
-            db._exec("UPDATE lap SET lap_number=? WHERE id=?",
-                     (new_num, l["id"]))
+            db._exec("UPDATE lap SET lap_number=? WHERE id=?", (new_num, l["id"]))
     db._commit()
     _recalc_lap_timestamps(db, result_id)
