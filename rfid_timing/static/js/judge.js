@@ -2,16 +2,14 @@ let riders = [];
 let selectedRiderId = null;
 let startMode = 'mass';
 
-let spEntries = [];
-let spPlanned = null;
-let spRunning = false;
-let spTimer = null;
-let spStartedSet = new Set();
-let spNextIndex = 0;
+let spStates = {};
+let spGlobalTimer = null;
 
-let catTimerElapsed = {};   // category_id -> elapsed_ms from server
-let catTimerPerf = {};      // category_id -> performance.now() at sync
-let catTimerClosed = {};    // category_id -> bool
+let spEntries = [];
+
+let catTimerElapsed = {};
+let catTimerPerf = {};
+let catTimerClosed = {};
 let globalTimerRef = null;
 
 function toast(msg, isError) {
@@ -42,47 +40,66 @@ function fmtMs(ms) {
   return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
 }
 
-
-function spSaveState() {
-  const state = {
-    running: spRunning,
-    planned: spPlanned,
-    startedRiders: Array.from(spStartedSet),
-  };
-  sessionStorage.setItem('sp_state', JSON.stringify(state));
+function getCatId() {
+  return document.getElementById('race-category').value;
 }
 
-function spRestoreState() {
-  try {
-    const raw = sessionStorage.getItem('sp_state');
-    if (!raw) return false;
-    const state = JSON.parse(raw);
-    if (!state.running || !state.planned || !state.planned.length) return false;
 
-    const started = new Set(state.startedRiders || []);
-    const remaining = state.planned.filter(p => !started.has(p.rider_id));
-    if (!remaining.length) {
-      sessionStorage.removeItem('sp_state');
-      return false;
-    }
-
-    const lastPlanned = state.planned[state.planned.length - 1].planned_time;
-    if (Date.now() - lastPlanned > 10 * 60 * 1000) {
-      sessionStorage.removeItem('sp_state');
-      return false;
-    }
-
-    spPlanned = state.planned;
-    spStartedSet = started;
-    spRunning = true;
-    return true;
-  } catch(e) {
-    return false;
+function spGetState(catId) {
+  if (!catId) return null;
+  if (!spStates[catId]) {
+    spStates[catId] = { entries: [], planned: null, running: false, startedSet: new Set(), starting: false };
   }
+  return spStates[catId];
 }
 
-function spClearState() {
-  sessionStorage.removeItem('sp_state');
+function spIsRunning(catId) { const s = spStates[catId]; return s && s.running; }
+function spAnyRunning() { return Object.values(spStates).some(s => s.running); }
+
+function spSaveAllStates() {
+  const data = {};
+  Object.entries(spStates).forEach(([catId, s]) => {
+    if (s.running && s.planned && s.planned.length) {
+      data[catId] = { planned: s.planned, startedRiders: Array.from(s.startedSet) };
+    }
+  });
+  if (Object.keys(data).length) sessionStorage.setItem('sp_states', JSON.stringify(data));
+  else sessionStorage.removeItem('sp_states');
+}
+
+function spRestoreAllStates() {
+  try {
+    const raw = sessionStorage.getItem('sp_states');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    let restored = false;
+    Object.entries(data).forEach(([catId, saved]) => {
+      if (!saved.planned || !saved.planned.length) return;
+      const started = new Set(saved.startedRiders || []);
+      const remaining = saved.planned.filter(p => !started.has(p.rider_id));
+      if (!remaining.length) return;
+      const lastPlanned = saved.planned[saved.planned.length - 1].planned_time;
+      if (Date.now() - lastPlanned > 10 * 60 * 1000) return;
+      const s = spGetState(catId);
+      s.planned = saved.planned;
+      s.startedSet = started;
+      s.running = true;
+      s.starting = false;
+      restored = true;
+    });
+    if (!restored) sessionStorage.removeItem('sp_states');
+    return restored;
+  } catch(e) { return false; }
+}
+
+function spClearStateFor(catId) {
+  if (spStates[catId]) {
+    spStates[catId].running = false;
+    spStates[catId].planned = null;
+    spStates[catId].startedSet = new Set();
+    spStates[catId].starting = false;
+  }
+  spSaveAllStates();
 }
 
 
@@ -101,8 +118,7 @@ function setStartMode(mode) {
     indBtn.style.background = 'var(--accent)'; indBtn.style.color = 'var(--bg)';
     massBtn.style.background = 'transparent'; massBtn.style.color = 'var(--text-dim)';
     massSection.style.display = 'none'; indSection.style.display = 'block';
-    spLoadProtocol();
-
+    spSwitchToCategory();
   }
 }
 
@@ -111,7 +127,7 @@ let spDdIndex = -1;
 let spDdFiltered = [];
 
 function spGetAvailableRiders() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   const inList = new Set(spEntries.map(e => e.rider_id));
   return riders.filter(r => {
     if (inList.has(r.id)) return false;
@@ -120,43 +136,16 @@ function spGetAvailableRiders() {
   });
 }
 
-function spOnSearchInput() {
-  spDdIndex = -1;
-  spRenderSearchDropdown();
-  document.getElementById('sp-dropdown').classList.add('open');
-}
-
-function spOnSearchFocus() {
-  const input = document.getElementById('sp-search');
-  input.select();
-  spDdIndex = -1;
-  spRenderSearchDropdown();
-  document.getElementById('sp-dropdown').classList.add('open');
-}
+function spOnSearchInput() { spDdIndex = -1; spRenderSearchDropdown(); document.getElementById('sp-dropdown').classList.add('open'); }
+function spOnSearchFocus() { document.getElementById('sp-search').select(); spDdIndex = -1; spRenderSearchDropdown(); document.getElementById('sp-dropdown').classList.add('open'); }
 
 function spOnSearchKey(e) {
   const dd = document.getElementById('sp-dropdown');
   const isOpen = dd.classList.contains('open');
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (!isOpen) { spRenderSearchDropdown(); dd.classList.add('open'); }
-    spDdIndex = Math.min(spDdIndex + 1, spDdFiltered.length - 1);
-    spHighlightSearchItem();
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    spDdIndex = Math.max(spDdIndex - 1, 0);
-    spHighlightSearchItem();
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    if (spDdIndex >= 0 && spDdIndex < spDdFiltered.length) {
-      spSelectFromSearch(spDdFiltered[spDdIndex].id);
-    } else if (spDdFiltered.length === 1) {
-      spSelectFromSearch(spDdFiltered[0].id);
-    }
-  } else if (e.key === 'Escape') {
-    dd.classList.remove('open');
-    document.getElementById('sp-search').blur();
-  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (!isOpen) { spRenderSearchDropdown(); dd.classList.add('open'); } spDdIndex = Math.min(spDdIndex + 1, spDdFiltered.length - 1); spHighlightSearchItem(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); spDdIndex = Math.max(spDdIndex - 1, 0); spHighlightSearchItem(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (spDdIndex >= 0 && spDdIndex < spDdFiltered.length) spSelectFromSearch(spDdFiltered[spDdIndex].id); else if (spDdFiltered.length === 1) spSelectFromSearch(spDdFiltered[0].id); }
+  else if (e.key === 'Escape') { dd.classList.remove('open'); document.getElementById('sp-search').blur(); }
 }
 
 function spHighlightSearchItem() {
@@ -170,25 +159,11 @@ function spRenderSearchDropdown() {
   const query = (document.getElementById('sp-search').value || '').toLowerCase();
   const dd = document.getElementById('sp-dropdown');
   const available = spGetAvailableRiders();
-
-  spDdFiltered = available.filter(r => {
-    if (!query) return true;
-    return String(r.number).includes(query) ||
-           (r.last_name || '').toLowerCase().includes(query) ||
-           (r.first_name || '').toLowerCase().includes(query);
-  });
-
-  if (!spDdFiltered.length) {
-    dd.innerHTML = '<div style="padding:8px 10px;color:var(--text-dim);font-size:11px">' +
-      (available.length === 0 ? 'Все участники уже в протоколе' : 'Не найдено') + '</div>';
-    return;
-  }
-
+  spDdFiltered = available.filter(r => { if (!query) return true; return String(r.number).includes(query) || (r.last_name||'').toLowerCase().includes(query) || (r.first_name||'').toLowerCase().includes(query); });
+  if (!spDdFiltered.length) { dd.innerHTML = '<div style="padding:8px 10px;color:var(--text-dim);font-size:11px">' + (available.length === 0 ? 'Все участники уже в протоколе' : 'Не найдено') + '</div>'; return; }
   dd.innerHTML = spDdFiltered.map((r, i) =>
-    '<div class="rider-dropdown-item' + (i === spDdIndex ? ' active' : '') +
-    '" onclick="spSelectFromSearch(' + r.id + ')" style="padding:4px 8px;font-size:11px">' +
-    '<span class="rdi-num" style="min-width:28px">#' + r.number + '</span>' +
-    '<span class="rdi-name">' + (r.last_name || '') + ' ' + (r.first_name || '') + '</span></div>'
+    '<div class="rider-dropdown-item' + (i === spDdIndex ? ' active' : '') + '" onclick="spSelectFromSearch(' + r.id + ')" style="padding:4px 8px;font-size:11px">' +
+    '<span class="rdi-num" style="min-width:28px">#' + r.number + '</span><span class="rdi-name">' + (r.last_name||'') + ' ' + (r.first_name||'') + '</span></div>'
   ).join('');
 }
 
@@ -197,16 +172,8 @@ function spSelectFromSearch(riderId) {
   if (!r) return;
   document.getElementById('sp-dropdown').classList.remove('open');
   document.getElementById('sp-search').value = '';
-
-  if (spEntries.some(e => e.rider_id === r.id)) {
-    toast('Участник уже в протоколе', true);
-    return;
-  }
-
-  spEntries.push({
-    rider_id: r.id, rider_number: r.number,
-    last_name: r.last_name || '', first_name: r.first_name || '',
-  });
+  if (spEntries.some(e => e.rider_id === r.id)) { toast('Участник уже в протоколе', true); return; }
+  spEntries.push({ rider_id: r.id, rider_number: r.number, last_name: r.last_name || '', first_name: r.first_name || '' });
   spRenderList();
   spSaveToServer();
   toast('#' + r.number + ' ' + (r.last_name || '') + ' добавлен');
@@ -215,271 +182,250 @@ function spSelectFromSearch(riderId) {
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.rider-selector')) {
     document.getElementById('rider-dropdown').classList.remove('open');
-  }
-  if (!e.target.closest('#individual-start-section .rider-selector')) {
     const spDd = document.getElementById('sp-dropdown');
     if (spDd) spDd.classList.remove('open');
   }
 });
 
-function spRemoveEntry(index) {
-  spEntries.splice(index, 1);
-  spRenderList();
-
-  spSaveToServer();
-}
+function spRemoveEntry(index) { spEntries.splice(index, 1); spRenderList(); spSaveToServer(); }
 
 function spRenderList() {
   const list = document.getElementById('sp-list');
   const interval = parseInt(document.getElementById('sp-interval').value) || 30;
+  const catId = getCatId();
+  const isRunning = spIsRunning(catId);
+  const startedSet = isRunning ? spStates[catId].startedSet : new Set();
 
   if (!spEntries.length) {
-    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">' +
-      'Протокол пуст — нажмите «Авто» или добавьте участников</div>';
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Протокол пуст — нажмите «Авто» или добавьте участников</div>';
     return;
   }
 
   list.innerHTML = spEntries.map((e, i) => {
     const offsetSec = i * interval;
-    const mm = Math.floor(offsetSec / 60);
-    const ss = offsetSec % 60;
+    const mm = Math.floor(offsetSec / 60); const ss = offsetSec % 60;
     const timeStr = (mm > 0 ? mm + ':' + String(ss).padStart(2, '0') : ss + 'с');
-    const isStarted = spStartedSet.has(e.rider_id);
-    const isNext = spRunning && !isStarted && i === spFindNextVisualIndex();
+    const isStarted = startedSet.has(e.rider_id);
+    const isNext = isRunning && !isStarted && i === spFindNextVisualIndex(catId);
     let cls = 'sp-item';
     if (isStarted) cls += ' sp-started';
     if (isNext) cls += ' sp-active';
-
-    return '<div class="' + cls + '" draggable="' + (spRunning ? 'false' : 'true') + '" data-idx="' + i + '"' +
+    return '<div class="' + cls + '" draggable="' + (isRunning ? 'false' : 'true') + '" data-idx="' + i + '"' +
       ' ondragstart="spDragStart(event)" ondragover="spDragOver(event)" ondrop="spDrop(event)" ondragend="spDragEnd(event)">' +
-      '<span class="sp-pos">' + (i + 1) + '</span>' +
-      '<span class="sp-num">#' + e.rider_number + '</span>' +
+      '<span class="sp-pos">' + (i+1) + '</span><span class="sp-num">#' + e.rider_number + '</span>' +
       '<span class="sp-name">' + e.last_name + ' ' + e.first_name + '</span>' +
       '<span class="sp-time">+' + timeStr + '</span>' +
-      (spRunning ? (isStarted ? '<span style="color:var(--green);font-size:10px;font-weight:700">✓</span>' : '') :
+      (isRunning ? (isStarted ? '<span style="color:var(--green);font-size:10px;font-weight:700">✓</span>' : '') :
         '<span class="sp-del" onclick="spRemoveEntry(' + i + ')">✕</span>') +
     '</div>';
   }).join('');
 }
 
-function spFindNextVisualIndex() {
-  if (!spPlanned) return -1;
-  for (let i = 0; i < spPlanned.length; i++) {
-    if (!spStartedSet.has(spPlanned[i].rider_id)) return i;
-  }
+function spFindNextVisualIndex(catId) {
+  const st = spStates[catId];
+  if (!st || !st.planned) return -1;
+  for (let i = 0; i < st.planned.length; i++) { if (!st.startedSet.has(st.planned[i].rider_id)) return i; }
   return -1;
 }
 
 let spDragIdx = null;
 function spDragStart(e) { spDragIdx = parseInt(e.target.dataset.idx); e.target.classList.add('dragging'); }
 function spDragEnd(e) { e.target.classList.remove('dragging'); document.querySelectorAll('.sp-item').forEach(el => el.classList.remove('drag-over')); }
-function spDragOver(e) {
-  e.preventDefault();
-  const el = e.target.closest('.sp-item');
-  if (el) { document.querySelectorAll('.sp-item').forEach(x => x.classList.remove('drag-over')); el.classList.add('drag-over'); }
-}
-function spDrop(e) {
-  e.preventDefault();
-  const el = e.target.closest('.sp-item');
-  if (!el) return;
-  const dropIdx = parseInt(el.dataset.idx);
-  if (spDragIdx === null || spDragIdx === dropIdx) return;
-  const [moved] = spEntries.splice(spDragIdx, 1);
-  spEntries.splice(dropIdx, 0, moved);
-  spDragIdx = null;
-  spRenderList();
-  spSaveToServer();
-}
+function spDragOver(e) { e.preventDefault(); const el = e.target.closest('.sp-item'); if (el) { document.querySelectorAll('.sp-item').forEach(x => x.classList.remove('drag-over')); el.classList.add('drag-over'); } }
+function spDrop(e) { e.preventDefault(); const el = e.target.closest('.sp-item'); if (!el) return; const dropIdx = parseInt(el.dataset.idx); if (spDragIdx === null || spDragIdx === dropIdx) return; const [moved] = spEntries.splice(spDragIdx, 1); spEntries.splice(dropIdx, 0, moved); spDragIdx = null; spRenderList(); spSaveToServer(); }
 
 async function spAutoFill() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
+  if (spIsRunning(catId)) { toast('Протокол запущен — остановите сначала', true); return; }
   const interval = parseInt(document.getElementById('sp-interval').value) || 30;
-  const res = await api('/api/judge/start-protocol/auto-fill', 'POST', {
-    category_id: parseInt(catId), interval_sec: interval
-  });
-  if (res.ok) {
-    toast('Протокол заполнен: ' + res.count + ' участников');
-    await spLoadProtocol();
-  } else {
-    toast(res.error || 'Ошибка', true);
-  }
+  const res = await api('/api/judge/start-protocol/auto-fill', 'POST', { category_id: parseInt(catId), interval_sec: interval });
+  if (res.ok) { toast('Протокол заполнен: ' + res.count + ' участников'); await spLoadProtocol(); } else toast(res.error || 'Ошибка', true);
 }
 
 async function spClear() {
-  if (spRunning) { toast('Остановите протокол перед очисткой', true); return; }
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
+  if (spIsRunning(catId)) { toast('Остановите протокол перед очисткой', true); return; }
   if (!catId) return;
   if (!confirm('Очистить стартовый протокол?')) return;
   await api('/api/judge/start-protocol?category_id=' + catId, 'DELETE');
-  spEntries = [];
-  spRenderList();
-
-  toast('Протокол очищен');
+  spEntries = []; spRenderList(); toast('Протокол очищен');
 }
 
 async function spLoadProtocol() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) { spEntries = []; spRenderList(); return; }
   const data = await api('/api/judge/start-protocol?category_id=' + catId, 'GET');
   if (Array.isArray(data)) {
-    spEntries = data.map(e => ({
-      rider_id: e.rider_id, rider_number: e.rider_number,
-      last_name: e.last_name || '', first_name: e.first_name || '',
-      entry_id: e.id, status: e.status,
-    }));
-    spStartedSet = new Set();
-    spEntries.forEach(e => { if (e.status === 'STARTED') spStartedSet.add(e.rider_id); });
-  } else {
-    spEntries = [];
-  }
+    spEntries = data.map(e => ({ rider_id: e.rider_id, rider_number: e.rider_number, last_name: e.last_name || '', first_name: e.first_name || '', entry_id: e.id, status: e.status }));
+  } else { spEntries = []; }
   spRenderList();
 }
 
 async function spSaveToServer() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) return;
   const interval = parseInt(document.getElementById('sp-interval').value) || 30;
-  await api('/api/judge/start-protocol', 'POST', {
-    category_id: parseInt(catId),
-    interval_sec: interval,
-    rider_ids: spEntries.map(e => e.rider_id),
-  });
+  await api('/api/judge/start-protocol', 'POST', { category_id: parseInt(catId), interval_sec: interval, rider_ids: spEntries.map(e => e.rider_id) });
+}
+
+function spSwitchToCategory() {
+  const catId = getCatId();
+  const intervalEl = document.getElementById('sp-interval');
+  if (catId) {
+    const saved = sessionStorage.getItem('sp_interval_' + catId);
+    if (saved) intervalEl.value = saved;
+  }
+  spLoadProtocol();
+  spUpdateUI();
+}
+
+function spUpdateUI() {
+  const catId = getCatId();
+  const isRunning = spIsRunning(catId);
+  const launchBtn = document.getElementById('btn-sp-launch');
+  const stopBtn = document.getElementById('btn-sp-stop');
+  launchBtn.style.display = isRunning ? 'none' : 'block';
+  launchBtn.disabled = isRunning;
+  stopBtn.style.display = isRunning ? 'block' : 'none';
+  document.getElementById('sp-countdown-area').style.display = isRunning ? 'block' : 'none';
+  document.getElementById('sp-search').disabled = isRunning;
+  document.getElementById('sp-interval').disabled = isRunning;
+  if (isRunning) spUpdateCountdownDisplay(catId);
+  spRenderList();
 }
 
 
 async function spLaunch() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
+
+  await loadRaceStatus();
+
+  const massBtn = document.getElementById('btn-mass-start');
+  const raceAlreadyStarted = massBtn && massBtn.disabled && massBtn.textContent !== 'Категория завершена';
+
+  if (spIsRunning(catId)) {
+    toast('Протокол уже запущен', true);
+    return;
+  }
+
+  if (raceAlreadyStarted) {
+    toast('Категория уже стартовала — повторный запуск протокола невозможен', true);
+    return;
+  }
+
   if (!spEntries.length) { toast('Протокол пуст', true); return; }
   await spSaveToServer();
   if (!confirm('Запустить стартовый протокол?\nПервый участник стартует СЕЙЧАС.')) return;
 
-  const res = await api('/api/judge/start-protocol/launch', 'POST', {
-    category_id: parseInt(catId)
-  });
+  const res = await api('/api/judge/start-protocol/launch', 'POST', { category_id: parseInt(catId) });
   if (!res.ok) { toast(res.error || 'Ошибка запуска', true); return; }
 
-  spPlanned = res.planned;
-  spRunning = true;
-  spNextIndex = 0;
-  spStartedSet = new Set();
-
-  if (spPlanned.length > 0) {
-    const first = spPlanned[0];
-    await spStartOneRider(first);
-  }
+  const st = spGetState(catId);
+  st.planned = res.planned;
+  st.running = true;
+  st.startedSet = new Set();
+  st.starting = false;
 
   const clientNow = Date.now();
-  for (let i = 0; i < spPlanned.length; i++) {
-    const interval = spPlanned[i].offset_sec || 0;
-    spPlanned[i].planned_time = clientNow + interval * 1000;
+  const interval = parseInt(document.getElementById('sp-interval').value) || 30;
+  for (let i = 0; i < st.planned.length; i++) {
+    st.planned[i].planned_time = clientNow + i * interval * 1000;
   }
 
-  spSaveState();
-  spShowRunningUI();
+  spSaveAllStates();
+  spUpdateUI();
+  spEnsureGlobalTick();
 
-  if (spPlanned.length <= 1 || spStartedSet.size >= spPlanned.length) {
-    spRunning = false;
-    spClearState();
-    spShowIdleUI();
+  if (st.planned.length > 0) {
+    await spStartOneRider(catId, st.planned[0]);
+  }
+
+  if (st.planned.length <= 1 || st.startedSet.size >= st.planned.length) {
+    st.running = false;
+    spSaveAllStates();
+    spUpdateUI();
     toast('Все участники стартовали!');
     return;
   }
-
-  spTickCountdown();
-  spTimer = setInterval(spTickCountdown, 100);
-}
-
-function spShowRunningUI() {
-  document.getElementById('btn-sp-launch').style.display = 'none';
-  document.getElementById('btn-sp-stop').style.display = 'block';
-  document.getElementById('sp-countdown-area').style.display = 'block';
-  spRenderList();
-}
-
-function spShowIdleUI() {
-  document.getElementById('btn-sp-launch').style.display = 'block';
-  document.getElementById('btn-sp-stop').style.display = 'none';
-  document.getElementById('sp-countdown-area').style.display = 'none';
-  spRenderList();
 }
 
 function spStop() {
-  spRunning = false;
-  if (spTimer) { clearInterval(spTimer); spTimer = null; }
-  spClearState();
-  spShowIdleUI();
+  const catId = getCatId();
+  spClearStateFor(catId);
+  spUpdateUI();
   toast('Протокол остановлен');
+  if (!spAnyRunning()) spStopGlobalTick();
 }
 
-async function spStartOneRider(entry) {
-  const res = await api('/api/judge/start-protocol/start-rider', 'POST', {
-    entry_id: entry.entry_id,
-    rider_id: entry.rider_id,
-  });
+async function spStartOneRider(catId, entry) {
+  const res = await api('/api/judge/start-protocol/start-rider', 'POST', { entry_id: entry.entry_id, rider_id: entry.rider_id });
+  const st = spStates[catId];
+  if (!st) return;
   if (res.ok) {
-    spStartedSet.add(entry.rider_id);
-    spSaveState();
-    toast('СТАРТ: #' + entry.rider_number + ' ' + entry.rider_name);
-    loadRaceStatus();
+    st.startedSet.add(entry.rider_id); spSaveAllStates();
+    toast('СТАРТ: #' + entry.rider_number + ' ' + entry.rider_name); loadRaceStatus();
   } else {
-    if (res.error && res.error.includes('уже в гонке')) {
-      spStartedSet.add(entry.rider_id);
-      spSaveState();
-    } else {
-      toast('Ошибка старта #' + entry.rider_number + ': ' + (res.error || ''), true);
-    }
+    if (res.error && res.error.includes('уже в гонке')) { st.startedSet.add(entry.rider_id); spSaveAllStates(); }
+    else toast('Ошибка старта #' + entry.rider_number + ': ' + (res.error || ''), true);
   }
 }
 
-let spStarting = false;
 
-function spTickCountdown() {
-  if (!spRunning || !spPlanned || !spPlanned.length || spStarting) return;
+function spEnsureGlobalTick() { if (spGlobalTimer) return; spGlobalTimer = setInterval(spGlobalTick, 100); }
+function spStopGlobalTick() { if (spGlobalTimer) { clearInterval(spGlobalTimer); spGlobalTimer = null; } }
 
+function spGlobalTick() {
   const now = Date.now();
+  const activeCatId = getCatId();
 
-  let nextIdx = -1;
-  for (let i = 0; i < spPlanned.length; i++) {
-    if (!spStartedSet.has(spPlanned[i].rider_id)) {
-      nextIdx = i;
-      break;
+  Object.entries(spStates).forEach(([catId, st]) => {
+    if (!st.running || !st.planned || !st.planned.length || st.starting) return;
+
+    let nextIdx = -1;
+    for (let i = 0; i < st.planned.length; i++) {
+      if (!st.startedSet.has(st.planned[i].rider_id)) { nextIdx = i; break; }
     }
-  }
 
-  if (nextIdx === -1) {
-    spRunning = false;
-    if (spTimer) { clearInterval(spTimer); spTimer = null; }
-    spClearState();
-    spShowIdleUI();
-    toast('Все участники стартовали!');
-    return;
-  }
+    if (nextIdx === -1) {
+      st.running = false; spSaveAllStates();
+      if (String(catId) === String(activeCatId)) {
+        spUpdateUI();
+        toast('Все участники стартовали! (' + ((window._catNameMap||{})[catId]||catId) + ')');
+      }
+      return;
+    }
 
-  const next = spPlanned[nextIdx];
-  const timeLeft = next.planned_time - now;
+    const next = st.planned[nextIdx];
+    if (next.planned_time - now <= 50) {
+      st.starting = true;
+      spStartOneRider(catId, next).then(() => {
+        st.starting = false;
+        if (String(catId) === String(activeCatId)) { spRenderList(); spUpdateCountdownDisplay(catId); }
+      });
+    }
+  });
 
-  const remain = Math.max(0, timeLeft);
-  const sec = Math.ceil(remain / 1000);
-  const mm = Math.floor(sec / 60);
-  const ss = sec % 60;
-  const timerEl = document.getElementById('sp-countdown-timer');
-  timerEl.textContent = String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
-  timerEl.className = 'sp-countdown' + (sec <= 3 ? ' go' : '');
-
-  document.getElementById('sp-next-info').innerHTML =
-    'Следующий: <b>#' + next.rider_number + '</b> ' + next.rider_name;
-
-  if (timeLeft <= 50) {
-    spStarting = true;
-    spStartOneRider(next).then(() => {
-      spStarting = false;
-      spRenderList();
-    });
-  }
+  if (spIsRunning(activeCatId)) spUpdateCountdownDisplay(activeCatId);
+  if (!spAnyRunning()) spStopGlobalTick();
 }
 
+function spUpdateCountdownDisplay(catId) {
+  const st = spStates[catId];
+  if (!st || !st.running || !st.planned) return;
+  let nextIdx = -1;
+  for (let i = 0; i < st.planned.length; i++) { if (!st.startedSet.has(st.planned[i].rider_id)) { nextIdx = i; break; } }
+  const timerEl = document.getElementById('sp-countdown-timer');
+  const infoEl = document.getElementById('sp-next-info');
+  if (nextIdx === -1) { timerEl.textContent = '00:00'; timerEl.className = 'sp-countdown go'; infoEl.innerHTML = 'Все стартовали'; return; }
+  const next = st.planned[nextIdx];
+  const remain = Math.max(0, next.planned_time - Date.now());
+  const sec = Math.ceil(remain / 1000); const mm = Math.floor(sec / 60); const ss = sec % 60;
+  timerEl.textContent = String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+  timerEl.className = 'sp-countdown' + (sec <= 3 ? ' go' : '');
+  infoEl.innerHTML = 'Следующий: <b>#' + next.rider_number + '</b> ' + next.rider_name;
+}
 
 async function doIndividualStart() {
   if (!selectedRiderId) { toast('Выберите участника для старта', true); return; }
@@ -487,12 +433,8 @@ async function doIndividualStart() {
   const label = r ? '#' + r.number + ' ' + r.last_name : '#' + selectedRiderId;
   if (!confirm('Дать индивидуальный старт участнику ' + label + '?')) return;
   const res = await api('/api/judge/individual-start', 'POST', { rider_id: selectedRiderId });
-  if (res.ok) {
-    toast('Старт: ' + (res.info && res.info.rider_name || label));
-    loadRaceStatus(); refreshRiderPanel();
-  } else {
-    toast(res.error || 'Ошибка старта', true);
-  }
+  if (res.ok) { toast('Старт: ' + (res.info && res.info.rider_name || label)); loadRaceStatus(); refreshRiderPanel(); }
+  else toast(res.error || 'Ошибка старта', true);
 }
 
 
@@ -500,26 +442,22 @@ let ddIndex = -1;
 let ddFiltered = [];
 
 function onSearchInput() { renderDropdown(); document.getElementById('rider-dropdown').classList.add('open'); }
-function onSearchFocus() {
-  document.getElementById('rider-search').select(); ddIndex = -1;
-  renderDropdown(); document.getElementById('rider-dropdown').classList.add('open');
-}
+function onSearchFocus() { document.getElementById('rider-search').select(); ddIndex = -1; renderDropdown(); document.getElementById('rider-dropdown').classList.add('open'); }
 function onSearchKey(e) {
   const dd = document.getElementById('rider-dropdown');
   const isOpen = dd.classList.contains('open');
-  if (e.key === 'ArrowDown') { e.preventDefault(); if (!isOpen) { renderDropdown(); dd.classList.add('open'); } ddIndex = Math.min(ddIndex + 1, ddFiltered.length - 1); highlightItem(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); ddIndex = Math.max(ddIndex - 1, 0); highlightItem(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (!isOpen) { renderDropdown(); dd.classList.add('open'); } ddIndex = Math.min(ddIndex+1, ddFiltered.length-1); highlightItem(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); ddIndex = Math.max(ddIndex-1, 0); highlightItem(); }
   else if (e.key === 'Enter') { e.preventDefault(); if (ddIndex >= 0 && ddIndex < ddFiltered.length) selectRider(ddFiltered[ddIndex].id); else if (ddFiltered.length === 1) selectRider(ddFiltered[0].id); }
   else if (e.key === 'Escape') { dd.classList.remove('open'); document.getElementById('rider-search').blur(); }
 }
-function highlightItem() { document.querySelectorAll('.rider-dropdown-item').forEach((el, i) => { el.classList.toggle('active', i === ddIndex); if (i === ddIndex) el.scrollIntoView({ block: 'nearest' }); }); }
+function highlightItem() { document.querySelectorAll('#rider-dropdown .rider-dropdown-item').forEach((el, i) => { el.classList.toggle('active', i === ddIndex); if (i === ddIndex) el.scrollIntoView({ block: 'nearest' }); }); }
 
 function renderDropdown() {
   const query = (document.getElementById('rider-search').value || '').toLowerCase();
   const dd = document.getElementById('rider-dropdown');
   const filterByCat = document.getElementById('search-filter-cat').checked;
-  const catId = document.getElementById('race-category').value;
-
+  const catId = getCatId();
   ddFiltered = riders.filter(r => {
     if (filterByCat && catId && String(r.category_id) !== String(catId)) return false;
     if (!query) return true;
@@ -574,18 +512,12 @@ async function loadRiderFinishInfo(riderId) {
   } catch(e) { document.getElementById('current-finish-info').style.display = 'none'; document.getElementById('no-finish-info').style.display = 'none'; }
 }
 
-
-function fmtLapMs(ms) {
-  if (ms === null || ms === undefined) return '—';
-  const totalSec = Math.abs(ms)/1000; const m = Math.floor(totalSec/60); const s = totalSec%60;
-  return String(m).padStart(2,'0') + ':' + s.toFixed(1).padStart(4,'0');
-}
+function fmtLapMs(ms) { if (ms === null || ms === undefined) return '—'; const totalSec = Math.abs(ms)/1000; const m = Math.floor(totalSec/60); const s = totalSec%60; return String(m).padStart(2,'0') + ':' + s.toFixed(1).padStart(4,'0'); }
 
 let lastLapsHash = '';
 
 function buildLapRowHtml(l) {
-  return '<div class="lap-row" id="lap-row-' + l.id + '">' +
-    '<span class="lr-num">' + (l.lap_number === 0 ? '0' : l.lap_number) + '</span>' +
+  return '<div class="lap-row" id="lap-row-' + l.id + '"><span class="lr-num">' + (l.lap_number === 0 ? '0' : l.lap_number) + '</span>' +
     '<span class="lr-time">' + fmtLapMs(l.lap_time) + '</span>' +
     '<input id="lap-mm-' + l.id + '" placeholder="М" value="' + Math.floor(Math.abs(l.lap_time||0)/1000/60) + '">' +
     '<span style="color:var(--text-dim)">:</span>' +
@@ -615,24 +547,9 @@ async function loadRiderLaps(riderId) {
 
 async function refreshRiderPanel() { if (selectedRiderId) { await loadRiderFinishInfo(selectedRiderId); await loadRiderLaps(selectedRiderId); } }
 
-async function saveLap(lapId) {
-  const mm = document.getElementById('lap-mm-'+lapId).value.trim(); const ss = document.getElementById('lap-ss-'+lapId).value.trim();
-  const minutes = parseInt(mm)||0; const seconds = parseFloat(ss)||0;
-  if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; }
-  const lapTimeMs = Math.round((minutes*60+seconds)*1000);
-  const res = await api('/api/judge/lap/'+lapId, 'PUT', { lap_time_ms: lapTimeMs });
-  if (res.ok) { toast('Круг обновлён'); lastLapsHash=''; await refreshRiderPanel(); } else toast(res.error||'Ошибка', true);
-}
-async function deleteLap(lapId) {
-  if (!confirm('Удалить этот круг?')) return;
-  const res = await api('/api/judge/lap/'+lapId, 'DELETE');
-  if (res.ok) { toast('Круг удалён'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true);
-}
-async function doAddManualLap() {
-  if (!requireRider()) return;
-  const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId });
-  if (res.ok) { toast('Круг добавлен'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true);
-}
+async function saveLap(lapId) { const mm = document.getElementById('lap-mm-'+lapId).value.trim(); const ss = document.getElementById('lap-ss-'+lapId).value.trim(); const minutes = parseInt(mm)||0; const seconds = parseFloat(ss)||0; if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; } const lapTimeMs = Math.round((minutes*60+seconds)*1000); const res = await api('/api/judge/lap/'+lapId, 'PUT', { lap_time_ms: lapTimeMs }); if (res.ok) { toast('Круг обновлён'); lastLapsHash=''; await refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
+async function deleteLap(lapId) { if (!confirm('Удалить этот круг?')) return; const res = await api('/api/judge/lap/'+lapId, 'DELETE'); if (res.ok) { toast('Круг удалён'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+async function doAddManualLap() { if (!requireRider()) return; const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Круг добавлен'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 
 function requireRider() { if (!selectedRiderId) { toast('Выберите участника', true); return false; } return true; }
 
@@ -651,26 +568,16 @@ async function loadLog() {
     const list = document.getElementById('log-list');
     if (!log.length) { list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-dim)">Нет записей</div>'; return; }
     const typeLabels = { TIME_PENALTY:'Штраф', EXTRA_LAP:'Доп. круг', WARNING:'Предупр.', DSQ:'DSQ', DNF:'DNF' };
-
-    const groups = {};
-    const order = [];
+    const groups = {}; const order = [];
     log.forEach(item => {
-      const catName = item.category_name || 'Без категории';
-      const catId = item.category_id || 0;
-      const key = String(catId);
-      if (!groups[key]) {
-        groups[key] = { name: catName, items: [] };
-        order.push(key);
-      }
+      const key = String(item.category_id || 0);
+      if (!groups[key]) { groups[key] = { name: item.category_name || 'Без категории', items: [] }; order.push(key); }
       groups[key].items.push(item);
     });
-
     let html = '';
     order.forEach(key => {
       const g = groups[key];
-      html += '<div style="padding:5px 12px;font-size:9px;font-weight:700;text-transform:uppercase;' +
-        'letter-spacing:0.08em;color:var(--accent);background:var(--surface2);border-bottom:1px solid var(--border)">' +
-        g.name + '</div>';
+      html += '<div style="padding:5px 12px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);background:var(--surface2);border-bottom:1px solid var(--border)">' + g.name + '</div>';
       g.items.forEach(item => {
         const timeStr = new Date(item.created_at*1000).toLocaleTimeString('ru-RU');
         html += '<div class="log-item"><div class="li-badge '+item.type+'">'+(typeLabels[item.type]||item.type)+'</div>' +
@@ -685,101 +592,66 @@ async function loadLog() {
 }
 
 
-
 function updateCategoryTimers() {
   const timersEl = document.getElementById('cat-timers');
   if (!timersEl) return;
-
-  const catId = document.getElementById('race-category').value;
-  let html = '';
-
+  const catId = getCatId();
   const entries = Object.entries(catTimerElapsed);
   if (!entries.length) {
-    timersEl.innerHTML = '';
+    timersEl.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">Нет запущенных категорий</div>';
     return;
   }
-
+  let html = '';
   entries.forEach(([cid, elapsed]) => {
     const isClosed = catTimerClosed[cid] || false;
     const perfRef = catTimerPerf[cid];
-
     let displayMs = elapsed;
-    if (!isClosed && perfRef) {
-      displayMs = elapsed + (performance.now() - perfRef);
-    }
-
+    if (!isClosed && perfRef) displayMs = elapsed + (performance.now() - perfRef);
     const isSelected = String(cid) === String(catId);
     const catInfo = (window._catNameMap || {})[cid] || ('Кат. ' + cid);
-
+    const isSpRun = spIsRunning(cid);
     const color = isClosed ? 'var(--text-dim)' : (isSelected ? 'var(--accent)' : 'var(--green)');
     const label = isClosed ? '✓ ' + catInfo : catInfo;
-
-    html += '<div class="cat-timer-item" style="' +
-      (isSelected ? 'background:var(--accent-glow);border:1px solid rgba(56,189,248,0.3);' : '') +
+    html += '<div class="cat-timer-item" style="' + (isSelected ? 'background:var(--accent-glow);border:1px solid rgba(56,189,248,0.3);' : '') +
       'padding:4px 8px;border-radius:4px;display:flex;align-items:center;gap:8px;margin-bottom:3px">' +
       '<span style="font-size:10px;font-weight:700;color:' + color + ';min-width:80px;white-space:nowrap">' + label + '</span>' +
       '<span style="font-family:var(--mono);font-size:16px;font-weight:700;color:' + color + '">' + fmtMs(displayMs) + '</span>' +
       (isClosed ? '<span style="font-size:9px;color:var(--text-dim)">завершена</span>' : '') +
+      (isSpRun ? '<span style="font-size:8px;color:var(--yellow);font-weight:700">SP</span>' : '') +
       '</div>';
   });
-
   timersEl.innerHTML = html;
 }
 
-function startGlobalTimerTick() {
-  if (globalTimerRef) return;
-  globalTimerRef = setInterval(updateCategoryTimers, 100);
-}
-
+function startGlobalTimerTick() { if (globalTimerRef) return; globalTimerRef = setInterval(updateCategoryTimers, 100); }
 
 async function initJudge() {
   await loadRiders();
-  loadLog();
-  loadNotes();
+  loadLog(); loadNotes();
   await loadCategoriesAndRestore();
-
-  const savedInterval = sessionStorage.getItem('sp_interval');
-  if (savedInterval) {
-    document.getElementById('sp-interval').value = savedInterval;
+  const initCat = getCatId();
+  if (initCat) {
+    const saved = sessionStorage.getItem('sp_interval_' + initCat);
+    if (saved) document.getElementById('sp-interval').value = saved;
   }
-
   const savedMode = sessionStorage.getItem('judge_start_mode');
-  if (savedMode === 'individual') {
-    setStartMode('individual');
-
-    if (spRestoreState()) {
-      spShowRunningUI();
-      spTickCountdown();
-      spTimer = setInterval(spTickCountdown, 100);
-    }
-  }
-
+  if (savedMode === 'individual') setStartMode('individual');
+  if (spRestoreAllStates() && spAnyRunning()) spEnsureGlobalTick();
+  if (savedMode === 'individual') spUpdateUI();
   startGlobalTimerTick();
 }
 
 initJudge();
-
 setInterval(loadLog, 5000);
 setInterval(loadRaceStatus, 2000);
-setInterval(function() {
-  if (!selectedRiderId) return;
-  const el = document.activeElement;
-  if (el && el.tagName === 'INPUT' && el.closest('#laps-section')) return;
-  refreshRiderPanel();
-}, 3000);
+setInterval(function() { if (!selectedRiderId) return; const el = document.activeElement; if (el && el.tagName === 'INPUT' && el.closest('#laps-section')) return; refreshRiderPanel(); }, 3000);
 
 async function loadCategoriesAndRestore() {
   const cats = await api('/api/categories', 'GET');
   const sel = document.getElementById('race-category');
   sel.innerHTML = '<option value="">— Выберите категорию —</option>';
   window._catNameMap = {};
-  cats.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name + ' (' + c.laps + ' кр.)';
-    sel.appendChild(o);
-    window._catNameMap[String(c.id)] = c.name;
-  });
+  cats.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name + ' (' + c.laps + ' кр.)'; sel.appendChild(o); window._catNameMap[String(c.id)] = c.name; });
   const saved = sessionStorage.getItem('judge_cat_id');
   if (saved && sel.querySelector('option[value="'+saved+'"]')) sel.value = saved;
   else if (cats.length === 1) sel.value = cats[0].id;
@@ -787,85 +659,55 @@ async function loadCategoriesAndRestore() {
 }
 
 async function loadRaceStatus() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (catId) sessionStorage.setItem('judge_cat_id', catId);
-
   try {
     const qs = catId ? '?category_id=' + catId : '';
     const resp = await fetch('/api/state' + qs);
     const data = await resp.json();
     const st = data.status || {};
     const catStates = data.category_states || {};
-
-    if (data.categories) {
-      data.categories.forEach(c => {
-        window._catNameMap = window._catNameMap || {};
-        window._catNameMap[String(c.id)] = c.name;
-      });
-    }
-
+    if (data.categories) data.categories.forEach(c => { window._catNameMap = window._catNameMap || {}; window._catNameMap[String(c.id)] = c.name; });
     const now = performance.now();
-    Object.entries(catStates).forEach(([cid, cs]) => {
-      if (cs.elapsed_ms !== null && cs.elapsed_ms !== undefined) {
-        catTimerElapsed[cid] = cs.elapsed_ms;
-        catTimerPerf[cid] = now;
-        catTimerClosed[cid] = cs.closed;
-      }
-    });
-
-    if (!catId) {
-      document.getElementById('race-status-bar').style.display = 'none';
-      document.getElementById('btn-mass-start').disabled = false;
-      document.getElementById('btn-finish-race').disabled = true;
-      document.getElementById('btn-finish-race-ind').disabled = true;
-      return;
-    }
-
-    const racing = st.RACING || 0;
-    const finished = st.FINISHED || 0;
-    const dnf = (st.DNF || 0) + (st.DSQ || 0);
-    const total = racing + finished + dnf;
+    Object.entries(catStates).forEach(([cid, cs]) => { if (cs.elapsed_ms !== null && cs.elapsed_ms !== undefined) { catTimerElapsed[cid] = cs.elapsed_ms; catTimerPerf[cid] = now; catTimerClosed[cid] = cs.closed; } });
+    if (!catId) { document.getElementById('race-status-bar').style.display = 'none'; document.getElementById('btn-mass-start').disabled = false; document.getElementById('btn-finish-race').disabled = true; document.getElementById('btn-finish-race-ind').disabled = true; return; }
+    const racing = st.RACING||0; const finished = st.FINISHED||0; const dnf = (st.DNF||0)+(st.DSQ||0);
     document.getElementById('rs-racing').textContent = racing;
     document.getElementById('rs-finished').textContent = finished;
     document.getElementById('rs-dnf').textContent = dnf;
     document.getElementById('race-status-bar').style.display = 'block';
-
     const thisCatClosed = data.category_closed === true;
     const thisCatStarted = data.category_started === true;
     const raceClosed = data.race_closed === true;
     const effectivelyClosed = thisCatClosed || raceClosed;
-
     document.getElementById('btn-mass-start').disabled = thisCatStarted || effectivelyClosed;
     document.getElementById('btn-finish-race').disabled = !thisCatStarted || effectivelyClosed;
     document.getElementById('btn-finish-race-ind').disabled = !thisCatStarted || effectivelyClosed;
-
     const startBtn = document.getElementById('btn-mass-start');
     if (effectivelyClosed) startBtn.textContent = 'Категория завершена';
     else if (thisCatStarted) startBtn.textContent = racing > 0 ? 'Гонка идёт' : 'Гонка активна';
     else startBtn.textContent = '▶ Масс-старт';
+    const spLaunchBtn = document.getElementById('btn-sp-launch');
+    const canLaunchProtocol = !thisCatStarted && !effectivelyClosed && !spIsRunning(catId);
 
-    document.getElementById('btn-individual-start').disabled = effectivelyClosed;
-    document.getElementById('btn-sp-launch').disabled = effectivelyClosed;
+    document.getElementById('btn-individual-start').disabled = effectivelyClosed || thisCatStarted;
+    spLaunchBtn.disabled = !canLaunchProtocol;
 
+    if (effectivelyClosed) spLaunchBtn.textContent = 'Категория завершена';
+    else if (thisCatStarted) spLaunchBtn.textContent = 'Протокол недоступен';
+    else spLaunchBtn.textContent = '▶ Запустить протокол';
     const finBtn = document.getElementById('btn-finish-race');
     finBtn.textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить категорию';
     document.getElementById('btn-finish-race-ind').textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить';
-
-    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => {
-      b.disabled = effectivelyClosed;
-    });
-
+    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => { b.disabled = effectivelyClosed; });
   } catch(e) {}
 }
 
-document.getElementById('race-category').addEventListener('change', function() {
-  loadRaceStatus();
-  if (startMode === 'individual') { spLoadProtocol(); }
-});
-document.getElementById('sp-interval').addEventListener('change', function() { sessionStorage.setItem('sp_interval', this.value); spRenderList(); });
-document.getElementById('sp-interval').addEventListener('input', function() { sessionStorage.setItem('sp_interval', this.value); spRenderList(); });
+document.getElementById('race-category').addEventListener('change', function() { loadRaceStatus(); if (startMode === 'individual') spSwitchToCategory(); });
+document.getElementById('sp-interval').addEventListener('change', function() { const c = getCatId(); if (c) sessionStorage.setItem('sp_interval_' + c, this.value); spRenderList(); });
+document.getElementById('sp-interval').addEventListener('input', function() { const c = getCatId(); if (c) sessionStorage.setItem('sp_interval_' + c, this.value); spRenderList(); });
 
-async function doMassStart() { const catId = document.getElementById('race-category').value; if (!catId) { toast('Выберите категорию', true); return; } if (!confirm('Запустить масс-старт для выбранной категории?')) return; const res = await api('/api/judge/mass-start', 'POST', { category_id: parseInt(catId) }); if (res.ok) { toast('Масс-старт! Участников: '+(res.info&&res.info.riders_started||'?')); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+async function doMassStart() { const catId = getCatId(); if (!catId) { toast('Выберите категорию', true); return; } if (!confirm('Запустить масс-старт для выбранной категории?')) return; const res = await api('/api/judge/mass-start', 'POST', { category_id: parseInt(catId) }); if (res.ok) { toast('Масс-старт! Участников: '+(res.info&&res.info.riders_started||'?')); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 async function doUnfinishRider() { if (!requireRider()) return; const r = riders.find(x => x.id === selectedRiderId); const label = r ? '#'+r.number+' '+r.last_name : '#'+selectedRiderId; if (!confirm('Отменить финиш '+label+'?\nУчастник вернётся в статус RACING.')) return; const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Финиш отменён: '+label); await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 async function doEditFinishTime() {
   if (!requireRider()) return;
@@ -895,8 +737,7 @@ async function loadNotes() {
       const timeStr = new Date(n.created_at*1000).toLocaleTimeString('ru-RU');
       const rider = n.rider_number ? '#'+n.rider_number+' '+(n.last_name||'')+' — ' : '';
       return '<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
-        '<div style="flex:1;min-width:0"><span style="color:var(--accent);font-weight:600">'+rider+'</span>' +
-        '<span style="color:var(--text)">'+n.text+'</span></div>' +
+        '<div style="flex:1;min-width:0"><span style="color:var(--accent);font-weight:600">'+rider+'</span><span style="color:var(--text)">'+n.text+'</span></div>' +
         '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px;white-space:nowrap">'+timeStr+'</span>' +
         '<button class="note-del" data-nid="'+n.id+'">✕</button></div>';
     }).join('');
@@ -905,33 +746,31 @@ async function loadNotes() {
 }
 
 async function doFinishRace() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
   const catName = (window._catNameMap || {})[catId] || catId;
   if (!confirm('Завершить категорию «' + catName + '»?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер категории остановится')) return;
   const res = await api('/api/judge/finish-race', 'POST', { category_id: parseInt(catId) });
-  if (res.ok) { toast('Категория завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0)); if (spRunning) spStop(); loadRaceStatus(); loadLog(); }
-  else toast(res.error||'Ошибка', true);
+  if (res.ok) {
+    toast('Категория завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0));
+    if (spIsRunning(catId)) { spClearStateFor(catId); spUpdateUI(); }
+    loadRaceStatus(); loadLog();
+  } else toast(res.error||'Ошибка', true);
 }
 
 async function doResetCategory() {
-  const catId = document.getElementById('race-category').value;
+  const catId = getCatId();
   if (!catId) { toast('Выберите категорию для сброса', true); return; }
   const catName = (window._catNameMap || {})[catId] || catId;
   if (!confirm('Сбросить категорию «' + catName + '»?\n\nВсе результаты, круги и штрафы этой категории будут удалены.\nУчастники останутся в стартовом листе.\nДругие категории не затрагиваются.')) return;
   const res = await api('/api/judge/reset-category', 'POST', { category_id: parseInt(catId) });
   if (res.ok) {
-    toast('Категория «' + (res.category || catName) + '» сброшена: ' +
-      (res.deleted_results || 0) + ' результатов удалено');
-    if (spRunning) spStop();
+    toast('Категория «' + (res.category || catName) + '» сброшена: ' + (res.deleted_results || 0) + ' результатов удалено');
+    if (spIsRunning(catId)) spClearStateFor(catId);
     spEntries = []; spRenderList();
-    delete catTimerElapsed[catId];
-    delete catTimerPerf[catId];
-    delete catTimerClosed[catId];
-    loadRaceStatus(); loadLog();
-  } else {
-    toast(res.error || 'Ошибка', true);
-  }
+    delete catTimerElapsed[catId]; delete catTimerPerf[catId]; delete catTimerClosed[catId];
+    spUpdateUI(); loadRaceStatus(); loadLog();
+  } else toast(res.error || 'Ошибка', true);
 }
 
 async function doNewRace() {
@@ -939,12 +778,10 @@ async function doNewRace() {
   const res = await api('/api/settings/reset-race', 'POST');
   if (res.ok) {
     toast('Новая сессия #'+res.race_id);
-    if (spRunning) spStop();
+    Object.keys(spStates).forEach(cid => spClearStateFor(cid));
+    spStopGlobalTick();
     spEntries=[]; spRenderList();
-    catTimerElapsed = {};
-    catTimerPerf = {};
-    catTimerClosed = {};
-    loadRaceStatus(); loadLog();
-  }
-  else toast(res.error||'Ошибка', true);
+    catTimerElapsed = {}; catTimerPerf = {}; catTimerClosed = {};
+    spUpdateUI(); loadRaceStatus(); loadLog();
+  } else toast(res.error||'Ошибка', true);
 }
