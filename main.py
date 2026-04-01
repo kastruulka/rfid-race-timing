@@ -1,7 +1,9 @@
 import logging
+import os
 import signal
 import sys
-import time
+
+from dotenv import load_dotenv
 
 from rfid_timing.settings import ConfigState
 from rfid_timing.event_store import EventStore
@@ -19,22 +21,18 @@ from rfid_timing.config import (
     DB_PATH,
 )
 
+load_dotenv()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-
-config_state = ConfigState()
-event_store = EventStore(max_events=MAX_EVENTS)
-db = Database(DB_PATH)
-raw_logger = RawLogger()
-engine = RaceEngine(db=db, raw_logger=raw_logger)
-reader_mgr = None
+logger = logging.getLogger(__name__)
 
 
-def setup_dummy_data():
+def setup_dummy_data(db: Database, engine: RaceEngine):
     race_id = db.new_race(label="auto")
-    logging.info("Новая гоночная сессия: race_id=%d", race_id)
+    logger.info("Новая гоночная сессия: race_id=%d", race_id)
 
     cats = db.get_categories()
     if not cats:
@@ -64,38 +62,52 @@ def setup_dummy_data():
     engine.reload_epc_map()
 
 
-def on_new_event(event):
-    event_store.add_event(event)
-    engine.on_tag_pass(
-        epc=event.epc,
-        timestamp=time.time(),
-        rssi=event.rssi if isinstance(event.rssi, (int, float)) else 0,
-        antenna=event.antenna if isinstance(event.antenna, int) else 0,
-    )
+def _make_event_handler(event_store: EventStore, engine: RaceEngine):
 
+    def on_new_event(event):
+        event_store.add_event(event)
+        engine.on_tag_pass(
+            epc=event.epc,
+            timestamp=event.timestamp,
+            rssi=event.rssi if isinstance(event.rssi, (int, float)) else 0,
+            antenna=event.antenna if isinstance(event.antenna, int) else 0,
+        )
 
-def shutdown(*_args):
-    global reader_mgr
-    print("\nОстановка приложения...")
-    if reader_mgr is not None:
-        reader_mgr.stop()
-    raw_logger.close()
-    sys.exit(0)
+    return on_new_event
 
 
 def main():
-    global reader_mgr
+    config_state = ConfigState()
+    event_store = EventStore(max_events=MAX_EVENTS)
+    db = Database(DB_PATH)
+    raw_logger = RawLogger()
+    engine = RaceEngine(db=db, raw_logger=raw_logger)
+
+    if os.environ.get("RFID_DEMO", "").strip() in ("1", "true", "yes"):
+        logger.info("RFID_DEMO включён — создаём тестовые данные")
+        setup_dummy_data(db, engine)
+    else:
+        if db.get_current_race_id() is None:
+            db.new_race(label="auto")
+            logger.info("Создана новая пустая гоночная сессия")
+
+    on_event = _make_event_handler(event_store, engine)
+
+    reader_mgr = ReaderManager(
+        config_state=config_state,
+        on_event=on_event,
+        db=db,
+    )
+
+    def shutdown(*_args):
+        print("\nОстановка приложения...")
+        reader_mgr.stop()
+        raw_logger.close()
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    setup_dummy_data()
-
-    reader_mgr = ReaderManager(
-        config_state=config_state,
-        on_event=on_new_event,
-        db=db,
-    )
     reader_mgr.start()
 
     app = create_app(

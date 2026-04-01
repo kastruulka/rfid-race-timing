@@ -141,7 +141,6 @@ class RaceEngine:
         rssi: float = 0,
         antenna: int = 0,
     ) -> Optional[Dict]:
-        """Общая логика записи круга для RFID и ручного ввода."""
         current_laps = self.db.count_laps(result["id"])
         last_lap = self.db.get_last_lap(result["id"])
         category = self.db.get_category(result["category_id"])
@@ -206,6 +205,7 @@ class RaceEngine:
             "status": "RACING",
         }
 
+        # Проверка финиша
         if lap_number > 0 and lap_number >= total_required:
             finish_time_ms = timestamp_ms + penalty_time_ms
             self.db.update_result(
@@ -387,8 +387,6 @@ class RaceEngine:
             details=f"rider={rider['number']},old={old_time},new={new_finish_time_ms}",
         )
         return True
-
-    # ── penalties ───────────────────────────────────────────────────
 
     def _rider_epc(self, rider: Optional[Dict]) -> str:
         return rider.get("epc", "") if rider else ""
@@ -586,18 +584,7 @@ class RaceEngine:
         return {"category": category["name"], "category_id": category_id, **info}
 
     def get_race_status(self, category_id: int = None) -> Dict[str, int]:
-        if category_id:
-            results = self.db.get_results_by_category(category_id)
-        else:
-            results = []
-            for cat in self.db.get_categories():
-                results.extend(self.db.get_results_by_category(cat["id"]))
-
-        status_counts = {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
-        for r in results:
-            s = r.get("status", "DNS")
-            status_counts[s] = status_counts.get(s, 0) + 1
-        return status_counts
+        return self.db.get_status_counts(category_id=category_id)
 
     def get_live_standings(self, category_id: int) -> list:
         results = self.db.get_results_by_category(category_id)

@@ -1,0 +1,163 @@
+import time
+from typing import Dict, List, Optional
+
+from .database import Database
+
+
+def build_race_state(
+    db: Database,
+    category_id: int = None,
+) -> dict:
+    now_ms = int(time.time() * 1000)
+    categories = db.get_categories()
+    race_closed = db.is_race_closed()
+
+    category_states = _build_category_states(db, now_ms)
+
+    start_time_ms = db.get_earliest_start_time()
+
+    server_elapsed_ms = _calc_elapsed(db, start_time_ms, now_ms, race_closed)
+
+    all_results = _build_results(db, categories, category_id)
+
+    feed = _build_feed(db, category_id)
+
+    status = db.get_status_counts(category_id=category_id)
+
+    cat_closed = False
+    cat_started = False
+    if category_id:
+        cat_closed = db.is_category_closed(category_id)
+        cs = db.get_category_state(category_id)
+        cat_started = cs is not None and cs.get("started_at") is not None
+
+    return {
+        "feed": feed,
+        "results": all_results,
+        "status": status,
+        "categories": [
+            {"id": c["id"], "name": c["name"], "laps": c["laps"]} for c in categories
+        ],
+        "start_time": start_time_ms,
+        "server_elapsed_ms": server_elapsed_ms,
+        "race_closed": race_closed,
+        "category_closed": cat_closed,
+        "category_started": cat_started,
+        "category_states": category_states,
+    }
+
+
+def _build_category_states(db: Database, now_ms: int) -> dict:
+    states = {}
+    for cs in db.get_all_category_states():
+        cid = cs["category_id"]
+        started = cs.get("started_at")
+        closed = cs.get("closed_at")
+
+        elapsed = None
+        if started is not None:
+            elapsed = (int(closed * 1000) if closed else now_ms) - int(started)
+
+        states[str(cid)] = {
+            "started_at": started,
+            "closed_at": closed,
+            "closed": closed is not None,
+            "elapsed_ms": elapsed,
+        }
+    return states
+
+
+def _calc_elapsed(
+    db: Database, start_time_ms: Optional[int], now_ms: int, race_closed: bool
+) -> Optional[int]:
+    if start_time_ms is None:
+        return None
+    if not race_closed:
+        return now_ms - start_time_ms
+
+    closed_at = db.get_race_closed_at()
+    if closed_at is not None:
+        return int(closed_at * 1000) - start_time_ms
+    return now_ms - start_time_ms
+
+
+def _build_results(
+    db: Database,
+    categories: List[Dict],
+    category_id: int = None,
+) -> list:
+    rows = db.get_results_with_lap_summary(category_id=category_id)
+
+    all_results = []
+    for r in rows:
+        cat_laps = r.get("cat_laps") or 1
+        penalty_time_ms = r.get("penalty_time_ms") or 0
+        extra_laps = r.get("extra_laps") or 0
+        laps_done = r.get("laps_done") or 0
+        total_required = cat_laps + extra_laps
+
+        total_time = None
+        if r.get("finish_time") and r.get("start_time"):
+            total_time = int(r["finish_time"]) - int(r["start_time"])
+        elif r.get("last_lap_ts") and r.get("start_time"):
+            total_time = int(r["last_lap_ts"]) - int(r["start_time"])
+
+        if total_time is not None and penalty_time_ms:
+            total_time += penalty_time_ms
+
+        all_results.append(
+            {
+                "rider_id": r["rider_id"],
+                "number": r["number"],
+                "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
+                "club": r.get("club", ""),
+                "status": r["status"],
+                "laps_done": laps_done,
+                "laps_required": cat_laps,
+                "total_time": total_time,
+                "last_lap_time": int(r["last_lap_time"])
+                if r.get("last_lap_time")
+                else None,
+                "finish_time": int(r["finish_time"]) if r.get("finish_time") else None,
+                "penalty_time_ms": penalty_time_ms,
+                "extra_laps": extra_laps,
+                "dnf_reason": r.get("dnf_reason", ""),
+                "laps_complete": (
+                    r["status"] == "RACING"
+                    and r.get("finish_time") is not None
+                    and laps_done >= total_required
+                ),
+            }
+        )
+
+    def sort_key(r):
+        status_order = {"FINISHED": 0, "RACING": 1, "DNF": 2, "DSQ": 3}
+        order = status_order.get(r["status"], 4)
+        if r["status"] == "RACING":
+            return (order, -r["laps_done"], r["total_time"] or 0)
+        return (order, r["total_time"] or 0)
+
+    all_results.sort(key=sort_key)
+    return all_results
+
+
+def _build_feed(db: Database, category_id: int = None) -> list:
+    feed = []
+    for item in db.get_feed_history(limit=50, category_id=category_id):
+        ts_sec = item["timestamp"] / 1000.0
+        lap_number = item["lap_number"]
+        laps_required = item.get("laps_required") or 1
+
+        feed.append(
+            {
+                "lap_id": item["lap_id"],
+                "rider_number": item["rider_number"],
+                "rider_name": f"{item['last_name']} {item.get('first_name', '')}".strip(),
+                "lap_number": lap_number,
+                "lap_time": int(item["lap_time"]) if item.get("lap_time") else None,
+                "laps_required": laps_required,
+                "time_str": time.strftime("%H:%M:%S", time.localtime(ts_sec)),
+                "is_finish_lap": lap_number > 0 and lap_number >= laps_required,
+            }
+        )
+    return feed

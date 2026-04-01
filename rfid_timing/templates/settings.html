@@ -6,8 +6,128 @@
   <title>Настройки</title>
   <link rel="stylesheet" href="/static/css/web.css">
   <link rel="stylesheet" href="/static/css/settings.css">
+  <style>
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .auth-overlay.hidden { display: none; }
+
+    .auth-box {
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border, #ddd);
+      border-radius: 12px;
+      padding: 32px 28px 24px;
+      width: 340px;
+      max-width: 90vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    }
+    .auth-box h2 {
+      margin: 0 0 6px;
+      font-size: 17px;
+      font-weight: 700;
+    }
+    .auth-box .auth-sub {
+      font-size: 12px;
+      color: var(--text-dim, #888);
+      margin-bottom: 18px;
+    }
+    .auth-box input[type="password"] {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border, #ccc);
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+      background: var(--bg, #fff);
+      color: var(--text, #222);
+    }
+    .auth-box input[type="password"]:focus {
+      outline: none;
+      border-color: var(--accent, #4a90d9);
+      box-shadow: 0 0 0 2px rgba(74,144,217,.2);
+    }
+    .auth-error {
+      color: #d44;
+      font-size: 12px;
+      min-height: 18px;
+      margin-bottom: 6px;
+    }
+    .auth-box .btn-login {
+      width: 100%;
+      padding: 9px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent, #4a90d9);
+      color: #fff;
+      cursor: pointer;
+    }
+    .auth-box .btn-login:hover { opacity: .9; }
+    .auth-box .auth-hint-env {
+      margin-top: 14px;
+      font-size: 10px;
+      color: var(--text-dim, #999);
+      line-height: 1.5;
+      text-align: center;
+    }
+    .auth-box .auth-hint-env code {
+      background: var(--bg-dim, #f4f4f4);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+    }
+
+    .btn-logout {
+      font-size: 11px;
+      padding: 4px 12px;
+      border: 1px solid var(--border, #ccc);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-dim, #888);
+      cursor: pointer;
+      margin-left: auto;
+    }
+    .btn-logout:hover { background: var(--bg-dim, #f0f0f0); }
+    .btn-logout.hidden { display: none; }
+
+    .auth-hint {
+      font-size: 10px;
+      color: var(--text-dim, #999);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .auth-hint.hidden { display: none; }
+    .auth-hint .lock-icon { font-size: 12px; }
+  </style>
 </head>
 <body>
+
+  <div class="auth-overlay hidden" id="auth-overlay">
+    <div class="auth-box">
+      <h2>Авторизация</h2>
+      <div class="auth-sub">Для изменения настроек введите пароль администратора</div>
+      <input type="password" id="login-password"
+             placeholder="Пароль"
+             onkeydown="onLoginKeydown(event)"
+             autocomplete="current-password">
+      <div class="auth-error" id="login-error"></div>
+      <button class="btn-login" onclick="doLogin()">Войти</button>
+      <div class="auth-hint-env">
+        Пароль задаётся через переменную окружения<br>
+        <code>RFID_ADMIN_PASSWORD</code>
+      </div>
+    </div>
+  </div>
 
   <nav class="topnav">
     <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
@@ -16,6 +136,7 @@
     <a href="/protocol">Протокол</a>
     <a href="/settings" class="active">Настройки</a>
     <a href="/judge">Судья</a>
+    <button class="btn-logout hidden" id="logout-btn" onclick="doLogout()">Выйти</button>
   </nav>
 
   <div class="page-content">
@@ -23,6 +144,9 @@
       <div style="display:flex;align-items:center;gap:12px">
         <div class="page-title"><span>Настройки</span> системы</div>
         <span class="status-badge wait" id="reader-mode-badge">—</span>
+        <span class="auth-hint hidden" id="auth-hint">
+          <span class="lock-icon">🔒</span> только чтение
+        </span>
       </div>
       <button class="btn btn-accent" onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
         Сохранить и применить

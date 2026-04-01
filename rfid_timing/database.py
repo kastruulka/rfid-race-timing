@@ -28,7 +28,6 @@ class Database:
         self._conn().commit()
 
     def _update_fields(self, table: str, row_id: int, allowed: set, **kw) -> bool:
-        """Универсальный UPDATE по набору разрешённых полей."""
         fields = {k: v for k, v in kw.items() if k in allowed}
         if not fields:
             return False
@@ -143,7 +142,6 @@ class Database:
         self._migrate_legacy()
 
     def _migrate_legacy(self):
-        """Миграции для баз, созданных до текущей версии схемы."""
         cols = [row[1] for row in self._exec("PRAGMA table_info(result)").fetchall()]
         migrations = {
             "race_id": "ALTER TABLE result ADD COLUMN race_id INTEGER REFERENCES race(id)",
@@ -188,6 +186,107 @@ class Database:
             return False
         r = self._exec("SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone()
         return r is not None and r["closed_at"] is not None
+
+    def get_race_closed_at(self, race_id: int = None) -> Optional[float]:
+        race_id = self._resolve_race(race_id)
+        if race_id is None:
+            return None
+        r = self._exec("SELECT closed_at FROM race WHERE id=?", (race_id,)).fetchone()
+        return r["closed_at"] if r else None
+
+    def get_earliest_start_time(
+        self, race_id: int = None, category_id: int = None
+    ) -> Optional[int]:
+        race_id = self._resolve_race(race_id)
+        if race_id is None:
+            return None
+        if category_id:
+            r = self._exec(
+                "SELECT MIN(start_time) as mn FROM result WHERE race_id=? AND category_id=? AND start_time IS NOT NULL",
+                (race_id, category_id),
+            ).fetchone()
+        else:
+            r = self._exec(
+                "SELECT MIN(start_time) as mn FROM result WHERE race_id=? AND start_time IS NOT NULL",
+                (race_id,),
+            ).fetchone()
+        return int(r["mn"]) if r and r["mn"] is not None else None
+
+    def get_status_counts(
+        self, race_id: int = None, category_id: int = None
+    ) -> Dict[str, int]:
+        race_id = self._resolve_race(race_id)
+        if race_id is None:
+            return {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
+        if category_id:
+            rows = self._exec(
+                "SELECT status, COUNT(*) as cnt FROM result WHERE race_id=? AND category_id=? GROUP BY status",
+                (race_id, category_id),
+            ).fetchall()
+        else:
+            rows = self._exec(
+                "SELECT status, COUNT(*) as cnt FROM result WHERE race_id=? GROUP BY status",
+                (race_id,),
+            ).fetchall()
+        counts = {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
+        for r in rows:
+            counts[r["status"]] = r["cnt"]
+        return counts
+
+    def get_results_with_lap_summary(
+        self, category_id: int = None, race_id: int = None
+    ) -> List[Dict]:
+        race_id = self._resolve_race(race_id)
+        if race_id is None:
+            return []
+
+        base = """
+            SELECT
+                r.id as result_id,
+                r.rider_id,
+                r.category_id,
+                r.start_time,
+                r.finish_time,
+                r.status,
+                r.place,
+                r.dnf_reason,
+                r.penalty_time_ms,
+                r.extra_laps,
+                rd.number,
+                rd.last_name,
+                rd.first_name,
+                rd.club,
+                rd.city,
+                rd.birth_year,
+                c.laps as cat_laps,
+                c.name as cat_name,
+                COALESCE(ls.laps_done, 0) as laps_done,
+                ls.last_lap_time,
+                ls.last_lap_ts
+            FROM result r
+            JOIN rider rd ON rd.id = r.rider_id
+            LEFT JOIN category c ON c.id = r.category_id
+            LEFT JOIN (
+                SELECT
+                    result_id,
+                    SUM(CASE WHEN lap_number > 0 THEN 1 ELSE 0 END) as laps_done,
+                    MAX(CASE WHEN lap_number = (
+                        SELECT MAX(lap_number) FROM lap l2 WHERE l2.result_id = lap.result_id
+                    ) THEN lap_time END) as last_lap_time,
+                    MAX(timestamp) as last_lap_ts
+                FROM lap
+                GROUP BY result_id
+            ) ls ON ls.result_id = r.id
+            WHERE r.race_id = ?
+        """
+        if category_id:
+            rows = self._exec(
+                base + " AND r.category_id = ?", (race_id, category_id)
+            ).fetchall()
+        else:
+            rows = self._exec(base, (race_id,)).fetchall()
+
+        return [dict(row) for row in rows]
 
     def _resolve_race(self, race_id: int = None) -> Optional[int]:
         return race_id or self.get_current_race_id()

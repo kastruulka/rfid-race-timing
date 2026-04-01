@@ -297,11 +297,16 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if not rider_id:
             return jsonify({"error": "rider_id required"}), 400
         try:
-            info = engine.individual_start(int(rider_id))
+            planned_time = data.get("planned_time")
+            start_time = float(planned_time) if planned_time else None
+
+            info = engine.individual_start(int(rider_id), start_time=start_time)
+
             entry_id = data.get("entry_id")
+            actual_time = start_time or (time.time() * 1000)
             if entry_id:
                 db.update_start_protocol_entry(
-                    int(entry_id), actual_time=time.time() * 1000, status="STARTED"
+                    int(entry_id), actual_time=actual_time, status="STARTED"
                 )
             return jsonify({"ok": True, "info": info})
         except ValueError as e:
