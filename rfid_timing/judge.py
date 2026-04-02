@@ -1,5 +1,6 @@
 import logging
 import time
+import threading
 from flask import render_template, jsonify, request
 from .database import Database
 from .race_engine import RaceEngine
@@ -8,6 +9,105 @@ from .settings import require_admin
 from . import actions
 
 logger = logging.getLogger(__name__)
+
+
+class StartProtocolScheduler:
+    def __init__(self, db: Database, engine: RaceEngine):
+        self._db = db
+        self._engine = engine
+        self._lock = threading.Lock()
+        self._timers: dict[int, list[threading.Timer]] = {}
+
+    def launch_category(self, category_id: int, entries: list[dict]) -> None:
+        with self._lock:
+            self._cancel_category_locked(category_id)
+            timers: list[threading.Timer] = []
+            now_ms = time.time() * 1000
+            for entry in entries:
+                entry_id = int(entry.get("entry_id", entry.get("id")))
+                delay_sec = max(0.0, (float(entry["planned_time"]) - now_ms) / 1000.0)
+                timer = threading.Timer(
+                    delay_sec,
+                    self._start_entry,
+                    args=(
+                        entry_id,
+                        int(entry["rider_id"]),
+                        float(entry["planned_time"]),
+                        int(category_id),
+                    ),
+                )
+                timer.daemon = True
+                timer.start()
+                timers.append(timer)
+            self._timers[category_id] = timers
+
+    def stop_category(self, category_id: int) -> None:
+        with self._lock:
+            self._cancel_category_locked(category_id)
+
+        for entry in self._db.get_start_protocol(category_id):
+            if entry.get("status") == "PLANNED":
+                self._db.update_start_protocol_entry(
+                    int(entry["id"]),
+                    planned_time=None,
+                    actual_time=None,
+                    status="WAITING",
+                )
+
+    def _cancel_category_locked(self, category_id: int) -> None:
+        timers = self._timers.pop(category_id, [])
+        for timer in timers:
+            timer.cancel()
+
+    def _start_entry(
+        self, entry_id: int, rider_id: int, planned_time: float, category_id: int
+    ) -> None:
+        try:
+            body, status = actions.action_individual_start(
+                self._engine, rider_id, start_time=planned_time
+            )
+            if status == 200:
+                self._db.update_start_protocol_entry(
+                    entry_id,
+                    actual_time=planned_time,
+                    status="STARTED",
+                )
+            else:
+                logger.warning(
+                    "protocol start failed for category=%s rider=%s entry=%s: %s",
+                    category_id,
+                    rider_id,
+                    entry_id,
+                    body.get("error"),
+                )
+                self._db.update_start_protocol_entry(
+                    entry_id,
+                    actual_time=None,
+                    status="ERROR",
+                )
+        except Exception:
+            logger.exception(
+                "protocol timer crashed for category=%s rider=%s entry=%s",
+                category_id,
+                rider_id,
+                entry_id,
+            )
+            try:
+                self._db.update_start_protocol_entry(
+                    entry_id,
+                    actual_time=None,
+                    status="ERROR",
+                )
+            except Exception:
+                logger.exception(
+                    "failed to store protocol error state for entry=%s", entry_id
+                )
+        finally:
+            with self._lock:
+                timers = self._timers.get(category_id, [])
+                self._timers[category_id] = [t for t in timers if t.is_alive()]
+                if not self._timers[category_id]:
+                    self._timers.pop(category_id, None)
 
 
 def _format_protocol_entry(e: dict) -> dict:
@@ -26,6 +126,7 @@ def _format_protocol_entry(e: dict) -> dict:
 def register_judge(app, db: Database, engine: RaceEngine = None):
 
     require_engine = make_require_engine(engine)
+    scheduler = StartProtocolScheduler(db, engine) if engine else None
 
     @app.route("/judge")
     def judge_page():
@@ -207,6 +308,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             {"rider_id": int(rid), "position": i + 1, "interval_sec": interval}
             for i, rid in enumerate(data.get("rider_ids", []))
         ]
+        if scheduler:
+            scheduler.stop_category(cat_id)
         count = db.save_start_protocol(cat_id, entries)
         return jsonify({"ok": True, "count": count})
 
@@ -215,6 +318,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     def api_start_protocol_clear():
         cat_id = request.args.get("category_id", type=int)
         if cat_id:
+            if scheduler:
+                scheduler.stop_category(cat_id)
             db.clear_start_protocol(cat_id)
         return jsonify({"ok": True})
 
@@ -233,6 +338,8 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             {"rider_id": r["id"], "position": i + 1, "interval_sec": interval}
             for i, r in enumerate(riders_list)
         ]
+        if scheduler:
+            scheduler.stop_category(cat_id)
         count = db.save_start_protocol(cat_id, entries)
         return jsonify({"ok": True, "count": count})
 
@@ -268,7 +375,22 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             entry["offset_sec"] = i * interval
             planned.append(entry)
 
+        if scheduler:
+            scheduler.launch_category(cat_id, planned)
         return jsonify({"ok": True, "planned": planned, "first_start_ms": now_ms})
+
+    @app.route("/api/judge/start-protocol/stop", methods=["POST"])
+    @require_admin
+    def api_start_protocol_stop():
+        data, err = get_json_body()
+        if err:
+            return err
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
+        if scheduler:
+            scheduler.stop_category(cat_id)
+        return jsonify({"ok": True})
 
     @app.route("/api/judge/start-protocol/status", methods=["GET"])
     def api_start_protocol_status():

@@ -47,6 +47,20 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
         ):
             gap = total_time - leader_time
 
+        warmup_lap = next(
+            (
+                {
+                    "number": lap["lap_number"],
+                    "time": fmt_ms(
+                        int(lap["lap_time"]) if lap.get("lap_time") else None
+                    ),
+                }
+                for lap in laps
+                if lap["lap_number"] == 0
+            ),
+            None,
+        )
+
         lap_details = [
             {
                 "number": lap["lap_number"],
@@ -80,6 +94,8 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
                 "gap": gap,
                 "gap_str": fmt_gap(gap),
                 "avg_speed": fmt_speed(distance_total, total_time),
+                "warmup_lap": warmup_lap,
+                "warmup_lap_time": warmup_lap["time"] if warmup_lap else "",
                 "lap_details": lap_details,
                 "start_time_abs": fmt_start_time(rider_start_ms),
                 "start_time_offset": fmt_start_offset(rider_start_ms, first_start_ms),
@@ -104,6 +120,7 @@ def _build_columns(cols_raw: dict, is_individual_start: bool) -> dict:
         "start_time",
         "time",
         "gap",
+        "warmup_lap",
         "laps",
         "speed",
         "status",

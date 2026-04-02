@@ -3,6 +3,7 @@ from typing import Optional, Dict
 
 from .database import Database
 from .logger import RawLogger
+from .timing import calc_required_laps, calc_finish_time
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,36 @@ class PenaltyService:
         details_parts.extend(f"{k}={v}" for k, v in extra.items() if v)
         self.raw_logger.log_event(event, epc=epc, details=",".join(details_parts))
         return rider, num
+
+    def _sync_finish_state(self, result_id: int):
+        result = self.db.get_result_by_id(result_id)
+        if not result:
+            return
+
+        category = self.db.get_category(result.get("category_id"))
+        required_laps = calc_required_laps(result, category)
+        completed_laps = self.db.count_laps(result_id)
+        last_lap = self.db.get_last_lap(result_id)
+
+        if completed_laps >= required_laps and last_lap:
+            finish_time = calc_finish_time(
+                int(last_lap["timestamp"]),
+                result.get("penalty_time_ms") or 0,
+            )
+            self.db.update_result(
+                result_id,
+                status="FINISHED",
+                finish_time=finish_time,
+            )
+            return
+
+        if result.get("status") == "FINISHED" or result.get("finish_time") is not None:
+            self.db.update_result(
+                result_id,
+                status="RACING",
+                finish_time=None,
+                place=None,
+            )
 
     def set_dnf(
         self,
@@ -102,6 +133,7 @@ class PenaltyService:
             result["id"], "TIME_PENALTY", value=seconds, reason=reason
         )
         self.db.recalc_penalties(result["id"])
+        self._sync_finish_state(result["id"])
 
         _, num = self._notify_log("TIME_PENALTY", rider_id, sec=seconds, reason=reason)
         logger.info("#%d — штраф +%.0f сек: %s", num, seconds, reason)
@@ -115,6 +147,7 @@ class PenaltyService:
             return None
         pid = self.db.add_penalty(result["id"], "EXTRA_LAP", value=laps, reason=reason)
         self.db.recalc_penalties(result["id"])
+        self._sync_finish_state(result["id"])
 
         _, num = self._notify_log("EXTRA_LAP", rider_id, laps=laps, reason=reason)
         logger.info("#%d — штрафной круг (+%d): %s", num, laps, reason)
@@ -140,6 +173,7 @@ class PenaltyService:
 
         self.db.delete_penalty(penalty_id)
         self.db.recalc_penalties(result_id)
+        self._sync_finish_state(result_id)
 
         if penalty_type in ("DNF", "DSQ"):
             result = self.db.get_result_by_id(result_id)

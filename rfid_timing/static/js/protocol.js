@@ -27,6 +27,7 @@ function getConfig() {
       start_time: document.getElementById('col-start_time').checked,
       time: document.getElementById('col-time').checked,
       gap: document.getElementById('col-gap').checked,
+      warmup_lap: document.getElementById('col-warmup_lap').checked,
       laps: document.getElementById('col-laps').checked,
       speed: document.getElementById('col-speed').checked,
       status: document.getElementById('col-status').checked,

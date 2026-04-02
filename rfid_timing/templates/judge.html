@@ -8,6 +8,14 @@
   <link rel="stylesheet" href="/static/css/auth.css">
   <link rel="stylesheet" href="/static/css/judge.css">
   <style>
+    .btn.is-disabled,
+    .btn[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: grayscale(0.15);
+    }
+
     .sp-list { max-height: 260px; overflow-y: auto; }
     .sp-item {
       display: flex; align-items: center; gap: 6px; padding: 4px 6px;

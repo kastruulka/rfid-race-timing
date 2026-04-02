@@ -2,6 +2,11 @@ let allRiders = [];
 let categories = [];
 let selectedCatId = '';
 let authManager = null;
+const CURRENT_YEAR = new Date().getFullYear();
+const MIN_BIRTH_YEAR = 1900;
+const MAX_NUMBER = 99999;
+const MAX_CATEGORY_LAPS = 1000;
+const MAX_CATEGORY_DISTANCE = 1000;
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -9,6 +14,30 @@ function toast(msg, isError) {
   t.className = 'toast show' + (isError ? ' error' : '');
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.className = 'toast', 2500);
+}
+
+function validateCategoryForm(body) {
+  if (!body.name) return 'Введите название';
+  if (!Number.isInteger(body.laps) || body.laps < 1 || body.laps > MAX_CATEGORY_LAPS) {
+    return 'Количество кругов должно быть от 1 до ' + MAX_CATEGORY_LAPS;
+  }
+  if (!Number.isFinite(body.distance_km) || body.distance_km < 0 || body.distance_km > MAX_CATEGORY_DISTANCE) {
+    return 'Дистанция круга должна быть от 0 до ' + MAX_CATEGORY_DISTANCE + ' км';
+  }
+  return null;
+}
+
+function validateRiderForm(body) {
+  if (!Number.isInteger(body.number) || body.number < 1 || body.number > MAX_NUMBER) {
+    return 'Стартовый номер должен быть от 1 до ' + MAX_NUMBER;
+  }
+  if (!body.last_name) return 'Номер и фамилия обязательны';
+  if (body.birth_year !== null) {
+    if (!Number.isInteger(body.birth_year) || body.birth_year < MIN_BIRTH_YEAR || body.birth_year > CURRENT_YEAR) {
+      return 'Год рождения должен быть в диапазоне ' + MIN_BIRTH_YEAR + '-' + CURRENT_YEAR;
+    }
+  }
+  return null;
 }
 
 async function api(url, method, body) {
@@ -48,6 +77,9 @@ function renderCategories() {
   const canEdit = authManager && authManager.isAuthenticated();
 
   categories.forEach(c => {
+    const warmupLabel = c.has_warmup_lap === false || c.has_warmup_lap === 0
+      ? ' · без разгонного'
+      : '';
     const div = document.createElement('div');
     div.className = 'cat-item' + (selectedCatId == c.id ? ' active' : '');
     div.dataset.id = c.id;
@@ -55,7 +87,7 @@ function renderCategories() {
     div.innerHTML =
       '<div>' +
         '<div class="cat-name">' + esc(c.name) + '</div>' +
-        '<div class="cat-meta">' + c.laps + ' кр. · ' + (c.distance_km || 0) + ' км</div>' +
+        '<div class="cat-meta">' + c.laps + ' кр. · ' + (c.distance_km || 0) + ' км' + warmupLabel + '</div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div class="cat-count">' + (c.rider_count || 0) + '</div>' +
@@ -91,6 +123,7 @@ async function openCatModal(cat) {
   document.getElementById('cat-name').value = cat ? cat.name : '';
   document.getElementById('cat-laps').value = cat ? cat.laps : 5;
   document.getElementById('cat-dist').value = cat ? (cat.distance_km || 0) : 5;
+  document.getElementById('cat-has-warmup').checked = cat ? !(cat.has_warmup_lap === false || cat.has_warmup_lap === 0) : true;
   document.getElementById('cat-modal-title').innerHTML = cat
     ? '<span>Редактировать</span> категорию' : '<span>Новая</span> категория';
   document.getElementById('cat-modal').classList.add('open');
@@ -105,8 +138,10 @@ async function saveCat() {
     name: document.getElementById('cat-name').value.trim(),
     laps: parseInt(document.getElementById('cat-laps').value, 10) || 1,
     distance_km: parseFloat(document.getElementById('cat-dist').value) || 0,
+    has_warmup_lap: document.getElementById('cat-has-warmup').checked,
   };
-  if (!body.name) { toast('Введите название', true); return; }
+  const error = validateCategoryForm(body);
+  if (error) { toast(error, true); return; }
 
   const res = id
     ? await api('/api/categories/' + id, 'PUT', body)
@@ -234,10 +269,8 @@ async function saveRider() {
     category_id: parseInt(document.getElementById('r-category').value, 10) || null,
     epc: document.getElementById('r-epc').value.trim() || null,
   };
-  if (!body.number || !body.last_name) {
-    toast('Номер и фамилия обязательны', true);
-    return;
-  }
+  const error = validateRiderForm(body);
+  if (error) { toast(error, true); return; }
 
   const res = id
     ? await api('/api/riders/' + id, 'PUT', body)
@@ -335,6 +368,7 @@ async function init() {
 
   bindModalClose('cat-modal');
   bindModalClose('rider-modal');
+  document.getElementById('r-year').setAttribute('max', String(CURRENT_YEAR));
 
   await authManager.checkAuth();
   await loadAll();

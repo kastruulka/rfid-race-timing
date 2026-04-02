@@ -10,6 +10,7 @@ from .penalty_service import PenaltyService
 from .timing import calc_required_laps, is_finish_reached, calc_finish_time
 
 logger = logging.getLogger(__name__)
+MIN_START_TO_FIRST_PASS_MS = 3000
 
 
 class RaceEngine:
@@ -32,6 +33,25 @@ class RaceEngine:
         self._epc_map: Dict[str, Dict] = {}
         self._lock = threading.Lock()
         self.reload_epc_map()
+
+    def _is_prestart_result(
+        self, result: Optional[Dict], category_id: int = None
+    ) -> bool:
+        if not result:
+            return False
+        if category_id is not None and result.get("category_id") != category_id:
+            return False
+        if result.get("finish_time") is not None:
+            return False
+        if self.db.count_laps(result["id"]) > 0:
+            return False
+        state = (
+            self.db.get_category_state(result.get("category_id"))
+            if result.get("category_id")
+            else None
+        )
+        category_started = state is not None and state.get("started_at") is not None
+        return not category_started
 
     def reload_epc_map(self):
         self._epc_map = self.db.get_epc_map()
@@ -75,11 +95,27 @@ class RaceEngine:
             raise ValueError(f"Категория {category_id} не найдена")
         if self.db.is_category_closed(category_id):
             raise ValueError(f"Категория '{category['name']}' уже завершена")
+        category_state = self.db.get_category_state(category_id)
+        if category_state and category_state.get("started_at") is not None:
+            raise ValueError(f"Категория '{category['name']}' уже запущена")
 
         riders = self.db.get_riders(category_id=category_id)
         started = 0
         for rider in riders:
-            if self.db.get_result_by_rider(rider["id"]):
+            existing = self.db.get_result_by_rider(rider["id"])
+            if existing and self._is_prestart_result(existing, category_id=category_id):
+                self.db.update_result(
+                    existing["id"],
+                    category_id=category_id,
+                    start_time=start_time,
+                    finish_time=None,
+                    status="RACING",
+                    place=None,
+                    dnf_reason="",
+                )
+                started += 1
+                continue
+            if existing:
                 continue
             self.db.create_result(
                 rider_id=rider["id"],
@@ -88,6 +124,11 @@ class RaceEngine:
                 status="RACING",
             )
             started += 1
+
+        if started == 0:
+            raise ValueError(
+                f"Для категории '{category['name']}' нет участников для старта"
+            )
 
         self.db.set_category_started(category_id, start_time)
         self.raw_logger.log_event("MASS_START", details=f"cat={category['name']}")
@@ -125,14 +166,34 @@ class RaceEngine:
 
         existing = self.db.get_result_by_rider(rider_id)
         if existing and existing["status"] == "RACING":
-            raise ValueError(f"Участник #{rider['number']} уже в гонке")
-
-        self.db.create_result(
-            rider_id=rider_id,
-            category_id=category_id,
-            start_time=start_time,
-            status="RACING",
-        )
+            if not self._is_prestart_result(existing, category_id=category_id):
+                raise ValueError(f"Участник #{rider['number']} уже в гонке")
+            self.db.update_result(
+                existing["id"],
+                category_id=category_id,
+                start_time=start_time,
+                finish_time=None,
+                status="RACING",
+                place=None,
+                dnf_reason="",
+            )
+        elif existing and self._is_prestart_result(existing, category_id=category_id):
+            self.db.update_result(
+                existing["id"],
+                category_id=category_id,
+                start_time=start_time,
+                finish_time=None,
+                status="RACING",
+                place=None,
+                dnf_reason="",
+            )
+        else:
+            self.db.create_result(
+                rider_id=rider_id,
+                category_id=category_id,
+                start_time=start_time,
+                status="RACING",
+            )
         if category_id:
             self.db.set_category_started(category_id, start_time)
 
@@ -172,6 +233,9 @@ class RaceEngine:
         current_laps = self.db.count_laps(result["id"])
         last_lap = self.db.get_last_lap(result["id"])
         category = self.db.get_category(result["category_id"])
+        has_warmup_lap = (
+            True if category is None else bool(category.get("has_warmup_lap", 1))
+        )
         total_required = calc_required_laps(result, category)
         penalty_time_ms = result.get("penalty_time_ms") or 0
 
@@ -180,7 +244,19 @@ class RaceEngine:
         else:
             lap_time_ms = timestamp_ms - int(float(result["start_time"]))
 
-        lap_number = 0 if last_lap is None else current_laps + 1
+        if last_lap is None and lap_time_ms < MIN_START_TO_FIRST_PASS_MS:
+            logger.info(
+                "#%d %s — пропуск ложного первого срабатывания через %.1f сек после старта",
+                rider["number"],
+                rider["last_name"],
+                lap_time_ms / 1000.0,
+            )
+            return None
+
+        if last_lap is None:
+            lap_number = 0 if has_warmup_lap else 1
+        else:
+            lap_number = current_laps + 1
 
         segment_data = json.dumps({str(lap_number): timestamp_ms})
         self.db.record_lap(

@@ -131,7 +131,7 @@ def _build_feed(db: Database, category_id: int = None) -> list:
     for item in db.get_feed_history(limit=50, category_id=category_id):
         ts_sec = item["timestamp"] / 1000.0
         lap_number = item["lap_number"]
-        laps_required = item.get("laps_required") or 1
+        laps_required = (item.get("laps_required") or 1) + (item.get("extra_laps") or 0)
 
         feed.append(
             {
@@ -141,6 +141,7 @@ def _build_feed(db: Database, category_id: int = None) -> list:
                 "lap_number": lap_number,
                 "lap_time": int(item["lap_time"]) if item.get("lap_time") else None,
                 "laps_required": laps_required,
+                "extra_laps": item.get("extra_laps") or 0,
                 "time_str": time.strftime("%H:%M:%S", time.localtime(ts_sec)),
                 "is_finish_lap": lap_number > 0 and lap_number >= laps_required,
             }

@@ -70,8 +70,9 @@
     function syncProtectedControls() {
       document.querySelectorAll('[data-auth-required]').forEach(function (el) {
         const shouldLock = !authenticated;
+        const stateLocked = el.dataset.stateDisabled === 'true';
         if ('disabled' in el) {
-          el.disabled = shouldLock;
+          el.disabled = shouldLock || stateLocked;
         }
         el.classList.toggle('auth-disabled', shouldLock);
       });

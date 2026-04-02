@@ -23,7 +23,7 @@ _SAFE_TABLES = frozenset(
 )
 
 _TABLE_FIELDS = {
-    "category": {"name", "laps", "distance_km"},
+    "category": {"name", "laps", "distance_km", "has_warmup_lap"},
     "rider": {
         "number",
         "last_name",
@@ -102,7 +102,8 @@ class Database:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT    NOT NULL,
                 laps        INTEGER NOT NULL DEFAULT 1,
-                distance_km REAL    DEFAULT 0
+                distance_km REAL    DEFAULT 0,
+                has_warmup_lap INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS rider (
@@ -215,6 +216,15 @@ class Database:
         race_cols = [row[1] for row in self._exec("PRAGMA table_info(race)").fetchall()]
         if "closed_at" not in race_cols:
             self._exec("ALTER TABLE race ADD COLUMN closed_at REAL DEFAULT NULL")
+            self._commit()
+
+        category_cols = [
+            row[1] for row in self._exec("PRAGMA table_info(category)").fetchall()
+        ]
+        if "has_warmup_lap" not in category_cols:
+            self._exec(
+                "ALTER TABLE category ADD COLUMN has_warmup_lap INTEGER NOT NULL DEFAULT 1"
+            )
             self._commit()
 
     def create_race(self, label: str = "") -> int:
@@ -468,17 +478,23 @@ class Database:
             "deleted_laps": deleted_laps,
         }
 
-    def add_category(self, name: str, laps: int = 1, distance_km: float = 0) -> int:
+    def add_category(
+        self,
+        name: str,
+        laps: int = 1,
+        distance_km: float = 0,
+        has_warmup_lap: bool = True,
+    ) -> int:
         cur = self._exec(
-            "INSERT INTO category (name, laps, distance_km) VALUES (?,?,?)",
-            (name, laps, distance_km),
+            "INSERT INTO category (name, laps, distance_km, has_warmup_lap) VALUES (?,?,?,?)",
+            (name, laps, distance_km, 1 if has_warmup_lap else 0),
         )
         self._commit()
         return cur.lastrowid
 
     def update_category(self, cid: int, **kw) -> bool:
         return self._update_fields(
-            "category", cid, {"name", "laps", "distance_km"}, **kw
+            "category", cid, {"name", "laps", "distance_km", "has_warmup_lap"}, **kw
         )
 
     def delete_category(self, cid: int) -> bool:
@@ -837,7 +853,7 @@ class Database:
             SELECT
                 l.id as lap_id, l.lap_number, l.lap_time, l.timestamp,
                 rd.number as rider_number, rd.last_name, rd.first_name,
-                c.laps as laps_required, r.status
+                c.laps as laps_required, r.extra_laps, r.status
             FROM lap l
             JOIN result r ON l.result_id = r.id
             JOIN rider rd ON r.rider_id = rd.id

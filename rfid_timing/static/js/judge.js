@@ -4,6 +4,7 @@ let startMode = 'mass';
 
 let spStates = {};
 let spGlobalTimer = null;
+let spCountdownTimer = null;
 
 let spEntries = [];
 
@@ -12,6 +13,9 @@ let catTimerPerf = {};
 let catTimerClosed = {};
 let globalTimerRef = null;
 let authManager = null;
+let currentCategoryStarted = false;
+let currentCategoryClosed = false;
+let currentRaceClosed = false;
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -19,6 +23,28 @@ function toast(msg, isError) {
   t.className = 'toast show' + (isError ? ' error' : '');
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.className = 'toast', 2500);
+}
+
+function setStateDisabled(el, disabled) {
+  if (!el) return;
+  el.dataset.stateDisabled = disabled ? 'true' : 'false';
+  const authLocked = !authManager || !authManager.isAuthenticated();
+  const finalDisabled = authLocked || !!disabled;
+  el.disabled = finalDisabled;
+  el.setAttribute('aria-disabled', finalDisabled ? 'true' : 'false');
+  el.style.pointerEvents = finalDisabled ? 'none' : '';
+  el.style.opacity = finalDisabled ? '0.55' : '';
+  el.style.cursor = finalDisabled ? 'not-allowed' : '';
+  el.classList.toggle('is-disabled', finalDisabled);
+}
+
+function ensureProtocolCategory(message) {
+  const catId = getCatId();
+  if (!catId) {
+    toast(message || 'Сначала выберите категорию', true);
+    return false;
+  }
+  return true;
 }
 
 async function api(url, method, body) {
@@ -79,6 +105,53 @@ function spGetState(catId) {
 
 function spIsRunning(catId) { const s = spStates[catId]; return s && s.running; }
 function spAnyRunning() { return Object.values(spStates).some(s => s.running); }
+
+function spEnsureCountdownTick() {
+  if (spCountdownTimer) return;
+  spCountdownTimer = setInterval(function() {
+    if (startMode !== 'individual') return;
+    const catId = getCatId();
+    if (catId && spIsRunning(catId)) spUpdateCountdownDisplay(catId);
+  }, 100);
+}
+
+async function spSyncStatus(catId, silent) {
+  if (!catId) {
+    spUpdateUI();
+    return;
+  }
+  const res = await api('/api/judge/start-protocol/status?category_id=' + catId, 'GET');
+  const st = spGetState(catId);
+  const prevStarted = new Set(st.startedSet || []);
+
+  if (!res || !res.running && !Array.isArray(res.planned)) {
+    st.running = false;
+    st.planned = null;
+    st.startedSet = new Set();
+    spSaveAllStates();
+    spUpdateUI();
+    return;
+  }
+
+  st.planned = Array.isArray(res.planned) ? res.planned : [];
+  st.running = !!res.running;
+  st.startedSet = new Set(
+    st.planned
+      .filter(e => e.status === 'STARTED')
+      .map(e => e.rider_id)
+  );
+
+  if (!silent) {
+    st.planned.forEach(entry => {
+      if (entry.status === 'STARTED' && !prevStarted.has(entry.rider_id)) {
+        toast('СТАРТ: #' + entry.rider_number + ' ' + entry.rider_name);
+      }
+    });
+  }
+
+  spSaveAllStates();
+  spUpdateUI();
+}
 
 function spSaveAllStates() {
   const data = {};
@@ -160,8 +233,19 @@ function spGetAvailableRiders() {
   });
 }
 
-function spOnSearchInput() { spDdIndex = -1; spRenderSearchDropdown(); document.getElementById('sp-dropdown').classList.add('open'); }
-function spOnSearchFocus() { document.getElementById('sp-search').select(); spDdIndex = -1; spRenderSearchDropdown(); document.getElementById('sp-dropdown').classList.add('open'); }
+function spOnSearchInput() {
+  if (!ensureProtocolCategory('Нельзя собирать очередь без выбранной категории')) return;
+  spDdIndex = -1;
+  spRenderSearchDropdown();
+  document.getElementById('sp-dropdown').classList.add('open');
+}
+function spOnSearchFocus() {
+  if (!ensureProtocolCategory('Нельзя собирать очередь без выбранной категории')) return;
+  document.getElementById('sp-search').select();
+  spDdIndex = -1;
+  spRenderSearchDropdown();
+  document.getElementById('sp-dropdown').classList.add('open');
+}
 
 function spOnSearchKey(e) {
   const dd = document.getElementById('sp-dropdown');
@@ -180,6 +264,11 @@ function spHighlightSearchItem() {
 }
 
 function spRenderSearchDropdown() {
+  if (!getCatId()) {
+    document.getElementById('sp-dropdown').innerHTML = '<div style="padding:8px 10px;color:var(--text-dim);font-size:11px">Сначала выберите категорию</div>';
+    spDdFiltered = [];
+    return;
+  }
   const query = (document.getElementById('sp-search').value || '').toLowerCase();
   const dd = document.getElementById('sp-dropdown');
   const available = spGetAvailableRiders();
@@ -193,6 +282,7 @@ function spRenderSearchDropdown() {
 
 function spSelectFromSearch(riderId) {
   if (!requireJudgeEditAccess('Judge action requires login')) return;
+  if (!ensureProtocolCategory('Нельзя собирать очередь без выбранной категории')) return;
   const r = riders.find(x => x.id === riderId);
   if (!r) return;
   document.getElementById('sp-dropdown').classList.remove('open');
@@ -220,6 +310,11 @@ function spRenderList() {
   const catId = getCatId();
   const isRunning = spIsRunning(catId);
   const startedSet = isRunning ? spStates[catId].startedSet : new Set();
+
+  if (!catId) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Выберите категорию, чтобы собирать очередь индивидуального старта</div>';
+    return;
+  }
 
   if (!spEntries.length) {
     list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Протокол пуст — нажмите «Авто» или добавьте участников</div>';
@@ -286,6 +381,7 @@ async function spLoadProtocol() {
   if (Array.isArray(data)) {
     spEntries = data.map(e => ({ rider_id: e.rider_id, rider_number: e.rider_number, last_name: e.last_name || '', first_name: e.first_name || '', entry_id: e.id, status: e.status }));
   } else { spEntries = []; }
+  await spSyncStatus(catId, true);
   spRenderList();
 }
 
@@ -303,6 +399,10 @@ function spSwitchToCategory() {
   if (catId) {
     const saved = sessionStorage.getItem('sp_interval_' + catId);
     if (saved) intervalEl.value = saved;
+  } else {
+    spEntries = [];
+    document.getElementById('sp-search').value = '';
+    document.getElementById('sp-dropdown').classList.remove('open');
   }
   spLoadProtocol();
   spUpdateUI();
@@ -313,12 +413,18 @@ function spUpdateUI() {
   const isRunning = spIsRunning(catId);
   const launchBtn = document.getElementById('btn-sp-launch');
   const stopBtn = document.getElementById('btn-sp-stop');
+  const searchEl = document.getElementById('sp-search');
+  const intervalEl = document.getElementById('sp-interval');
+  const hasCategory = !!catId;
+  const blockedByRaceState = currentCategoryStarted || currentCategoryClosed || currentRaceClosed;
   launchBtn.style.display = isRunning ? 'none' : 'block';
-  launchBtn.disabled = isRunning;
+  setStateDisabled(launchBtn, isRunning || !hasCategory || blockedByRaceState);
   stopBtn.style.display = isRunning ? 'block' : 'none';
   document.getElementById('sp-countdown-area').style.display = isRunning ? 'block' : 'none';
-  document.getElementById('sp-search').disabled = isRunning;
-  document.getElementById('sp-interval').disabled = isRunning;
+  searchEl.disabled = isRunning || !hasCategory || blockedByRaceState;
+  intervalEl.disabled = isRunning || !hasCategory || blockedByRaceState;
+  searchEl.setAttribute('aria-disabled', searchEl.disabled ? 'true' : 'false');
+  intervalEl.setAttribute('aria-disabled', intervalEl.disabled ? 'true' : 'false');
   if (isRunning) spUpdateCountdownDisplay(catId);
   spRenderList();
 }
@@ -350,32 +456,21 @@ async function spLaunch() {
 
   const res = await api('/api/judge/start-protocol/launch', 'POST', { category_id: parseInt(catId) });
   if (!res.ok) { toast(res.error || 'Ошибка запуска', true); return; }
-
-  const st = spGetState(catId);
-  st.planned = res.planned;
-  st.running = true;
-  st.startedSet = new Set();
-  st.starting = false;
-
-  const clientNow = Date.now();
-  const interval = parseInt(document.getElementById('sp-interval').value) || 30;
-  for (let i = 0; i < st.planned.length; i++) {
-    st.planned[i].planned_time = clientNow + i * interval * 1000;
-  }
-
-  spSaveAllStates();
-  spUpdateUI();
-  spEnsureGlobalTick();
+  await spSyncStatus(catId, true);
+  loadRaceStatus();
+  toast('Протокол запущен');
 }
 
 
 async function spStop() {
   if (!await ensureJudgeAuth('Stopping protocol requires login')) return;
   const catId = getCatId();
+  if (!catId) return;
+  const res = await api('/api/judge/start-protocol/stop', 'POST', { category_id: parseInt(catId) });
+  if (!res.ok) { toast(res.error || 'Ошибка остановки', true); return; }
   spClearStateFor(catId);
-  spUpdateUI();
+  await spSyncStatus(catId, true);
   toast('Протокол остановлен');
-  if (!spAnyRunning()) spStopGlobalTick();
 }
 
 async function spStartOneRider(catId, entry) {
@@ -391,45 +486,6 @@ async function spStartOneRider(catId, entry) {
   }
 }
 
-
-function spEnsureGlobalTick() { if (spGlobalTimer) return; spGlobalTimer = setInterval(spGlobalTick, 100); }
-function spStopGlobalTick() { if (spGlobalTimer) { clearInterval(spGlobalTimer); spGlobalTimer = null; } }
-
-function spGlobalTick() {
-  const now = Date.now();
-  const activeCatId = getCatId();
-
-  Object.entries(spStates).forEach(([catId, st]) => {
-    if (!st.running || !st.planned || !st.planned.length || st.starting) return;
-
-    let nextIdx = -1;
-    for (let i = 0; i < st.planned.length; i++) {
-      if (!st.startedSet.has(st.planned[i].rider_id)) { nextIdx = i; break; }
-    }
-
-    if (nextIdx === -1) {
-      st.running = false; spSaveAllStates();
-      if (String(catId) === String(activeCatId)) {
-        spUpdateUI();
-        toast('Все участники стартовали! (' + ((window._catNameMap||{})[catId]||catId) + ')');
-      }
-      return;
-    }
-
-    const next = st.planned[nextIdx];
-    if (next.planned_time - now <= 50) {
-      st.starting = true;
-      spStartOneRider(catId, next).then(() => {
-        st.starting = false;
-        if (String(catId) === String(activeCatId)) { spRenderList(); spUpdateCountdownDisplay(catId); }
-      });
-    }
-  });
-
-  if (spIsRunning(activeCatId)) spUpdateCountdownDisplay(activeCatId);
-  if (!spAnyRunning()) spStopGlobalTick();
-}
-
 function spUpdateCountdownDisplay(catId) {
   const st = spStates[catId];
   if (!st || !st.running || !st.planned) return;
@@ -440,7 +496,9 @@ function spUpdateCountdownDisplay(catId) {
   if (nextIdx === -1) { timerEl.textContent = '00:00'; timerEl.className = 'sp-countdown go'; infoEl.innerHTML = 'Все стартовали'; return; }
   const next = st.planned[nextIdx];
   const remain = Math.max(0, next.planned_time - Date.now());
-  const sec = Math.ceil(remain / 1000); const mm = Math.floor(sec / 60); const ss = sec % 60;
+  const sec = remain > 0 ? Math.floor((remain + 999) / 1000) : 0;
+  const mm = Math.floor(sec / 60);
+  const ss = sec % 60;
   timerEl.textContent = String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
   timerEl.className = 'sp-countdown' + (sec <= 3 ? ' go' : '');
   infoEl.innerHTML = 'Следующий: <b>#' + next.rider_number + '</b> ' + next.rider_name;
@@ -448,6 +506,12 @@ function spUpdateCountdownDisplay(catId) {
 
 async function doIndividualStart() {
   if (!await ensureJudgeAuth('Judge action requires login')) return;
+  const startBtn = document.getElementById('btn-individual-start');
+  if (startBtn && startBtn.disabled) {
+    toast(startBtn.textContent || 'Индивидуальный старт сейчас недоступен', true);
+    return;
+  }
+  if (!ensureProtocolCategory('Сначала выберите категорию')) return;
   if (!selectedRiderId) { toast('Выберите участника для старта', true); return; }
   const r = riders.find(x => x.id === selectedRiderId);
   const label = r ? '#' + r.number + ' ' + r.last_name : '#' + selectedRiderId;
@@ -677,9 +741,9 @@ async function initJudge() {
   }
   const savedMode = sessionStorage.getItem('judge_start_mode');
   if (savedMode === 'individual') setStartMode('individual');
-  if (spRestoreAllStates() && spAnyRunning()) spEnsureGlobalTick();
   if (savedMode === 'individual') spUpdateUI();
   startGlobalTimerTick();
+  spEnsureCountdownTick();
 }
 
 initJudge();
@@ -720,7 +784,14 @@ async function loadRaceStatus() {
     });
 
     Object.entries(catStates).forEach(([cid, cs]) => { if (cs.elapsed_ms !== null && cs.elapsed_ms !== undefined) { catTimerElapsed[cid] = cs.elapsed_ms; catTimerPerf[cid] = now; catTimerClosed[cid] = cs.closed; } });
-    if (!catId) { document.getElementById('race-status-bar').style.display = 'none'; document.getElementById('btn-mass-start').disabled = false; document.getElementById('btn-finish-race').disabled = true; document.getElementById('btn-finish-race-ind').disabled = true; if (authManager) authManager.syncProtectedControls(); return; }
+    if (!catId) {
+      document.getElementById('race-status-bar').style.display = 'none';
+      setStateDisabled(document.getElementById('btn-mass-start'), false);
+      setStateDisabled(document.getElementById('btn-finish-race'), true);
+      setStateDisabled(document.getElementById('btn-finish-race-ind'), true);
+      if (authManager) authManager.syncProtectedControls();
+      return;
+    }
     const racing = st.RACING||0; const finished = st.FINISHED||0; const dnf = (st.DNF||0)+(st.DSQ||0);
     document.getElementById('rs-racing').textContent = racing;
     document.getElementById('rs-finished').textContent = finished;
@@ -729,19 +800,25 @@ async function loadRaceStatus() {
     const thisCatClosed = data.category_closed === true;
     const thisCatStarted = data.category_started === true;
     const raceClosed = data.race_closed === true;
+    currentCategoryClosed = thisCatClosed;
+    currentCategoryStarted = thisCatStarted;
+    currentRaceClosed = raceClosed;
     const effectivelyClosed = thisCatClosed || raceClosed;
-    document.getElementById('btn-mass-start').disabled = thisCatStarted || effectivelyClosed;
-    document.getElementById('btn-finish-race').disabled = !thisCatStarted || effectivelyClosed;
-    document.getElementById('btn-finish-race-ind').disabled = !thisCatStarted || effectivelyClosed;
     const startBtn = document.getElementById('btn-mass-start');
+    const finishBtn = document.getElementById('btn-finish-race');
+    const finishIndBtn = document.getElementById('btn-finish-race-ind');
+    setStateDisabled(startBtn, thisCatStarted || effectivelyClosed);
+    setStateDisabled(finishBtn, !thisCatStarted || effectivelyClosed);
+    setStateDisabled(finishIndBtn, !thisCatStarted || effectivelyClosed);
     if (effectivelyClosed) startBtn.textContent = 'Категория завершена';
     else if (thisCatStarted) startBtn.textContent = racing > 0 ? 'Гонка идёт' : 'Гонка активна';
     else startBtn.textContent = '▶ Масс-старт';
     const spLaunchBtn = document.getElementById('btn-sp-launch');
+    const individualStartBtn = document.getElementById('btn-individual-start');
     const canLaunchProtocol = !thisCatStarted && !effectivelyClosed && !spIsRunning(catId);
 
-    document.getElementById('btn-individual-start').disabled = effectivelyClosed || thisCatStarted;
-    spLaunchBtn.disabled = !canLaunchProtocol;
+    setStateDisabled(individualStartBtn, effectivelyClosed || thisCatStarted || !catId);
+    setStateDisabled(spLaunchBtn, !canLaunchProtocol || !catId);
 
     if (effectivelyClosed) spLaunchBtn.textContent = 'Категория завершена';
     else if (thisCatStarted) spLaunchBtn.textContent = 'Протокол недоступен';
@@ -749,8 +826,12 @@ async function loadRaceStatus() {
     const finBtn = document.getElementById('btn-finish-race');
     finBtn.textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить категорию';
     document.getElementById('btn-finish-race-ind').textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить';
-    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => { b.disabled = effectivelyClosed; });
+    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => {
+      if (b.dataset.stateDisabled !== undefined) return;
+      b.disabled = effectivelyClosed;
+    });
     if (authManager) authManager.syncProtectedControls();
+    if (startMode === 'individual' && catId) await spSyncStatus(catId, false);
   } catch(e) {}
 }
 
@@ -759,7 +840,21 @@ document.getElementById('sp-interval').addEventListener('change', function() { c
 document.getElementById('sp-interval').addEventListener('input', function() { const c = getCatId(); if (c) sessionStorage.setItem('sp_interval_' + c, this.value); spRenderList(); });
 
 async function doMassStart() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; const catId = getCatId(); if (!catId) { toast('Выберите категорию', true); return; } if (!confirm('Запустить масс-старт для выбранной категории?')) return; const res = await api('/api/judge/mass-start', 'POST', { category_id: parseInt(catId) }); if (res.ok) { toast('Масс-старт! Участников: '+(res.info&&res.info.riders_started||'?')); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  const startBtn = document.getElementById('btn-mass-start');
+  if (startBtn && startBtn.disabled) {
+    toast(startBtn.textContent || 'Старт уже недоступен', true);
+    return;
+  }
+  const catId = getCatId();
+  if (!catId) { toast('Выберите категорию', true); return; }
+  if (!confirm('Запустить масс-старт для выбранной категории?')) return;
+  const res = await api('/api/judge/mass-start', 'POST', { category_id: parseInt(catId) });
+  if (res.ok) {
+    toast('Масс-старт! Участников: ' + (res.info && res.info.riders_started || '?'));
+    loadRaceStatus();
+  } else toast(res.error || 'Ошибка', true);
+}
 async function doUnfinishRider() {
   if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const r = riders.find(x => x.id === selectedRiderId); const label = r ? '#'+r.number+' '+r.last_name : '#'+selectedRiderId; if (!confirm('Отменить финиш '+label+'?\nУчастник вернётся в статус RACING.')) return; const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Финиш отменён: '+label); await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 async function doEditFinishTime() {
