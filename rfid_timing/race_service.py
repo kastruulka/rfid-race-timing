@@ -2,6 +2,7 @@ import time
 from typing import Dict, List, Optional
 
 from .database import Database
+from .timing import calc_total_time_with_penalty, sort_results
 
 
 def build_race_state(
@@ -91,19 +92,11 @@ def _build_results(
     all_results = []
     for r in rows:
         cat_laps = r.get("cat_laps") or 1
-        penalty_time_ms = r.get("penalty_time_ms") or 0
-        extra_laps = r.get("extra_laps") or 0
         laps_done = r.get("laps_done") or 0
-        total_required = cat_laps + extra_laps
+        extra_laps = r.get("extra_laps") or 0
+        penalty_time_ms = r.get("penalty_time_ms") or 0
 
-        total_time = None
-        if r.get("finish_time") and r.get("start_time"):
-            total_time = int(r["finish_time"]) - int(r["start_time"])
-        elif r.get("last_lap_ts") and r.get("start_time"):
-            total_time = int(r["last_lap_ts"]) - int(r["start_time"])
-
-        if total_time is not None and penalty_time_ms:
-            total_time += penalty_time_ms
+        total_time = calc_total_time_with_penalty(r, r.get("last_lap_ts"))
 
         all_results.append(
             {
@@ -125,20 +118,12 @@ def _build_results(
                 "laps_complete": (
                     r["status"] == "RACING"
                     and r.get("finish_time") is not None
-                    and laps_done >= total_required
+                    and laps_done >= (cat_laps + extra_laps)
                 ),
             }
         )
 
-    def sort_key(r):
-        status_order = {"FINISHED": 0, "RACING": 1, "DNF": 2, "DSQ": 3}
-        order = status_order.get(r["status"], 4)
-        if r["status"] == "RACING":
-            return (order, -r["laps_done"], r["total_time"] or 0)
-        return (order, r["total_time"] or 0)
-
-    all_results.sort(key=sort_key)
-    return all_results
+    return sort_results(all_results)
 
 
 def _build_feed(db: Database, category_id: int = None) -> list:

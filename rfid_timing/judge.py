@@ -4,6 +4,7 @@ from flask import render_template, jsonify, request
 from .database import Database
 from .race_engine import RaceEngine
 from .request_helpers import get_json_body, safe_400
+from .settings import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         )
 
     @app.route("/api/judge/dnf", methods=["POST"])
+    @require_admin
     def api_judge_dnf():
         data, err = get_json_body()
         if err:
@@ -70,6 +72,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/judge/dsq", methods=["POST"])
+    @require_admin
     def api_judge_dsq():
         data, err = get_json_body()
         if err:
@@ -83,6 +86,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/judge/time-penalty", methods=["POST"])
+    @require_admin
     def api_judge_time_penalty():
         data, err = get_json_body()
         if err:
@@ -99,6 +103,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "penalty": result})
 
     @app.route("/api/judge/extra-lap", methods=["POST"])
+    @require_admin
     def api_judge_extra_lap():
         data, err = get_json_body()
         if err:
@@ -115,6 +120,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "penalty": result})
 
     @app.route("/api/judge/warning", methods=["POST"])
+    @require_admin
     def api_judge_warning():
         data, err = get_json_body()
         if err:
@@ -128,6 +134,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "penalty": result})
 
     @app.route("/api/judge/penalty/<int:pid>", methods=["DELETE"])
+    @require_admin
     def api_judge_delete_penalty(pid):
         err = _require_engine()
         if err:
@@ -145,6 +152,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return jsonify([])
 
     @app.route("/api/judge/mass-start", methods=["POST"])
+    @require_admin
     def api_judge_mass_start():
         err = _require_engine()
         if err:
@@ -165,6 +173,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return safe_400(e, "mass_start")
 
     @app.route("/api/judge/individual-start", methods=["POST"])
+    @require_admin
     def api_judge_individual_start():
         err = _require_engine()
         if err:
@@ -192,6 +201,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify(db.get_start_protocol(cat_id))
 
     @app.route("/api/judge/start-protocol", methods=["POST"])
+    @require_admin
     def api_start_protocol_save():
         data, err = get_json_body()
         if err:
@@ -208,6 +218,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "count": count})
 
     @app.route("/api/judge/start-protocol", methods=["DELETE"])
+    @require_admin
     def api_start_protocol_clear():
         cat_id = request.args.get("category_id", type=int)
         if cat_id:
@@ -215,6 +226,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/judge/start-protocol/auto-fill", methods=["POST"])
+    @require_admin
     def api_start_protocol_autofill():
         data, err = get_json_body()
         if err:
@@ -232,6 +244,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "count": count})
 
     @app.route("/api/judge/start-protocol/launch", methods=["POST"])
+    @require_admin
     def api_start_protocol_launch():
         err = _require_engine()
         if err:
@@ -286,6 +299,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         )
 
     @app.route("/api/judge/start-protocol/start-rider", methods=["POST"])
+    @require_admin
     def api_start_protocol_start_rider():
         err = _require_engine()
         if err:
@@ -316,6 +330,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return safe_400(e, "start-rider")
 
     @app.route("/api/judge/unfinish-rider", methods=["POST"])
+    @require_admin
     def api_judge_unfinish_rider():
         err = _require_engine()
         if err:
@@ -334,6 +349,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/judge/finish-race", methods=["POST"])
+    @require_admin
     def api_judge_finish_race():
         err = _require_engine()
         if err:
@@ -348,6 +364,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, **result})
 
     @app.route("/api/judge/reset-category", methods=["POST"])
+    @require_admin
     def api_judge_reset_category():
         err = _require_engine()
         if err:
@@ -368,6 +385,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return safe_400(e, "reset_category")
 
     @app.route("/api/judge/edit-finish-time", methods=["POST"])
+    @require_admin
     def api_judge_edit_finish_time():
         err = _require_engine()
         if err:
@@ -399,15 +417,13 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify(db.get_laps(result["id"]))
 
     def _check_category_not_closed(lap):
-        result_row = db._exec(
-            "SELECT category_id FROM result WHERE id=?", (lap["result_id"],)
-        ).fetchone()
-        if result_row and result_row["category_id"]:
-            if db.is_category_closed(result_row["category_id"]):
-                return jsonify({"error": "Категория закрыта"}), 400
+        cat_id = db.get_category_for_result(lap["result_id"])
+        if cat_id and db.is_category_closed(cat_id):
+            return jsonify({"error": "Категория закрыта"}), 400
         return None
 
     @app.route("/api/judge/lap/<int:lap_id>", methods=["PUT"])
+    @require_admin
     def api_judge_update_lap(lap_id):
         lap = db.get_lap_by_id(lap_id)
         if not lap:
@@ -422,10 +438,11 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if lap_time_ms is None:
             return jsonify({"error": "Время не указано"}), 400
         db.update_lap(lap_id, lap_time=int(lap_time_ms), source="EDITED")
-        _recalc_lap_timestamps(db, lap["result_id"])
+        db.recalc_lap_timestamps(lap["result_id"])
         return jsonify({"ok": True})
 
     @app.route("/api/judge/lap/<int:lap_id>", methods=["DELETE"])
+    @require_admin
     def api_judge_delete_lap(lap_id):
         lap = db.get_lap_by_id(lap_id)
         if not lap:
@@ -434,10 +451,11 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         if err:
             return err
         db.delete_lap(lap_id)
-        _renumber_laps(db, lap["result_id"])
+        db.renumber_laps(lap["result_id"])
         return jsonify({"ok": True})
 
     @app.route("/api/judge/manual-lap", methods=["POST"])
+    @require_admin
     def api_judge_manual_lap():
         err = _require_engine()
         if err:
@@ -465,6 +483,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
             return jsonify([])
 
     @app.route("/api/judge/notes", methods=["POST"])
+    @require_admin
     def api_judge_notes_create():
         data, err = get_json_body()
         if err:
@@ -477,34 +496,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "id": nid})
 
     @app.route("/api/judge/notes/<int:nid>", methods=["DELETE"])
+    @require_admin
     def api_judge_notes_delete(nid):
         db.delete_note(nid)
         return jsonify({"ok": True})
-
-
-def _recalc_lap_timestamps(db, result_id):
-    result = db._exec(
-        "SELECT start_time, status, penalty_time_ms FROM result WHERE id=?",
-        (result_id,),
-    ).fetchone()
-    if not result:
-        return
-    laps = db.get_laps(result_id)
-    current_ts = int(float(result["start_time"]))
-    for lap in laps:
-        current_ts += int(lap.get("lap_time") or 0)
-        db._exec("UPDATE lap SET timestamp=? WHERE id=?", (current_ts, lap["id"]))
-    db._commit()
-    if result["status"] == "FINISHED" and laps:
-        penalty_ms = result["penalty_time_ms"] or 0
-        db.update_result(result_id, finish_time=current_ts + penalty_ms)
-
-
-def _renumber_laps(db, result_id):
-    laps = db.get_laps(result_id)
-    for i, lap in enumerate(laps):
-        new_num = 0 if i == 0 else i
-        if lap["lap_number"] != new_num:
-            db._exec("UPDATE lap SET lap_number=? WHERE id=?", (new_num, lap["id"]))
-    db._commit()
-    _recalc_lap_timestamps(db, result_id)

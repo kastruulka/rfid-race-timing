@@ -1,10 +1,12 @@
-import csv
 import io
+import csv
 import time
 from flask import render_template, jsonify, request, Response
 from .database import Database
 from .race_engine import RaceEngine
 from .request_helpers import get_json_body
+from .settings import require_admin
+from .csv_import import sanitize_for_export, parse_csv_text, import_riders
 
 
 def register_start_list(app, db: Database, engine: RaceEngine = None):
@@ -22,6 +24,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         return jsonify(cats)
 
     @app.route("/api/categories", methods=["POST"])
+    @require_admin
     def api_categories_create():
         data, err = get_json_body()
         if err:
@@ -35,6 +38,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True, "id": cid})
 
     @app.route("/api/categories/<int:cid>", methods=["PUT"])
+    @require_admin
     def api_categories_update(cid):
         data, err = get_json_body()
         if err:
@@ -43,6 +47,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/categories/<int:cid>", methods=["DELETE"])
+    @require_admin
     def api_categories_delete(cid):
         ok = db.delete_category(cid)
         if not ok:
@@ -58,6 +63,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         return jsonify(riders)
 
     @app.route("/api/riders", methods=["POST"])
+    @require_admin
     def api_riders_create():
         data, err = get_json_body()
         if err:
@@ -93,38 +99,12 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         if engine:
             engine.reload_epc_map()
 
-        cat_id = data.get("category_id")
-        if cat_id is not None:
-            try:
-                cat_id = int(cat_id)
-            except (ValueError, TypeError):
-                cat_id = None
-
-        race_id = db.get_current_race_id()
-        if cat_id and race_id:
-            existing_result = db.get_result_by_rider(rid)
-            if not existing_result:
-                others = db.get_results_by_category(cat_id)
-                start_time = None
-                for r in others:
-                    st = r.get("start_time")
-                    if st:
-                        start_time = st
-                        break
-
-                if start_time is None:
-                    start_time = time.time() * 1000
-
-                db.create_result(
-                    rider_id=rid,
-                    category_id=cat_id,
-                    start_time=start_time,
-                    status="RACING",
-                )
+        _auto_enroll_rider(db, rid, data.get("category_id"))
 
         return jsonify({"ok": True, "id": rid})
 
     @app.route("/api/riders/<int:rid>", methods=["PUT"])
+    @require_admin
     def api_riders_update(rid):
         data, err = get_json_body()
         if err:
@@ -150,6 +130,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         return jsonify({"ok": True})
 
     @app.route("/api/riders/<int:rid>", methods=["DELETE"])
+    @require_admin
     def api_riders_delete(rid):
         ok = db.delete_rider(rid)
         if not ok:
@@ -178,125 +159,79 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         for r in riders:
             writer.writerow(
                 [
-                    r["number"],
-                    r["last_name"],
-                    r["first_name"],
-                    r.get("birth_year", ""),
-                    r.get("city", ""),
-                    r.get("club", ""),
-                    r.get("category_name", ""),
-                    r.get("epc", ""),
+                    sanitize_for_export(r["number"]),
+                    sanitize_for_export(r["last_name"]),
+                    sanitize_for_export(r["first_name"]),
+                    sanitize_for_export(r.get("birth_year", "")),
+                    sanitize_for_export(r.get("city", "")),
+                    sanitize_for_export(r.get("club", "")),
+                    sanitize_for_export(r.get("category_name", "")),
+                    sanitize_for_export(r.get("epc", "")),
                 ]
             )
-        csv_data = output.getvalue()
         return Response(
-            csv_data,
+            output.getvalue(),
             mimetype="text/csv",
             headers={"Content-Disposition": "attachment; filename=start_list.csv"},
         )
 
     @app.route("/api/riders/import", methods=["POST"])
+    @require_admin
     def api_riders_import():
         if "file" not in request.files:
             return jsonify({"error": "Файл не найден"}), 400
 
         file = request.files["file"]
-        try:
-            text = file.read().decode("utf-8-sig")
-        except UnicodeDecodeError:
-            file.seek(0)
-            text = file.read().decode("cp1251")
+        raw_bytes = file.read()
+        if not raw_bytes:
+            return jsonify({"error": "Файл пуст"}), 400
 
-        reader_csv = csv.DictReader(io.StringIO(text))
-        imported = 0
-        errors = []
-
-        cat_cache = {}
-        for c in db.get_categories():
-            cat_cache[c["name"].lower().strip()] = c["id"]
-
-        for i, row in enumerate(reader_csv, start=2):
-            num_str = (
-                row.get("number") or row.get("номер") or row.get("Number") or ""
-            ).strip()
-            last_name = (
-                row.get("last_name") or row.get("фамилия") or row.get("Фамилия") or ""
-            ).strip()
-
-            if not num_str or not last_name:
-                errors.append(f"Строка {i}: пропущена (нет номера/фамилии)")
-                continue
-
-            try:
-                number = int(num_str)
-            except ValueError:
-                errors.append(f"Строка {i}: неверный номер '{num_str}'")
-                continue
-
-            if db.get_rider_by_number(number):
-                errors.append(f"Строка {i}: номер {number} уже есть")
-                continue
-
-            first_name = (
-                row.get("first_name") or row.get("имя") or row.get("Имя") or ""
-            ).strip()
-            birth_year = None
-            by_str = (
-                row.get("birth_year") or row.get("год") or row.get("Год") or ""
-            ).strip()
-            if by_str:
-                try:
-                    birth_year = int(by_str)
-                except ValueError:
-                    pass
-
-            city = (
-                row.get("city") or row.get("город") or row.get("Город") or ""
-            ).strip()
-            club = (
-                row.get("club")
-                or row.get("команда")
-                or row.get("Команда")
-                or row.get("клуб")
-                or ""
-            ).strip()
-            cat_name = (
-                row.get("category")
-                or row.get("категория")
-                or row.get("Категория")
-                or ""
-            ).strip()
-            epc = (row.get("epc") or row.get("EPC") or "").strip() or None
-
-            cat_id = None
-            if cat_name:
-                cat_key = cat_name.lower().strip()
-                if cat_key in cat_cache:
-                    cat_id = cat_cache[cat_key]
-                else:
-                    cat_id = db.add_category(name=cat_name)
-                    cat_cache[cat_key] = cat_id
-
-            if epc and db.get_rider_by_epc(epc):
-                errors.append(f"Строка {i}: EPC '{epc}' уже привязан")
-                epc = None
-
-            db.add_rider(
-                number=number,
-                last_name=last_name,
-                first_name=first_name,
-                birth_year=birth_year,
-                city=city,
-                club=club,
-                category_id=cat_id,
-                epc=epc,
-            )
-            imported += 1
+        csv_text = parse_csv_text(raw_bytes)
+        result = import_riders(db, csv_text)
 
         if engine:
             engine.reload_epc_map()
 
-        result = {"ok": True, "imported": imported}
-        if errors:
-            result["warnings"] = errors
-        return jsonify(result)
+        response = {"ok": True, "imported": result.imported, "skipped": result.skipped}
+        if result.errors:
+            response["ok"] = False
+            response["errors"] = result.errors
+            return jsonify(response), 400
+        if result.warnings:
+            response["warnings"] = result.warnings
+        return jsonify(response)
+
+
+def _auto_enroll_rider(db: Database, rider_id: int, raw_cat_id):
+    cat_id = None
+    if raw_cat_id is not None:
+        try:
+            cat_id = int(raw_cat_id)
+        except (ValueError, TypeError):
+            return
+
+    race_id = db.get_current_race_id()
+    if not cat_id or not race_id:
+        return
+
+    existing_result = db.get_result_by_rider(rider_id)
+    if existing_result:
+        return
+
+    others = db.get_results_by_category(cat_id)
+    start_time = None
+    for r in others:
+        st = r.get("start_time")
+        if st:
+            start_time = st
+            break
+
+    if start_time is None:
+        start_time = time.time() * 1000
+
+    db.create_result(
+        rider_id=rider_id,
+        category_id=cat_id,
+        start_time=start_time,
+        status="RACING",
+    )

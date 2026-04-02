@@ -5,6 +5,7 @@ from flask import render_template, jsonify, send_file
 from .database import Database
 from .race_engine import RaceEngine
 from .request_helpers import get_json_body
+from .timing import calc_total_time_with_penalty
 
 logger = logging.getLogger(__name__)
 
@@ -69,16 +70,8 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
         laps_done = sum(1 for lap in laps if lap["lap_number"] > 0)
         penalty_time_ms = r.get("penalty_time_ms") or 0
 
-        total_time = None
-        if r["status"] == "FINISHED":
-            if r.get("finish_time") and r.get("start_time"):
-                total_time = int(r["finish_time"]) - int(r["start_time"])
-            elif laps and r.get("start_time"):
-                total_time = int(laps[-1]["timestamp"]) - int(r["start_time"])
-        elif laps and r.get("start_time"):
-            total_time = (
-                int(laps[-1]["timestamp"]) - int(r["start_time"]) + penalty_time_ms
-            )
+        last_lap_ts = laps[-1]["timestamp"] if laps else None
+        total_time = calc_total_time_with_penalty(r, last_lap_ts)
 
         if r["status"] == "FINISHED" and leader_time is None:
             leader_time = total_time

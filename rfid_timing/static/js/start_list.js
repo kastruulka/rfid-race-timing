@@ -1,6 +1,7 @@
 let allRiders = [];
 let categories = [];
 let selectedCatId = '';
+let authManager = null;
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -11,21 +12,28 @@ function toast(msg, isError) {
 }
 
 async function api(url, method, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
-  return r.json();
+  const opts = { method: method || 'GET' };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+
+  const result = await authManager.fetchJson(url, opts);
+  if (result.unauthorized) return null;
+  return result.data;
 }
 
 async function loadAll() {
-  categories = await api('/api/categories', 'GET');
+  const data = await api('/api/categories', 'GET');
+  categories = Array.isArray(data) ? data : [];
   renderCategories();
   await loadRiders();
 }
 
 async function loadRiders() {
   const qs = selectedCatId ? '?category_id=' + selectedCatId : '';
-  allRiders = await api('/api/riders' + qs, 'GET');
+  const data = await api('/api/riders' + qs, 'GET');
+  allRiders = Array.isArray(data) ? data : [];
   renderRiders();
   updateStats();
 }
@@ -37,6 +45,8 @@ function renderCategories() {
   list.appendChild(allItem);
 
   let totalRiders = 0;
+  const canEdit = authManager && authManager.isAuthenticated();
+
   categories.forEach(c => {
     const div = document.createElement('div');
     div.className = 'cat-item' + (selectedCatId == c.id ? ' active' : '');
@@ -50,8 +60,8 @@ function renderCategories() {
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div class="cat-count">' + (c.rider_count || 0) + '</div>' +
         '<div class="cat-actions">' +
-          '<button class="btn btn-sm" onclick="event.stopPropagation();editCat(' + c.id + ')" title="Редакт.">✎</button>' +
-          '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteCat(' + c.id + ')" title="Удалить">✕</button>' +
+          '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();editCat(' + c.id + ')" title="Редакт.">✎</button>' +
+          '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();deleteCat(' + c.id + ')" title="Удалить">✕</button>' +
         '</div>' +
       '</div>';
     list.appendChild(div);
@@ -60,6 +70,7 @@ function renderCategories() {
 
   document.getElementById('cnt-all').textContent = totalRiders;
   if (!selectedCatId) allItem.classList.add('active');
+  if (authManager) authManager.syncProtectedControls();
 }
 
 function selectCategory(el, catId) {
@@ -69,7 +80,13 @@ function selectCategory(el, catId) {
   loadRiders();
 }
 
-function openCatModal(cat) {
+async function openCatModal(cat) {
+  if (!cat && !await authManager.requireAuth('Для добавления категории нужен пароль администратора')) return;
+  if (cat && !authManager.isAuthenticated()) {
+    authManager.openLogin('Для редактирования категории нужен пароль администратора');
+    return;
+  }
+
   document.getElementById('cat-edit-id').value = cat ? cat.id : '';
   document.getElementById('cat-name').value = cat ? cat.name : '';
   document.getElementById('cat-laps').value = cat ? cat.laps : 5;
@@ -81,33 +98,42 @@ function openCatModal(cat) {
 function closeCatModal() { document.getElementById('cat-modal').classList.remove('open'); }
 
 async function saveCat() {
+  if (!await authManager.requireAuth('Для сохранения категории нужен пароль администратора')) return;
+
   const id = document.getElementById('cat-edit-id').value;
   const body = {
     name: document.getElementById('cat-name').value.trim(),
-    laps: parseInt(document.getElementById('cat-laps').value) || 1,
+    laps: parseInt(document.getElementById('cat-laps').value, 10) || 1,
     distance_km: parseFloat(document.getElementById('cat-dist').value) || 0,
   };
   if (!body.name) { toast('Введите название', true); return; }
 
-  if (id) {
-    await api('/api/categories/' + id, 'PUT', body);
-    toast('Категория обновлена');
-  } else {
-    await api('/api/categories', 'POST', body);
-    toast('Категория создана');
+  const res = id
+    ? await api('/api/categories/' + id, 'PUT', body)
+    : await api('/api/categories', 'POST', body);
+  if (!res) return;
+
+  if (res.error) {
+    toast(res.error, true);
+    return;
   }
+
+  toast(id ? 'Категория обновлена' : 'Категория создана');
   closeCatModal();
   loadAll();
 }
 
 async function editCat(catId) {
+  if (!await authManager.requireAuth('Для редактирования категории нужен пароль администратора')) return;
   const cat = categories.find(c => c.id === catId);
   if (cat) openCatModal(cat);
 }
 
 async function deleteCat(catId) {
+  if (!await authManager.requireAuth('Для удаления категории нужен пароль администратора')) return;
   if (!confirm('Удалить категорию? Участники в ней не должны быть.')) return;
   const res = await api('/api/categories/' + catId, 'DELETE');
+  if (!res) return;
   if (res.error) { toast(res.error, true); return; }
   toast('Категория удалена');
   if (selectedCatId == catId) selectedCatId = '';
@@ -117,6 +143,7 @@ async function deleteCat(catId) {
 function renderRiders() {
   const tbody = document.getElementById('riders-body');
   const query = document.getElementById('search-input').value.toLowerCase();
+  const canEdit = authManager && authManager.isAuthenticated();
   const filtered = allRiders.filter(r => {
     if (!query) return true;
     return (String(r.number).includes(query) ||
@@ -140,13 +167,15 @@ function renderRiders() {
       '<td>' + esc(r.club || '') + '</td>' +
       '<td>' + esc(r.category_name || '—') + '</td>' +
       '<td class="epc-col' + (hasEpc ? ' bound' : '') + '" title="' + esc(r.epc || '') + '">' +
-        (hasEpc ? r.epc : '—') + '</td>' +
+        (hasEpc ? esc(r.epc) : '—') + '</td>' +
       '<td><div class="actions-col">' +
-        '<button class="btn btn-sm" onclick="editRider(' + r.id + ')" title="Редакт.">✎</button>' +
-        '<button class="btn btn-sm btn-danger" onclick="deleteRider(' + r.id + ')" title="Удалить">✕</button>' +
+        '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="editRider(' + r.id + ')" title="Редакт.">✎</button>' +
+        '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="deleteRider(' + r.id + ')" title="Удалить">✕</button>' +
       '</div></td>' +
     '</tr>';
   }).join('');
+
+  if (authManager) authManager.syncProtectedControls();
 }
 
 function applySearch() { renderRiders(); }
@@ -159,7 +188,12 @@ function updateStats() {
   document.getElementById('stat-noepc').textContent = total - withEpc;
 }
 
-function openRiderModal(rider) {
+async function openRiderModal(rider) {
+  const reason = rider
+    ? 'Для редактирования участника нужен пароль администратора'
+    : 'Для добавления участника нужен пароль администратора';
+  if (!await authManager.requireAuth(reason)) return;
+
   document.getElementById('rider-edit-id').value = rider ? rider.id : '';
   document.getElementById('r-number').value = rider ? rider.number : '';
   document.getElementById('r-lastname').value = rider ? (rider.last_name || '') : '';
@@ -175,7 +209,8 @@ function openRiderModal(rider) {
   sel.innerHTML = '<option value="">— без категории —</option>';
   categories.forEach(c => {
     const o = document.createElement('option');
-    o.value = c.id; o.textContent = c.name;
+    o.value = c.id;
+    o.textContent = c.name;
     if (rider && rider.category_id === c.id) o.selected = true;
     sel.appendChild(o);
   });
@@ -186,45 +221,48 @@ function openRiderModal(rider) {
 function closeRiderModal() { document.getElementById('rider-modal').classList.remove('open'); }
 
 async function saveRider() {
+  if (!await authManager.requireAuth('Для сохранения участника нужен пароль администратора')) return;
+
   const id = document.getElementById('rider-edit-id').value;
   const body = {
-    number: parseInt(document.getElementById('r-number').value),
+    number: parseInt(document.getElementById('r-number').value, 10),
     last_name: document.getElementById('r-lastname').value.trim(),
     first_name: document.getElementById('r-firstname').value.trim(),
-    birth_year: parseInt(document.getElementById('r-year').value) || null,
+    birth_year: parseInt(document.getElementById('r-year').value, 10) || null,
     city: document.getElementById('r-city').value.trim(),
     club: document.getElementById('r-club').value.trim(),
-    category_id: parseInt(document.getElementById('r-category').value) || null,
+    category_id: parseInt(document.getElementById('r-category').value, 10) || null,
     epc: document.getElementById('r-epc').value.trim() || null,
   };
   if (!body.number || !body.last_name) {
-    toast('Номер и фамилия обязательны', true); return;
+    toast('Номер и фамилия обязательны', true);
+    return;
   }
 
-  let res;
-  if (id) {
-    res = await api('/api/riders/' + id, 'PUT', body);
-    if (res.error) { toast(res.error, true); return; }
-    toast('Участник обновлён');
-  } else {
-    res = await api('/api/riders', 'POST', body);
-    if (res.error) { toast(res.error, true); return; }
-    toast('Участник добавлен');
-  }
+  const res = id
+    ? await api('/api/riders/' + id, 'PUT', body)
+    : await api('/api/riders', 'POST', body);
+  if (!res) return;
+  if (res.error) { toast(res.error, true); return; }
+
+  toast(id ? 'Участник обновлён' : 'Участник добавлен');
   closeRiderModal();
   loadAll();
 }
 
 async function editRider(riderId) {
+  if (!await authManager.requireAuth('Для редактирования участника нужен пароль администратора')) return;
   const rider = allRiders.find(r => r.id === riderId);
   if (rider) openRiderModal(rider);
 }
 
 async function deleteRider(riderId) {
+  if (!await authManager.requireAuth('Для удаления участника нужен пароль администратора')) return;
   const rider = allRiders.find(r => r.id === riderId);
   const label = rider ? '#' + rider.number + ' ' + rider.last_name : '#' + riderId;
   if (!confirm('Удалить участника ' + label + '?')) return;
   const res = await api('/api/riders/' + riderId, 'DELETE');
+  if (!res) return;
   if (res.error) { toast(res.error, true); return; }
   toast('Участник удалён');
   loadAll();
@@ -234,15 +272,35 @@ function exportCSV() {
   window.location.href = '/api/riders/export';
 }
 
+async function triggerImport() {
+  if (!await authManager.requireAuth('Для импорта нужен пароль администратора')) return;
+  document.getElementById('csv-import-input').click();
+}
+
 async function importCSV(event) {
+  if (!authManager.isAuthenticated()) {
+    authManager.openLogin('Для импорта нужен пароль администратора');
+    event.target.value = '';
+    return;
+  }
+
   const file = event.target.files[0];
   if (!file) return;
   const formData = new FormData();
   formData.append('file', file);
   try {
-    const resp = await fetch('/api/riders/import', { method: 'POST', body: formData });
+    const resp = await fetch('/api/riders/import', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: formData,
+    });
     const res = await resp.json();
+    if (resp.status === 401) {
+      await authManager.handleUnauthorized('Сессия истекла. Войдите заново для импорта');
+      return;
+    }
     if (res.error) { toast(res.error, true); return; }
+    if (res.errors && res.errors.length) { toast(res.errors.join('; '), true); return; }
     toast('Импортировано: ' + (res.imported || 0) + ' участников');
     loadAll();
   } catch (e) {
@@ -257,4 +315,29 @@ function esc(s) {
   return d.innerHTML;
 }
 
-loadAll();
+function bindModalClose(id) {
+  const modal = document.getElementById(id);
+  modal.addEventListener('click', function (event) {
+    if (event.target === modal) modal.classList.remove('open');
+  });
+}
+
+async function init() {
+  authManager = createAuthManager({
+    toast: toast,
+    authHintId: 'auth-hint',
+    logoutButtonId: 'logout-btn',
+    onAuthChange: function () {
+      renderCategories();
+      renderRiders();
+    },
+  });
+
+  bindModalClose('cat-modal');
+  bindModalClose('rider-modal');
+
+  await authManager.checkAuth();
+  await loadAll();
+}
+
+init();

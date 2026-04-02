@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Стартовый лист</title>
   <link rel="stylesheet" href="/static/css/web.css">
+  <link rel="stylesheet" href="/static/css/auth.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/start_list.css') }}">
 </head>
 <body>
@@ -16,6 +17,8 @@
     <a href="/protocol">Протокол</a>
     <a href="/settings">Настройки</a>
     <a href="/judge">Судья</a>
+    <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+    <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
   </nav>
 
   <div class="page">
@@ -23,7 +26,7 @@
     <div class="sidebar">
       <div class="panel-header">
         Категории
-        <button class="btn btn-sm btn-accent" onclick="openCatModal()">+ Добавить</button>
+        <button class="btn btn-sm btn-accent" type="button" data-auth-required onclick="openCatModal()">+ Добавить</button>
       </div>
       <div class="cat-list" id="cat-list">
         <div class="cat-item active" data-id="" onclick="selectCategory(this, '')">
@@ -41,12 +44,13 @@
         <input type="text" class="search-box" id="search-input"
                placeholder="Поиск по номеру, фамилии, клубу…"
                oninput="applySearch()">
-        <button class="btn btn-accent" onclick="openRiderModal()">+ Участник</button>
-        <button class="btn" onclick="exportCSV()">↓ CSV</button>
-        <label class="btn" style="margin:0">
-          ↑ Импорт
-          <input type="file" accept=".csv" style="display:none" onchange="importCSV(event)">
-        </label>
+        <button class="btn btn-accent" type="button" data-auth-required onclick="openRiderModal()">+ Участник</button>
+        <button class="btn" type="button" onclick="exportCSV()">↓ CSV</button>
+        <button class="btn" type="button" data-auth-required onclick="triggerImport()">↑ Импорт</button>
+        <span class="auth-hint hidden" id="auth-hint">
+          <span class="lock-icon">🔒</span> изменение только после входа
+        </span>
+        <input type="file" id="csv-import-input" accept=".csv" style="display:none" data-auth-required onchange="importCSV(event)">
       </div>
       <div class="stat-row" id="stat-row">
         <div class="stat-item">Всего: <b id="stat-total">0</b></div>
@@ -84,21 +88,21 @@
       <input type="hidden" id="cat-edit-id">
       <div class="form-row">
         <label>Название</label>
-        <input type="text" id="cat-name" placeholder="М18-29">
+        <input type="text" id="cat-name" data-auth-required placeholder="М18-29">
       </div>
       <div class="form-grid">
         <div class="form-row">
           <label>Кругов</label>
-          <input type="number" id="cat-laps" value="5" min="1">
+          <input type="number" id="cat-laps" data-auth-required value="5" min="1">
         </div>
         <div class="form-row">
           <label>Дистанция круга (км)</label>
-          <input type="number" id="cat-dist" value="5" step="0.1" min="0">
+          <input type="number" id="cat-dist" data-auth-required value="5" step="0.1" min="0">
         </div>
       </div>
       <div class="form-actions">
-        <button class="btn" onclick="closeCatModal()">Отмена</button>
-        <button class="btn btn-accent" onclick="saveCat()">Сохранить</button>
+        <button class="btn" type="button" onclick="closeCatModal()">Отмена</button>
+        <button class="btn btn-accent" type="button" data-auth-required onclick="saveCat()">Сохранить</button>
       </div>
     </div>
   </div>
@@ -110,52 +114,53 @@
       <div class="form-grid">
         <div class="form-row">
           <label>Стартовый номер</label>
-          <input type="number" id="r-number" min="1">
+          <input type="number" id="r-number" data-auth-required min="1">
         </div>
         <div class="form-row">
           <label>Категория</label>
-          <select id="r-category"></select>
+          <select id="r-category" data-auth-required></select>
         </div>
       </div>
       <div class="form-grid">
         <div class="form-row">
           <label>Фамилия</label>
-          <input type="text" id="r-lastname">
+          <input type="text" id="r-lastname" data-auth-required>
         </div>
         <div class="form-row">
           <label>Имя</label>
-          <input type="text" id="r-firstname">
+          <input type="text" id="r-firstname" data-auth-required>
         </div>
       </div>
       <div class="form-grid">
         <div class="form-row">
           <label>Год рождения</label>
-          <input type="number" id="r-year" min="1940" max="2020">
+          <input type="number" id="r-year" data-auth-required min="1940" max="2020">
         </div>
         <div class="form-row">
           <label>Город</label>
-          <input type="text" id="r-city">
+          <input type="text" id="r-city" data-auth-required>
         </div>
       </div>
       <div class="form-grid">
         <div class="form-row">
           <label>Команда / клуб</label>
-          <input type="text" id="r-club">
+          <input type="text" id="r-club" data-auth-required>
         </div>
         <div class="form-row">
           <label>EPC метки</label>
-          <input type="text" id="r-epc" placeholder="оставьте пустым" class="mono" style="font-size:12px">
+          <input type="text" id="r-epc" data-auth-required placeholder="оставьте пустым" class="mono" style="font-size:12px">
         </div>
       </div>
       <div class="form-actions">
-        <button class="btn" onclick="closeRiderModal()">Отмена</button>
-        <button class="btn btn-accent" onclick="saveRider()">Сохранить</button>
+        <button class="btn" type="button" onclick="closeRiderModal()">Отмена</button>
+        <button class="btn btn-accent" type="button" data-auth-required onclick="saveRider()">Сохранить</button>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
-<script src="{{ url_for('static', filename='js/start_list.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/start_list.js') }}"></script>
 </body>
 </html>

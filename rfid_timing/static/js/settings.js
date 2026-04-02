@@ -1,4 +1,5 @@
-let _authenticated = false;
+let authManager = null;
+let authReady = false;
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -9,99 +10,21 @@ function toast(msg, isError) {
 }
 
 async function api(url, method, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const resp = await fetch(url, opts);
-
-  if (resp.status === 401) {
-    _authenticated = false;
-    updateAuthUI();
-    toast('Сессия истекла — войдите заново', true);
-    return null;
-  }
-  return resp;
-}
-
-function updateAuthUI() {
-  const overlay = document.getElementById('auth-overlay');
-  const logoutBtn = document.getElementById('logout-btn');
-  const authHint = document.getElementById('auth-hint');
-
-  if (_authenticated) {
-    overlay.classList.add('hidden');
-    logoutBtn.classList.remove('hidden');
-    if (authHint) authHint.classList.add('hidden');
-  } else {
-    overlay.classList.remove('hidden');
-    logoutBtn.classList.add('hidden');
-    if (authHint) authHint.classList.remove('hidden');
-  }
-}
-
-async function checkAuth() {
-  try {
-    const resp = await fetch('/api/settings/auth-status');
-    const data = await resp.json();
-    _authenticated = !!data.authenticated;
-  } catch (e) {
-    _authenticated = false;
-  }
-  updateAuthUI();
-}
-
-async function doLogin() {
-  const input = document.getElementById('login-password');
-  const errEl = document.getElementById('login-error');
-  const password = input.value.trim();
-
-  errEl.textContent = '';
-
-  if (!password) {
-    errEl.textContent = 'Введите пароль';
-    input.focus();
-    return;
+  const opts = { method: method || 'GET' };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
   }
 
-  try {
-    const resp = await fetch('/api/settings/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    const data = await resp.json();
-
-    if (data.ok) {
-      _authenticated = true;
-      input.value = '';
-      updateAuthUI();
-      toast('Авторизация успешна');
-      loadSettings();
-    } else {
-      errEl.textContent = data.error || 'Ошибка входа';
-      input.select();
-    }
-  } catch (e) {
-    errEl.textContent = 'Ошибка сети';
-  }
-}
-
-async function doLogout() {
-  try {
-    await fetch('/api/settings/logout', { method: 'POST' });
-  } catch (e) { /* ignore */ }
-  _authenticated = false;
-  updateAuthUI();
-  toast('Вы вышли');
-}
-
-function onLoginKeydown(e) {
-  if (e.key === 'Enter') doLogin();
+  const result = await authManager.fetchJson(url, opts);
+  if (result.unauthorized) return null;
+  return result;
 }
 
 async function loadSettings() {
   const resp = await api('/api/settings', 'GET');
-  if (!resp) return;
-  const s = await resp.json();
+  if (!resp || !resp.data) return;
+  const s = resp.data;
 
   document.getElementById('s-reader-ip').value = s.reader_ip || '';
   document.getElementById('s-reader-port').value = s.reader_port || 5084;
@@ -116,19 +39,11 @@ async function loadSettings() {
     document.getElementById('s-ant-' + i).checked = antennas.includes(i);
   }
 
-  if (s._authenticated !== undefined) {
-    _authenticated = !!s._authenticated;
-    updateAuthUI();
-  }
-
   loadSysInfo();
 }
 
 async function saveSettings() {
-  if (!_authenticated) {
-    toast('Сначала войдите', true);
-    return;
-  }
+  if (!await authManager.requireAuth('Для сохранения настроек нужен пароль администратора')) return;
 
   const antennas = [];
   for (let i = 1; i <= 4; i++) {
@@ -137,7 +52,7 @@ async function saveSettings() {
 
   const body = {
     reader_ip: document.getElementById('s-reader-ip').value.trim(),
-    reader_port: parseInt(document.getElementById('s-reader-port').value) || 5084,
+    reader_port: parseInt(document.getElementById('s-reader-port').value, 10) || 5084,
     tx_power: parseFloat(document.getElementById('s-tx-power').value) || 30,
     antennas: antennas,
     rssi_window_sec: parseFloat(document.getElementById('s-rssi-window').value) || 2.0,
@@ -147,8 +62,8 @@ async function saveSettings() {
   };
 
   const resp = await api('/api/settings/apply', 'POST', body);
-  if (!resp) return;
-  const data = await resp.json();
+  if (!resp || !resp.data) return;
+  const data = resp.data;
 
   if (data.ok) {
     toast(data.message || 'Настройки применены');
@@ -164,8 +79,8 @@ async function saveSettings() {
 async function loadReaderStatus() {
   try {
     const resp = await api('/api/settings/reader-status', 'GET');
-    if (!resp) return;
-    const st = await resp.json();
+    if (!resp || !resp.data) return;
+    const st = resp.data;
     const el = document.getElementById('reader-mode-badge');
     if (!el) return;
     if (!st.running) {
@@ -178,11 +93,13 @@ async function loadReaderStatus() {
       el.className = 'status-badge ok';
       el.textContent = 'Ридер ' + (st.reader_ip || '');
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // ignore
+  }
 }
 
 async function checkConnection() {
-  if (!_authenticated) { toast('Сначала войдите', true); return; }
+  if (!await authManager.requireAuth('Для проверки подключения нужен пароль администратора')) return;
 
   const badge = document.getElementById('conn-status');
   badge.className = 'status-badge wait';
@@ -190,8 +107,13 @@ async function checkConnection() {
 
   try {
     const resp = await api('/api/settings/check-reader', 'POST');
-    if (!resp) { badge.className = 'status-badge err'; badge.textContent = '—'; return; }
-    const data = await resp.json();
+    if (!resp || !resp.data) {
+      badge.className = 'status-badge err';
+      badge.textContent = '—';
+      return;
+    }
+
+    const data = resp.data;
     if (data.ok) {
       badge.className = 'status-badge ok';
       badge.textContent = data.message || 'Подключён';
@@ -209,11 +131,12 @@ async function checkConnection() {
 }
 
 async function backupDB() {
-  if (!_authenticated) { toast('Сначала войдите', true); return; }
+  if (!await authManager.requireAuth('Для резервной копии нужен пароль администратора')) return;
+
   try {
     const resp = await api('/api/settings/backup', 'POST');
-    if (!resp) return;
-    const data = await resp.json();
+    if (!resp || !resp.data) return;
+    const data = resp.data;
     if (data.ok) {
       toast('Бэкап создан: ' + data.filename);
     } else {
@@ -225,12 +148,13 @@ async function backupDB() {
 }
 
 async function resetRace() {
-  if (!_authenticated) { toast('Сначала войдите', true); return; }
-  if (!confirm('Сбросить текущую гонку? Будет создана новая сессия.\nСтарые данные сохранятся в архиве БД.')) return;
+  if (!await authManager.requireAuth('Для сброса гонки нужен пароль администратора')) return;
+   if (!confirm('Сбросить текущую гонку? Будет создана новая сессия.\nСтарые данные сохранятся в архиве БД.')) return;
+
   try {
     const resp = await api('/api/settings/reset-race', 'POST');
-    if (!resp) return;
-    const data = await resp.json();
+    if (!resp || !resp.data) return;
+    const data = resp.data;
     if (data.ok) {
       toast('Новая гоночная сессия: #' + data.race_id);
     } else {
@@ -244,18 +168,33 @@ async function resetRace() {
 async function loadSysInfo() {
   try {
     const resp = await api('/api/settings/sys-info', 'GET');
-    if (!resp) return;
-    const info = await resp.json();
+    if (!resp || !resp.data) return;
+    const info = resp.data;
     document.getElementById('si-db').textContent = info.db_size;
     document.getElementById('si-log').textContent = info.log_size;
     document.getElementById('si-bk').textContent = info.backups_count;
     document.getElementById('si-race').textContent = info.race_id || '—';
     document.getElementById('si-riders').textContent = info.riders_count;
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // ignore
+  }
 }
 
 async function init() {
-  await checkAuth();
+  authManager = createAuthManager({
+    toast: toast,
+    authHintId: 'auth-hint',
+    logoutButtonId: 'logout-btn',
+    onAuthChange: function (authenticated) {
+      if (authReady && authenticated) {
+        loadSettings();
+        loadReaderStatus();
+      }
+    },
+  });
+
+  await authManager.checkAuth();
+  authReady = true;
   loadSettings();
   loadReaderStatus();
 }

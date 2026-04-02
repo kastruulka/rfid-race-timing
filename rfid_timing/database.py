@@ -2,7 +2,51 @@ import sqlite3
 import threading
 import time
 import os
+import logging
+from contextlib import contextmanager
 from typing import Optional, List, Dict
+
+logger = logging.getLogger(__name__)
+
+_SAFE_TABLES = frozenset(
+    {
+        "category",
+        "rider",
+        "result",
+        "lap",
+        "penalty",
+        "start_protocol",
+        "category_state",
+        "race",
+        "note",
+    }
+)
+
+_TABLE_FIELDS = {
+    "category": {"name", "laps", "distance_km"},
+    "rider": {
+        "number",
+        "last_name",
+        "first_name",
+        "birth_year",
+        "city",
+        "club",
+        "model",
+        "category_id",
+        "epc",
+    },
+    "result": {
+        "start_time",
+        "finish_time",
+        "status",
+        "place",
+        "dnf_reason",
+        "penalty_time_ms",
+        "extra_laps",
+    },
+    "lap": {"timestamp", "lap_time", "source", "lap_number"},
+    "start_protocol": {"planned_time", "actual_time", "status"},
+}
 
 
 class Database:
@@ -27,13 +71,27 @@ class Database:
     def _commit(self):
         self._conn().commit()
 
+    @contextmanager
+    def _transaction(self):
+        conn = self._conn()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
     def _update_fields(self, table: str, row_id: int, allowed: set, **kw) -> bool:
-        fields = {k: v for k, v in kw.items() if k in allowed}
+        if table not in _SAFE_TABLES:
+            raise ValueError(f"Таблица {table!r} не в whitelist")
+        table_allowed = _TABLE_FIELDS.get(table, allowed)
+        safe_allowed = allowed & table_allowed
+        fields = {k: v for k, v in kw.items() if k in safe_allowed}
         if not fields:
             return False
-        sql = (
-            f"UPDATE {table} SET " + ",".join(f"{k}=?" for k in fields) + " WHERE id=?"
-        )
+        set_clause = ",".join(f"{k}=?" for k in fields)
+        sql = f"UPDATE {table} SET {set_clause} WHERE id=?"
         self._exec(sql, (*fields.values(), row_id))
         self._commit()
         return True
@@ -216,8 +274,9 @@ class Database:
         self, race_id: int = None, category_id: int = None
     ) -> Dict[str, int]:
         race_id = self._resolve_race(race_id)
+        counts = {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
         if race_id is None:
-            return {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
+            return counts
         if category_id:
             rows = self._exec(
                 "SELECT status, COUNT(*) as cnt FROM result WHERE race_id=? AND category_id=? GROUP BY status",
@@ -228,7 +287,6 @@ class Database:
                 "SELECT status, COUNT(*) as cnt FROM result WHERE race_id=? GROUP BY status",
                 (race_id,),
             ).fetchall()
-        counts = {"RACING": 0, "FINISHED": 0, "DNF": 0, "DSQ": 0, "DNS": 0}
         for r in rows:
             counts[r["status"]] = r["cnt"]
         return counts
@@ -243,26 +301,12 @@ class Database:
         base = """
             SELECT
                 r.id as result_id,
-                r.rider_id,
-                r.category_id,
-                r.start_time,
-                r.finish_time,
-                r.status,
-                r.place,
-                r.dnf_reason,
-                r.penalty_time_ms,
-                r.extra_laps,
-                rd.number,
-                rd.last_name,
-                rd.first_name,
-                rd.club,
-                rd.city,
-                rd.birth_year,
-                c.laps as cat_laps,
-                c.name as cat_name,
+                r.rider_id, r.category_id, r.start_time, r.finish_time,
+                r.status, r.place, r.dnf_reason, r.penalty_time_ms, r.extra_laps,
+                rd.number, rd.last_name, rd.first_name, rd.club, rd.city, rd.birth_year,
+                c.laps as cat_laps, c.name as cat_name,
                 COALESCE(ls.laps_done, 0) as laps_done,
-                ls.last_lap_time,
-                ls.last_lap_ts
+                ls.last_lap_time, ls.last_lap_ts
             FROM result r
             JOIN rider rd ON rd.id = r.rider_id
             LEFT JOIN category c ON c.id = r.category_id
@@ -285,7 +329,6 @@ class Database:
             ).fetchall()
         else:
             rows = self._exec(base, (race_id,)).fetchall()
-
         return [dict(row) for row in rows]
 
     def _resolve_race(self, race_id: int = None) -> Optional[int]:
@@ -382,43 +425,43 @@ class Database:
         if race_id is None:
             return {"error": "no race"}
 
-        results = self._exec(
-            "SELECT id FROM result WHERE category_id=? AND race_id=?",
-            (category_id, race_id),
-        ).fetchall()
-        result_ids = [r["id"] for r in results]
+        with self._transaction():
+            results = self._exec(
+                "SELECT id FROM result WHERE category_id=? AND race_id=?",
+                (category_id, race_id),
+            ).fetchall()
+            result_ids = [r["id"] for r in results]
 
-        deleted_laps = 0
-        for rid in result_ids:
-            c = self._exec(
-                "SELECT COUNT(*) as cnt FROM lap WHERE result_id=?", (rid,)
-            ).fetchone()
-            deleted_laps += c["cnt"] if c else 0
-            self._exec("DELETE FROM lap WHERE result_id=?", (rid,))
-            self._exec("DELETE FROM penalty WHERE result_id=?", (rid,))
+            deleted_laps = 0
+            for rid in result_ids:
+                c = self._exec(
+                    "SELECT COUNT(*) as cnt FROM lap WHERE result_id=?", (rid,)
+                ).fetchone()
+                deleted_laps += c["cnt"] if c else 0
+                self._exec("DELETE FROM lap WHERE result_id=?", (rid,))
+                self._exec("DELETE FROM penalty WHERE result_id=?", (rid,))
 
-        if result_ids:
-            placeholders = ",".join("?" * len(result_ids))
+            if result_ids:
+                placeholders = ",".join("?" * len(result_ids))
+                self._exec(
+                    f"DELETE FROM result WHERE id IN ({placeholders})",
+                    tuple(result_ids),
+                )
+
             self._exec(
-                f"DELETE FROM result WHERE id IN ({placeholders})", tuple(result_ids)
+                "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
+                (race_id, category_id),
+            )
+            self._exec(
+                "DELETE FROM category_state WHERE race_id=? AND category_id=?",
+                (race_id, category_id),
             )
 
-        self._exec(
-            "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
-            (race_id, category_id),
-        )
-        self._exec(
-            "DELETE FROM category_state WHERE race_id=? AND category_id=?",
-            (race_id, category_id),
-        )
-
-        race_row = self._exec(
-            "SELECT closed_at FROM race WHERE id=?", (race_id,)
-        ).fetchone()
-        if race_row and race_row["closed_at"] is not None:
-            self._exec("UPDATE race SET closed_at=NULL WHERE id=?", (race_id,))
-
-        self._commit()
+            race_row = self._exec(
+                "SELECT closed_at FROM race WHERE id=?", (race_id,)
+            ).fetchone()
+            if race_row and race_row["closed_at"] is not None:
+                self._exec("UPDATE race SET closed_at=NULL WHERE id=?", (race_id,))
 
         return {
             "deleted_results": len(result_ids),
@@ -508,17 +551,19 @@ class Database:
 
     def delete_rider(self, rid: int) -> bool:
         try:
-            results = self._exec(
-                "SELECT id FROM result WHERE rider_id=?", (rid,)
-            ).fetchall()
-            for r in results:
-                self._exec("DELETE FROM lap WHERE result_id=?", (r["id"],))
-            self._exec("DELETE FROM result WHERE rider_id=?", (rid,))
-            self._exec("DELETE FROM rider WHERE id=?", (rid,))
-            self._commit()
+            with self._transaction():
+                results = self._exec(
+                    "SELECT id FROM result WHERE rider_id=?", (rid,)
+                ).fetchall()
+                for r in results:
+                    self._exec("DELETE FROM lap WHERE result_id=?", (r["id"],))
+                    self._exec("DELETE FROM penalty WHERE result_id=?", (r["id"],))
+                self._exec("DELETE FROM result WHERE rider_id=?", (rid,))
+                self._exec("DELETE FROM start_protocol WHERE rider_id=?", (rid,))
+                self._exec("DELETE FROM rider WHERE id=?", (rid,))
             return True
         except Exception:
-            self._conn().rollback()
+            logger.exception("Ошибка удаления участника #%d", rid)
             return False
 
     def get_rider(self, rid: int) -> Optional[Dict]:
@@ -593,6 +638,10 @@ class Database:
         ).fetchone()
         return dict(r) if r else None
 
+    def get_result_by_id(self, result_id: int) -> Optional[Dict]:
+        r = self._exec("SELECT * FROM result WHERE id=?", (result_id,)).fetchone()
+        return dict(r) if r else None
+
     def get_results_by_category(
         self, category_id: int, race_id: int = None
     ) -> List[Dict]:
@@ -634,6 +683,12 @@ class Database:
             **kw,
         )
 
+    def get_category_for_result(self, result_id: int) -> Optional[int]:
+        r = self._exec(
+            "SELECT category_id FROM result WHERE id=?", (result_id,)
+        ).fetchone()
+        return r["category_id"] if r else None
+
     def add_penalty(
         self, result_id: int, penalty_type: str, value: float = 0, reason: str = ""
     ) -> int:
@@ -650,6 +705,10 @@ class Database:
             "SELECT * FROM penalty WHERE result_id=? ORDER BY created_at", (result_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_penalty_by_id(self, penalty_id: int) -> Optional[Dict]:
+        r = self._exec("SELECT * FROM penalty WHERE id=?", (penalty_id,)).fetchone()
+        return dict(r) if r else None
 
     def get_penalties_by_race(self, race_id: int = None) -> List[Dict]:
         race_id = self._resolve_race(race_id)
@@ -742,6 +801,31 @@ class Database:
         r = self._exec("SELECT * FROM lap WHERE id=?", (lap_id,)).fetchone()
         return dict(r) if r else None
 
+    def recalc_lap_timestamps(self, result_id: int):
+        result = self.get_result_by_id(result_id)
+        if not result:
+            return
+        laps = self.get_laps(result_id)
+        current_ts = int(float(result["start_time"]))
+        for lap in laps:
+            current_ts += int(lap.get("lap_time") or 0)
+            self._exec("UPDATE lap SET timestamp=? WHERE id=?", (current_ts, lap["id"]))
+        self._commit()
+        if result["status"] == "FINISHED" and laps:
+            penalty_ms = result.get("penalty_time_ms") or 0
+            self.update_result(result_id, finish_time=current_ts + penalty_ms)
+
+    def renumber_laps(self, result_id: int):
+        laps = self.get_laps(result_id)
+        for i, lap in enumerate(laps):
+            new_num = 0 if i == 0 else i
+            if lap["lap_number"] != new_num:
+                self._exec(
+                    "UPDATE lap SET lap_number=? WHERE id=?", (new_num, lap["id"])
+                )
+        self._commit()
+        self.recalc_lap_timestamps(result_id)
+
     def get_feed_history(
         self, limit: int = 50, race_id: int = None, category_id: int = None
     ) -> List[Dict]:
@@ -809,25 +893,25 @@ class Database:
         self, category_id: int, entries: List[Dict], race_id: int = None
     ) -> int:
         race_id = self._resolve_race(race_id)
-        self._exec(
-            "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
-            (race_id, category_id),
-        )
-        for e in entries:
+        with self._transaction():
             self._exec(
-                """INSERT INTO start_protocol
-                   (race_id, category_id, rider_id, position, interval_sec, status)
-                   VALUES (?,?,?,?,?,?)""",
-                (
-                    race_id,
-                    category_id,
-                    e["rider_id"],
-                    e["position"],
-                    e.get("interval_sec", 30),
-                    "WAITING",
-                ),
+                "DELETE FROM start_protocol WHERE race_id=? AND category_id=?",
+                (race_id, category_id),
             )
-        self._commit()
+            for e in entries:
+                self._exec(
+                    """INSERT INTO start_protocol
+                       (race_id, category_id, rider_id, position, interval_sec, status)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        race_id,
+                        category_id,
+                        e["rider_id"],
+                        e["position"],
+                        e.get("interval_sec", 30),
+                        "WAITING",
+                    ),
+                )
         return len(entries)
 
     def get_start_protocol(self, category_id: int, race_id: int = None) -> List[Dict]:

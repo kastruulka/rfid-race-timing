@@ -5,129 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Настройки</title>
   <link rel="stylesheet" href="/static/css/web.css">
+  <link rel="stylesheet" href="/static/css/auth.css">
   <link rel="stylesheet" href="/static/css/settings.css">
-  <style>
-    .auth-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,.45);
-      backdrop-filter: blur(4px);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .auth-overlay.hidden { display: none; }
-
-    .auth-box {
-      background: var(--card-bg, #fff);
-      border: 1px solid var(--border, #ddd);
-      border-radius: 12px;
-      padding: 32px 28px 24px;
-      width: 340px;
-      max-width: 90vw;
-      box-shadow: 0 8px 32px rgba(0,0,0,.18);
-    }
-    .auth-box h2 {
-      margin: 0 0 6px;
-      font-size: 17px;
-      font-weight: 700;
-    }
-    .auth-box .auth-sub {
-      font-size: 12px;
-      color: var(--text-dim, #888);
-      margin-bottom: 18px;
-    }
-    .auth-box input[type="password"] {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1px solid var(--border, #ccc);
-      border-radius: 6px;
-      font-size: 14px;
-      margin-bottom: 8px;
-      box-sizing: border-box;
-      background: var(--bg, #fff);
-      color: var(--text, #222);
-    }
-    .auth-box input[type="password"]:focus {
-      outline: none;
-      border-color: var(--accent, #4a90d9);
-      box-shadow: 0 0 0 2px rgba(74,144,217,.2);
-    }
-    .auth-error {
-      color: #d44;
-      font-size: 12px;
-      min-height: 18px;
-      margin-bottom: 6px;
-    }
-    .auth-box .btn-login {
-      width: 100%;
-      padding: 9px;
-      font-size: 13px;
-      font-weight: 600;
-      border: none;
-      border-radius: 6px;
-      background: var(--accent, #4a90d9);
-      color: #fff;
-      cursor: pointer;
-    }
-    .auth-box .btn-login:hover { opacity: .9; }
-    .auth-box .auth-hint-env {
-      margin-top: 14px;
-      font-size: 10px;
-      color: var(--text-dim, #999);
-      line-height: 1.5;
-      text-align: center;
-    }
-    .auth-box .auth-hint-env code {
-      background: var(--bg-dim, #f4f4f4);
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-size: 10px;
-    }
-
-    .btn-logout {
-      font-size: 11px;
-      padding: 4px 12px;
-      border: 1px solid var(--border, #ccc);
-      border-radius: 5px;
-      background: transparent;
-      color: var(--text-dim, #888);
-      cursor: pointer;
-      margin-left: auto;
-    }
-    .btn-logout:hover { background: var(--bg-dim, #f0f0f0); }
-    .btn-logout.hidden { display: none; }
-
-    .auth-hint {
-      font-size: 10px;
-      color: var(--text-dim, #999);
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .auth-hint.hidden { display: none; }
-    .auth-hint .lock-icon { font-size: 12px; }
-  </style>
 </head>
 <body>
-
-  <div class="auth-overlay hidden" id="auth-overlay">
-    <div class="auth-box">
-      <h2>Авторизация</h2>
-      <div class="auth-sub">Для изменения настроек введите пароль администратора</div>
-      <input type="password" id="login-password"
-             placeholder="Пароль"
-             onkeydown="onLoginKeydown(event)"
-             autocomplete="current-password">
-      <div class="auth-error" id="login-error"></div>
-      <button class="btn-login" onclick="doLogin()">Войти</button>
-      <div class="auth-hint-env">
-        Пароль задаётся через переменную окружения<br>
-        <code>RFID_ADMIN_PASSWORD</code>
-      </div>
-    </div>
-  </div>
 
   <nav class="topnav">
     <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
@@ -136,7 +17,8 @@
     <a href="/protocol">Протокол</a>
     <a href="/settings" class="active">Настройки</a>
     <a href="/judge">Судья</a>
-    <button class="btn-logout hidden" id="logout-btn" onclick="doLogout()">Выйти</button>
+    <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+    <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
   </nav>
 
   <div class="page-content">
@@ -148,7 +30,7 @@
           <span class="lock-icon">🔒</span> только чтение
         </span>
       </div>
-      <button class="btn btn-accent" onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
+      <button class="btn btn-accent" type="button" data-auth-required onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
         Сохранить и применить
       </button>
     </div>
@@ -159,29 +41,29 @@
         <div class="form-grid">
           <div class="form-row">
             <label>IP-адрес ридера</label>
-            <input type="text" id="s-reader-ip" placeholder="169.254.1.1">
+            <input type="text" id="s-reader-ip" data-auth-required placeholder="169.254.1.1">
           </div>
           <div class="form-row">
             <label>Порт</label>
-            <input type="number" id="s-reader-port" placeholder="5084">
+            <input type="number" id="s-reader-port" data-auth-required placeholder="5084">
           </div>
         </div>
         <div class="form-row">
           <label>TX Power (dBm)</label>
-          <input type="number" id="s-tx-power" step="0.5" min="0" max="32.5" placeholder="30.0">
+          <input type="number" id="s-tx-power" data-auth-required step="0.5" min="0" max="32.5" placeholder="30.0">
           <div class="form-hint">27 dBm — ближняя зона (~3 м), 30 — средняя (~5–6 м), 32.5 — макс.</div>
         </div>
         <div class="form-row">
           <label>Активные антенны</label>
           <div class="checkbox-row">
-            <label class="cb-item"><input type="checkbox" id="s-ant-1" value="1"> 1</label>
-            <label class="cb-item"><input type="checkbox" id="s-ant-2" value="2"> 2</label>
-            <label class="cb-item"><input type="checkbox" id="s-ant-3" value="3"> 3</label>
-            <label class="cb-item"><input type="checkbox" id="s-ant-4" value="4"> 4</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-1" data-auth-required value="1"> 1</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-2" data-auth-required value="2"> 2</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-3" data-auth-required value="3"> 3</label>
+            <label class="cb-item"><input type="checkbox" id="s-ant-4" data-auth-required value="4"> 4</label>
           </div>
         </div>
         <div class="conn-row">
-          <button class="btn" onclick="checkConnection()">Проверить подключение</button>
+          <button class="btn" type="button" data-auth-required onclick="checkConnection()">Проверить подключение</button>
           <span class="status-badge wait" id="conn-status">Не проверено</span>
         </div>
       </div>
@@ -191,12 +73,12 @@
         <div class="form-grid">
           <div class="form-row">
             <label>RSSI Window (сек)</label>
-            <input type="number" id="s-rssi-window" step="0.1" min="0.5" max="10">
+            <input type="number" id="s-rssi-window" data-auth-required step="0.1" min="0.5" max="10">
             <div class="form-hint">Сколько секунд собирать считывания метки в один проезд. Больше — точнее пик RSSI, но дольше задержка.</div>
           </div>
           <div class="form-row">
             <label>Антидребезг ридера (сек)</label>
-            <input type="number" id="s-min-lap" step="1" min="5" max="3600">
+            <input type="number" id="s-min-lap" data-auth-required step="1" min="5" max="3600">
             <div class="form-hint">Мин. время между проездами одной метки.</div>
           </div>
         </div>
@@ -206,13 +88,13 @@
             <div class="form-row">
               <label>Режим</label>
               <div class="checkbox-row" style="padding-top:2px">
-                <label class="cb-item"><input type="checkbox" id="s-use-emulator"> Включён</label>
+                <label class="cb-item"><input type="checkbox" id="s-use-emulator" data-auth-required> Включён</label>
               </div>
               <div class="form-hint">Ридер не подключается при эмуляции</div>
             </div>
             <div class="form-row">
               <label>Антидребезг эмулятора (сек)</label>
-              <input type="number" id="s-emu-lap" step="1" min="5">
+              <input type="number" id="s-emu-lap" data-auth-required step="1" min="5">
               <div class="form-hint">Короткий интервал для быстрого тестирования</div>
             </div>
           </div>
@@ -231,8 +113,8 @@
           <div class="info-item">Участников: <b id="si-riders">—</b></div>
         </div>
         <div class="btn-row">
-          <button class="btn btn-green" onclick="backupDB()">Бэкап БД</button>
-          <button class="btn btn-danger" onclick="resetRace()">Сбросить гонку</button>
+          <button class="btn btn-green" type="button" data-auth-required onclick="backupDB()">Бэкап БД</button>
+          <button class="btn btn-danger" type="button" data-auth-required onclick="resetRace()">Сбросить гонку</button>
         </div>
       </div>
     </div>
@@ -240,6 +122,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
   <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 </body>
 </html>

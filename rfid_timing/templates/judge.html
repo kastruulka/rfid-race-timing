@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Панель судьи</title>
   <link rel="stylesheet" href="/static/css/web.css">
+  <link rel="stylesheet" href="/static/css/auth.css">
   <link rel="stylesheet" href="/static/css/judge.css">
   <style>
     .sp-list { max-height: 260px; overflow-y: auto; }
@@ -76,6 +77,8 @@
     <a href="/protocol">Протокол</a>
     <a href="/settings">Настройки</a>
     <a href="/judge" class="active">Судья</a>
+    <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+    <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выход</button>
   </nav>
 
   <div class="page">
@@ -89,6 +92,7 @@
 
       <div class="card" id="race-control">
         <div class="card-title green">Управление гонкой</div>
+        <span class="auth-hint hidden" id="auth-hint"><span class="lock-icon">🔒</span> изменение только после входа</span>
         <select id="race-category" style="margin-bottom:6px">
           <option value="">  Загрузка категорий...  </option>
         </select>
@@ -100,12 +104,12 @@
 
         <div style="margin-bottom:6px">
           <div style="display:flex;gap:2px;background:var(--surface2);border-radius:5px;padding:2px;border:1px solid var(--border)">
-            <button class="start-mode-btn active" id="btn-mode-mass" onclick="setStartMode('mass')"
+            <button class="start-mode-btn active" id="btn-mode-mass" data-auth-required onclick="setStartMode('mass')"
                     style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
                            background:var(--accent);color:var(--bg);transition:all .15s">
               Групповой
             </button>
-            <button class="start-mode-btn" id="btn-mode-individual" onclick="setStartMode('individual')"
+            <button class="start-mode-btn" id="btn-mode-individual" data-auth-required onclick="setStartMode('individual')"
                     style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
                            background:transparent;color:var(--text-dim);transition:all .15s">
               Индивидуальный
@@ -115,26 +119,26 @@
 
         <div id="mass-start-section">
           <div class="btn-row">
-            <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" style="flex:1">▶ Масс-старт</button>
-            <button class="btn" onclick="doFinishRace()" id="btn-finish-race" style="flex:1" disabled>■ Завершить</button>
+            <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" data-auth-required style="flex:1">▶ Масс-старт</button>
+            <button class="btn" onclick="doFinishRace()" id="btn-finish-race" data-auth-required style="flex:1" disabled>■ Завершить</button>
           </div>
         </div>
 
         <div id="individual-start-section" style="display:none">
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
             <span style="font-size:10px;color:var(--text-dim);white-space:nowrap">Интервал:</span>
-            <input type="number" id="sp-interval" value="30" min="5" max="600" step="5"
+            <input type="number" id="sp-interval" data-auth-required value="30" min="5" max="600" step="5"
                    style="width:56px;padding:4px 6px;font-size:11px;font-family:var(--mono);text-align:center;
                           background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text)">
             <span style="font-size:10px;color:var(--text-dim)">сек</span>
             <div style="flex:1"></div>
-            <button class="btn" onclick="spAutoFill()" style="padding:4px 8px;font-size:10px" title="Заполнить всеми участниками категории">Авто</button>
-            <button class="btn" onclick="spClear()" style="padding:4px 8px;font-size:10px;color:var(--red)" title="Очистить протокол">✕</button>
+            <button class="btn" onclick="spAutoFill()" data-auth-required style="padding:4px 8px;font-size:10px" title="Заполнить всеми участниками категории">Авто</button>
+            <button class="btn" onclick="spClear()" data-auth-required style="padding:4px 8px;font-size:10px;color:var(--red)" title="Очистить протокол">✕</button>
           </div>
 
           <div class="sp-add-row">
             <div class="rider-selector" style="flex:1;position:relative">
-              <input type="text" id="sp-search" placeholder="Номер или фамилия…"
+              <input type="text" id="sp-search" data-auth-required placeholder="Номер или фамилия…"
                      oninput="spOnSearchInput()" onfocus="spOnSearchFocus()"
                      onkeydown="spOnSearchKey(event)" autocomplete="off"
                      style="width:100%;padding:4px 8px;font-size:11px">
@@ -154,21 +158,21 @@
           </div>
 
           <div class="btn-row" style="margin-top:6px">
-            <button class="btn btn-accent" onclick="spLaunch()" id="btn-sp-launch" style="flex:1">▶ Запустить протокол</button>
-            <button class="btn" onclick="spStop()" id="btn-sp-stop" style="flex:1;display:none;color:var(--red)">■ Остановить</button>
-            <button class="btn" onclick="doFinishRace()" id="btn-finish-race-ind" style="flex:1" disabled>■ Завершить</button>
+            <button class="btn btn-accent" onclick="spLaunch()" id="btn-sp-launch" data-auth-required style="flex:1">▶ Запустить протокол</button>
+            <button class="btn" onclick="spStop()" id="btn-sp-stop" data-auth-required style="flex:1;display:none;color:var(--red)">■ Остановить</button>
+            <button class="btn" onclick="doFinishRace()" id="btn-finish-race-ind" data-auth-required style="flex:1" disabled>■ Завершить</button>
           </div>
 
           <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
-            <button class="btn btn-full" onclick="doIndividualStart()" id="btn-individual-start" style="font-size:10px">
+            <button class="btn btn-full" onclick="doIndividualStart()" id="btn-individual-start" data-auth-required style="font-size:10px">
               ▶ Ручной старт выбранного участника
             </button>
           </div>
         </div>
 
         <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-full" onclick="doResetCategory()" id="btn-reset-cat" style="flex:2;font-size:10px;color:var(--yellow)">↺ Сбросить категорию</button>
-          <button class="btn" onclick="doNewRace()" id="btn-new-race" style="flex:1;font-size:9px;color:var(--text-dim)" title="Создать полностью новую гоночную сессию для всех категорий">Новая сессия</button>
+          <button class="btn btn-full" onclick="doResetCategory()" id="btn-reset-cat" data-auth-required style="flex:2;font-size:10px;color:var(--yellow)">↺ Сбросить категорию</button>
+          <button class="btn" onclick="doNewRace()" id="btn-new-race" data-auth-required style="flex:1;font-size:9px;color:var(--text-dim)" title="Создать полностью новую гоночную сессию для всех категорий">Новая сессия</button>
         </div>
       </div>
 
@@ -202,7 +206,7 @@
             <div id="laps-list">
               <div style="font-size:11px;color:var(--text-dim);padding:4px 0">Выберите участника</div>
             </div>
-            <button class="btn btn-accent btn-full" onclick="doAddManualLap()" style="margin-top:6px">+ Добавить круг вручную</button>
+            <button class="btn btn-accent btn-full" onclick="doAddManualLap()" data-auth-required style="margin-top:6px">+ Добавить круг вручную</button>
           </div>
           <div style="width:1px;background:var(--border)"></div>
           <div style="width:200px;flex-shrink:0">
@@ -210,14 +214,14 @@
               <div style="font-size:10px;color:var(--text-dim);margin-bottom:2px">Время финиша:</div>
               <div id="current-finish-time" style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green)"></div>
               <div class="input-row" style="margin-top:6px">
-                <input class="input-sm" id="edit-finish-mm" placeholder="ММ">
+                <input class="input-sm" id="edit-finish-mm" data-auth-required placeholder="ММ">
                 <span style="color:var(--text-dim);font-weight:700">:</span>
-                <input class="input-sm" id="edit-finish-ss" placeholder="СС.д" style="width:55px !important">
-                <button class="btn btn-accent" onclick="doEditFinishTime()">OK</button>
+                <input class="input-sm" id="edit-finish-ss" data-auth-required placeholder="СС.д" style="width:55px !important">
+                <button class="btn btn-accent" onclick="doEditFinishTime()" data-auth-required>OK</button>
               </div>
             </div>
             <div id="no-finish-info" style="display:none;font-size:11px;color:var(--text-dim);margin-bottom:8px">Участник ещё не финишировал</div>
-            <button class="btn btn-full" onclick="doUnfinishRider()">Отменить финиш</button>
+            <button class="btn btn-full" onclick="doUnfinishRider()" data-auth-required>Отменить финиш</button>
           </div>
         </div>
       </div>
@@ -226,48 +230,48 @@
         <div class="card">
           <div class="card-title red">DNF — Сход</div>
           <div class="btn-row" style="flex-direction:column;gap:4px">
-            <button class="btn btn-red btn-full" onclick="doDNF('voluntary')">Добровольный сход</button>
-            <button class="btn btn-red btn-full" onclick="doDNF('mechanical')">Мех. поломка</button>
-            <button class="btn btn-red btn-full" onclick="doDNF('injury')">Травма</button>
+            <button class="btn btn-red btn-full" onclick="doDNF('voluntary')" data-auth-required>Добровольный сход</button>
+            <button class="btn btn-red btn-full" onclick="doDNF('mechanical')" data-auth-required>Мех. поломка</button>
+            <button class="btn btn-red btn-full" onclick="doDNF('injury')" data-auth-required>Травма</button>
           </div>
         </div>
 
         <div class="card">
           <div class="card-title orange">Штраф времени</div>
           <div class="input-row" style="margin-bottom:4px">
-            <input class="input-sm" id="pen-seconds" value="30" min="1" type="number">
+            <input class="input-sm" id="pen-seconds" data-auth-required value="30" min="1" type="number">
             <span style="font-size:10px;color:var(--text-dim)">сек</span>
           </div>
           <div class="input-row" style="margin-bottom:4px">
-            <input id="pen-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doTimePenalty()">
+            <input id="pen-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doTimePenalty()">
           </div>
-          <button class="btn btn-orange btn-full" onclick="doTimePenalty()">+ Штраф</button>
+          <button class="btn btn-orange btn-full" onclick="doTimePenalty()" data-auth-required>+ Штраф</button>
         </div>
 
         <div class="card">
           <div class="card-title red">DSQ — Дисквалификация</div>
           <div class="input-row" style="margin-bottom:4px">
-            <input id="dsq-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doDSQ()">
+            <input id="dsq-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doDSQ()">
           </div>
-          <button class="btn btn-red btn-full" onclick="doDSQ()">Дисквалифицировать</button>
+          <button class="btn btn-red btn-full" onclick="doDSQ()" data-auth-required>Дисквалифицировать</button>
         </div>
 
         <div class="card">
           <div class="card-title orange">Штрафной круг</div>
           <div class="input-row" style="margin-bottom:4px">
-            <input class="input-sm" id="extra-laps" value="1" min="1" type="number">
+            <input class="input-sm" id="extra-laps" data-auth-required value="1" min="1" type="number">
             <span style="font-size:10px;color:var(--text-dim)">кр.</span>
-            <input id="extra-reason" placeholder="Причина" style="flex:1" onkeydown="if(event.key === 'Enter') doExtraLap()">
+            <input id="extra-reason" data-auth-required placeholder="Причина" style="flex:1" onkeydown="if(event.key === 'Enter') doExtraLap()">
           </div>
-          <button class="btn btn-orange btn-full" onclick="doExtraLap()">+ Штрафной круг</button>
+          <button class="btn btn-orange btn-full" onclick="doExtraLap()" data-auth-required>+ Штрафной круг</button>
         </div>
 
         <div class="card">
           <div class="card-title yellow">Предупреждение</div>
           <div class="input-row" style="margin-bottom:4px">
-            <input id="warn-reason" placeholder="Причина" onkeydown="if(event.key === 'Enter') doWarning()">
+            <input id="warn-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doWarning()">
           </div>
-          <button class="btn btn-yellow btn-full" onclick="doWarning()">Предупреждение</button>
+          <button class="btn btn-yellow btn-full" onclick="doWarning()" data-auth-required>Предупреждение</button>
         </div>
       </div>
     </div>
@@ -278,8 +282,8 @@
       <div class="notes-section">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Заметки</div>
         <div class="input-row" style="margin-bottom:6px">
-          <input id="note-text" placeholder="Текст заметки…" style="padding:8px 10px;font-size:13px" onkeydown="if(event.key === 'Enter') addNote()">
-          <button class="btn btn-accent" onclick="addNote()" style="padding:8px 14px;font-size:12px;white-space:nowrap">+ Заметка</button>
+          <input id="note-text" data-auth-required placeholder="Текст заметки…" style="padding:8px 10px;font-size:13px" onkeydown="if(event.key === 'Enter') addNote()">
+          <button class="btn btn-accent" onclick="addNote()" data-auth-required style="padding:8px 14px;font-size:12px;white-space:nowrap">+ Заметка</button>
         </div>
         <div id="notes-list"></div>
       </div>
@@ -287,6 +291,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <script src="/static/js/auth.js"></script>
   <script src="/static/js/judge.js"></script>
 </body>
 </html>

@@ -174,6 +174,10 @@ def require_admin(f):
     return wrapper
 
 
+def _auth_status_payload() -> Dict[str, bool]:
+    return {"authenticated": _is_admin_session() or _is_admin_bearer()}
+
+
 class ConfigState:
     DEFAULTS = {
         "reader_ip": "169.254.1.1",
@@ -276,6 +280,7 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
     allowed_nets = _build_allowed_networks()
 
     @app.route("/api/settings/login", methods=["POST"])
+    @app.route("/api/auth/login", methods=["POST"])
     def api_settings_login():
         data, err = get_json_body()
         if err:
@@ -290,13 +295,15 @@ def register_settings(app, db: Database, config_state: ConfigState, reader_mgr=N
         return jsonify({"error": "Неверный пароль"}), 403
 
     @app.route("/api/settings/logout", methods=["POST"])
+    @app.route("/api/auth/logout", methods=["POST"])
     def api_settings_logout():
         session.pop("is_admin", None)
         return jsonify({"ok": True})
 
     @app.route("/api/settings/auth-status", methods=["GET"])
+    @app.route("/api/auth/status", methods=["GET"])
     def api_settings_auth_status():
-        return jsonify({"authenticated": _is_admin_session() or _is_admin_bearer()})
+        return jsonify(_auth_status_payload())
 
     @app.route("/settings")
     def settings_page():
