@@ -1,51 +1,13 @@
 import io
 import logging
-import time
 from flask import render_template, jsonify, send_file
 from .database import Database
 from .race_engine import RaceEngine
-from .request_helpers import get_json_body
+from .request_helpers import get_json_body, require_int
 from .timing import calc_total_time_with_penalty
+from .formatters import fmt_ms, fmt_gap, fmt_speed, fmt_start_time, fmt_start_offset
 
 logger = logging.getLogger(__name__)
-
-
-def fmt_ms(ms):
-    if ms is None:
-        return "—"
-    total_sec = abs(ms) / 1000.0
-    m = int(total_sec // 60)
-    s = total_sec % 60
-    return f"{m:02d}:{s:04.1f}"
-
-
-def fmt_gap(ms):
-    if ms is None or ms == 0:
-        return ""
-    return "+" + fmt_ms(ms)
-
-
-def fmt_speed(distance_km, time_ms):
-    if not distance_km or not time_ms or time_ms <= 0:
-        return "—"
-    hours = time_ms / 1000.0 / 3600.0
-    return f"{distance_km / hours:.1f}"
-
-
-def fmt_start_time(start_time_ms):
-    if start_time_ms is None:
-        return "—"
-    return time.strftime("%H:%M:%S", time.localtime(start_time_ms / 1000.0))
-
-
-def fmt_start_offset(start_time_ms, first_start_ms):
-    if start_time_ms is None or first_start_ms is None:
-        return ""
-    diff_ms = start_time_ms - first_start_ms
-    if diff_ms <= 0:
-        return "00:00"
-    total_sec = diff_ms / 1000.0
-    return f"+{int(total_sec // 60):02d}:{int(total_sec) % 60:02d}"
 
 
 def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
@@ -165,11 +127,11 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
 
-        category, rows, extra = build_protocol_data(db, engine, int(cat_id))
+        category, rows, extra = build_protocol_data(db, engine, cat_id)
         if not category:
             return jsonify({"error": "Категория не найдена"}), 404
 
@@ -191,11 +153,11 @@ def register_protocol(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
 
-        category, rows, extra = build_protocol_data(db, engine, int(cat_id))
+        category, rows, extra = build_protocol_data(db, engine, cat_id)
         if not category:
             return jsonify({"error": "Категория не найдена"}), 404
 

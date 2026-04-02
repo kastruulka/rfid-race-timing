@@ -9,7 +9,8 @@ from .start_list import register_start_list
 from .protocol import register_protocol
 from .settings import register_settings, ConfigState
 from .judge import register_judge
-from .request_helpers import get_json_body, safe_400
+from .request_helpers import get_json_body, require_int, make_require_engine, safe_400
+from . import actions
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ def create_app(
 ) -> Flask:
 
     app = Flask(__name__)
+
+    require_engine = make_require_engine(engine)
 
     @app.route("/")
     def index():
@@ -75,124 +78,110 @@ def create_app(
             ]
         )
 
-    def _require_engine():
-        if not engine:
-            return jsonify({"error": "Engine not available"}), 500
-        return None
-
     @app.route("/api/mass-start", methods=["POST"])
     def api_mass_start():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
-        try:
-            info = engine.mass_start(int(cat_id))
-            return jsonify({"ok": True, "info": info})
-        except ValueError as e:
-            logger.warning("mass_start: %s", e)
-            return jsonify({"error": "Невозможно запустить категорию"}), 400
-        except Exception as e:
-            return safe_400(e, "mass_start")
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
+        body, status = actions.action_mass_start(engine, cat_id)
+        return jsonify(body), status
 
     @app.route("/api/individual-start", methods=["POST"])
     def api_individual_start():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        try:
-            info = engine.individual_start(int(rid))
-            return jsonify({"ok": True, "info": info})
-        except ValueError as e:
-            logger.warning("individual_start: %s", e)
-            return jsonify({"error": "Невозможно стартовать участника"}), 400
-        except Exception as e:
-            return safe_400(e, "individual_start")
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_individual_start(engine, rid)
+        return jsonify(body), status
 
     @app.route("/api/manual-lap", methods=["POST"])
     def api_manual_lap():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        result = engine.manual_lap(int(rid))
-        if not result:
-            return jsonify({"error": "Невозможно — участник не в гонке"}), 400
-        return jsonify({"ok": True, "result": result})
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_manual_lap(engine, rid)
+        return jsonify(body), status
 
     @app.route("/api/dnf", methods=["POST"])
     def api_dnf():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.set_dnf(int(rid))
-        if not ok:
-            return jsonify({"error": "Невозможно — участник не в гонке"}), 400
-        return jsonify({"ok": ok})
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_dnf(engine, rid)
+        return jsonify(body), status
 
     @app.route("/api/dsq", methods=["POST"])
     def api_dsq():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.set_dsq(int(rid), data.get("reason", ""))
-        if not ok:
-            return jsonify({"error": "Невозможно"}), 400
-        return jsonify({"ok": ok})
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_dsq(engine, rid, reason=data.get("reason", ""))
+        return jsonify(body), status
 
     @app.route("/api/action", methods=["POST"])
     def api_action_legacy():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
 
+        action = data.get("action", "")
+
         _dispatch = {
-            "mass_start": lambda: engine.mass_start(data["category_id"]),
-            "individual_start": lambda: engine.individual_start(data["rider_id"]),
-            "manual_lap": lambda: engine.manual_lap(data["rider_id"]),
-            "dnf": lambda: engine.set_dnf(data["rider_id"]),
-            "dsq": lambda: engine.set_dsq(data["rider_id"], data.get("reason", "")),
+            "mass_start": lambda: actions.action_mass_start(
+                engine, int(data["category_id"])
+            ),
+            "individual_start": lambda: actions.action_individual_start(
+                engine, int(data["rider_id"])
+            ),
+            "manual_lap": lambda: actions.action_manual_lap(
+                engine, int(data["rider_id"])
+            ),
+            "dnf": lambda: actions.action_dnf(engine, int(data["rider_id"])),
+            "dsq": lambda: actions.action_dsq(
+                engine, int(data["rider_id"]), reason=data.get("reason", "")
+            ),
         }
 
-        action = data.get("action", "")
         handler = _dispatch.get(action)
         if not handler:
             return jsonify({"error": "Неизвестное действие"}), 400
 
         try:
-            result = handler()
-            return jsonify({"ok": True, "result": result})
+            body, status = handler()
+            return jsonify(body), status
         except Exception as e:
             return safe_400(e, f"action:{action}")
 

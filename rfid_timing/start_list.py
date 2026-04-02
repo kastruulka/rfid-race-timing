@@ -4,7 +4,7 @@ import time
 from flask import render_template, jsonify, request, Response
 from .database import Database
 from .race_engine import RaceEngine
-from .request_helpers import get_json_body
+from .request_helpers import get_json_body, require_int
 from .settings import require_admin
 from .csv_import import sanitize_for_export, parse_csv_text, import_riders
 
@@ -68,12 +68,14 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        number = data.get("number")
+        number, err = require_int(data, "number", "Номер обязателен")
+        if err:
+            return err
         last_name = data.get("last_name", "").strip()
-        if not number or not last_name:
+        if not last_name:
             return jsonify({"error": "Номер и фамилия обязательны"}), 400
 
-        existing = db.get_rider_by_number(int(number))
+        existing = db.get_rider_by_number(number)
         if existing:
             return jsonify({"error": f"Номер {number} уже занят"}), 400
 
@@ -86,7 +88,7 @@ def register_start_list(app, db: Database, engine: RaceEngine = None):
                 ), 400
 
         rid = db.add_rider(
-            number=int(number),
+            number=number,
             last_name=last_name,
             first_name=data.get("first_name", ""),
             birth_year=data.get("birth_year"),

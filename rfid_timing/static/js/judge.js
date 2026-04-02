@@ -710,6 +710,15 @@ async function loadRaceStatus() {
     const catStates = data.category_states || {};
     if (data.categories) data.categories.forEach(c => { window._catNameMap = window._catNameMap || {}; window._catNameMap[String(c.id)] = c.name; });
     const now = performance.now();
+
+    Object.keys(catTimerElapsed).forEach(cid => {
+      if (!(cid in catStates)) {
+        delete catTimerElapsed[cid];
+        delete catTimerPerf[cid];
+        delete catTimerClosed[cid];
+      }
+    });
+
     Object.entries(catStates).forEach(([cid, cs]) => { if (cs.elapsed_ms !== null && cs.elapsed_ms !== undefined) { catTimerElapsed[cid] = cs.elapsed_ms; catTimerPerf[cid] = now; catTimerClosed[cid] = cs.closed; } });
     if (!catId) { document.getElementById('race-status-bar').style.display = 'none'; document.getElementById('btn-mass-start').disabled = false; document.getElementById('btn-finish-race').disabled = true; document.getElementById('btn-finish-race-ind').disabled = true; if (authManager) authManager.syncProtectedControls(); return; }
     const racing = st.RACING||0; const finished = st.FINISHED||0; const dnf = (st.DNF||0)+(st.DSQ||0);

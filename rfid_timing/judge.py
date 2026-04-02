@@ -3,8 +3,9 @@ import time
 from flask import render_template, jsonify, request
 from .database import Database
 from .race_engine import RaceEngine
-from .request_helpers import get_json_body, safe_400
+from .request_helpers import get_json_body, require_int, make_require_engine, safe_400
 from .settings import require_admin
+from . import actions
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +25,7 @@ def _format_protocol_entry(e: dict) -> dict:
 
 def register_judge(app, db: Database, engine: RaceEngine = None):
 
-    def _require_engine():
-        if not engine:
-            return jsonify({"error": "Engine unavailable"}), 500
-        return None
+    require_engine = make_require_engine(engine)
 
     @app.route("/judge")
     def judge_page():
@@ -56,34 +54,37 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/dnf", methods=["POST"])
     @require_admin
     def api_judge_dnf():
+        err = require_engine()
+        if err:
+            return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid or not engine:
-            return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.set_dnf(
-            int(rid),
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_dnf(
+            engine,
+            rid,
             reason_code=data.get("reason_code", ""),
             reason_text=data.get("reason_text", ""),
         )
-        if not ok:
-            return jsonify({"error": "Невозможно — участник не в гонке"}), 400
-        return jsonify({"ok": True})
+        return jsonify(body), status
 
     @app.route("/api/judge/dsq", methods=["POST"])
     @require_admin
     def api_judge_dsq():
+        err = require_engine()
+        if err:
+            return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid or not engine:
-            return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.set_dsq(int(rid), reason=data.get("reason", ""))
-        if not ok:
-            return jsonify({"error": "Невозможно"}), 400
-        return jsonify({"ok": True})
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_dsq(engine, rid, reason=data.get("reason", ""))
+        return jsonify(body), status
 
     @app.route("/api/judge/time-penalty", methods=["POST"])
     @require_admin
@@ -91,12 +92,14 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
         seconds = data.get("seconds", 0)
-        if not rid or not engine:
-            return jsonify({"error": "Участник не выбран"}), 400
         result = engine.add_time_penalty(
-            int(rid), float(seconds), reason=data.get("reason", "")
+            rid, float(seconds), reason=data.get("reason", "")
         )
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
@@ -108,13 +111,13 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
         laps = data.get("laps", 1)
-        if not rid or not engine:
-            return jsonify({"error": "Участник не выбран"}), 400
-        result = engine.add_extra_lap(
-            int(rid), int(laps), reason=data.get("reason", "")
-        )
+        result = engine.add_extra_lap(rid, int(laps), reason=data.get("reason", ""))
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
         return jsonify({"ok": True, "penalty": result})
@@ -125,10 +128,12 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid or not engine:
-            return jsonify({"error": "Участник не выбран"}), 400
-        result = engine.add_warning(int(rid), reason=data.get("reason", ""))
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        if not engine:
+            return jsonify({"error": "Engine unavailable"}), 500
+        result = engine.add_warning(rid, reason=data.get("reason", ""))
         if not result:
             return jsonify({"error": "Участник не найден"}), 400
         return jsonify({"ok": True, "penalty": result})
@@ -136,7 +141,7 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/penalty/<int:pid>", methods=["DELETE"])
     @require_admin
     def api_judge_delete_penalty(pid):
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         ok = engine.remove_penalty(pid)
@@ -154,44 +159,32 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/mass-start", methods=["POST"])
     @require_admin
     def api_judge_mass_start():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
-        try:
-            info = engine.mass_start(int(cat_id))
-            return jsonify({"ok": True, "info": info})
-        except ValueError as e:
-            logger.warning("mass_start: %s", e)
-            return jsonify({"error": "Невозможно запустить категорию"}), 400
-        except Exception as e:
-            return safe_400(e, "mass_start")
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
+        body, status = actions.action_mass_start(engine, cat_id)
+        return jsonify(body), status
 
     @app.route("/api/judge/individual-start", methods=["POST"])
     @require_admin
     def api_judge_individual_start():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        try:
-            info = engine.individual_start(int(rid))
-            return jsonify({"ok": True, "info": info})
-        except ValueError as e:
-            logger.warning("individual_start: %s", e)
-            return jsonify({"error": "Невозможно стартовать участника"}), 400
-        except Exception as e:
-            return safe_400(e, "individual_start")
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        body, status = actions.action_individual_start(engine, rid)
+        return jsonify(body), status
 
     @app.route("/api/judge/start-protocol", methods=["GET"])
     def api_start_protocol_get():
@@ -206,15 +199,15 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
         interval = float(data.get("interval_sec", 30))
         entries = [
             {"rider_id": int(rid), "position": i + 1, "interval_sec": interval}
             for i, rid in enumerate(data.get("rider_ids", []))
         ]
-        count = db.save_start_protocol(int(cat_id), entries)
+        count = db.save_start_protocol(cat_id, entries)
         return jsonify({"ok": True, "count": count})
 
     @app.route("/api/judge/start-protocol", methods=["DELETE"])
@@ -231,32 +224,32 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
         interval = float(data.get("interval_sec", 30))
-        riders_list = db.get_riders(category_id=int(cat_id))
+        riders_list = db.get_riders(category_id=cat_id)
         entries = [
             {"rider_id": r["id"], "position": i + 1, "interval_sec": interval}
             for i, r in enumerate(riders_list)
         ]
-        count = db.save_start_protocol(int(cat_id), entries)
+        count = db.save_start_protocol(cat_id, entries)
         return jsonify({"ok": True, "count": count})
 
     @app.route("/api/judge/start-protocol/launch", methods=["POST"])
     @require_admin
     def api_start_protocol_launch():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
 
-        entries = db.get_start_protocol(int(cat_id))
+        entries = db.get_start_protocol(cat_id)
         if not entries:
             return jsonify({"error": "Стартовый протокол пуст"}), 400
 
@@ -301,47 +294,46 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/start-protocol/start-rider", methods=["POST"])
     @require_admin
     def api_start_protocol_start_rider():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rider_id = data.get("rider_id")
-        if not rider_id:
-            return jsonify({"error": "rider_id required"}), 400
-        try:
-            planned_time = data.get("planned_time")
-            start_time = float(planned_time) if planned_time else None
+        rid, err = require_int(data, "rider_id")
+        if err:
+            return err
 
-            info = engine.individual_start(int(rider_id), start_time=start_time)
+        planned_time = data.get("planned_time")
+        start_time = float(planned_time) if planned_time else None
 
-            entry_id = data.get("entry_id")
-            actual_time = start_time or (time.time() * 1000)
-            if entry_id:
-                db.update_start_protocol_entry(
-                    int(entry_id), actual_time=actual_time, status="STARTED"
-                )
-            return jsonify({"ok": True, "info": info})
-        except ValueError as e:
-            logger.warning("start-rider: %s", e)
-            return jsonify({"error": "Невозможно стартовать участника"}), 400
-        except Exception as e:
-            return safe_400(e, "start-rider")
+        body, status = actions.action_individual_start(
+            engine, rid, start_time=start_time
+        )
+        if status != 200:
+            return jsonify(body), status
+
+        entry_id = data.get("entry_id")
+        actual_time = start_time or (time.time() * 1000)
+        if entry_id:
+            db.update_start_protocol_entry(
+                int(entry_id), actual_time=actual_time, status="STARTED"
+            )
+        return jsonify(body), status
 
     @app.route("/api/judge/unfinish-rider", methods=["POST"])
     @require_admin
     def api_judge_unfinish_rider():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        ok = engine.unfinish_rider(int(rid))
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        ok = engine.unfinish_rider(rid)
         if not ok:
             return jsonify(
                 {"error": "Невозможно — участник не FINISHED или категория закрыта"}
@@ -351,32 +343,32 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/finish-race", methods=["POST"])
     @require_admin
     def api_judge_finish_race():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
-        result = engine.finish_all(int(cat_id))
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
+        result = engine.finish_all(cat_id)
         return jsonify({"ok": True, **result})
 
     @app.route("/api/judge/reset-category", methods=["POST"])
     @require_admin
     def api_judge_reset_category():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        cat_id = data.get("category_id")
-        if not cat_id:
-            return jsonify({"error": "Категория не выбрана"}), 400
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
         try:
-            info = engine.reset_category(int(cat_id))
+            info = engine.reset_category(cat_id)
             return jsonify({"ok": True, **info})
         except ValueError as e:
             logger.warning("reset_category: %s", e)
@@ -387,22 +379,24 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/edit-finish-time", methods=["POST"])
     @require_admin
     def api_judge_edit_finish_time():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
+        rid, err = require_int(data, "rider_id", "Участник не указан")
+        if err:
+            return err
         finish_time_ms = data.get("finish_time_ms")
-        if not rid or finish_time_ms is None:
+        if finish_time_ms is None:
             return jsonify({"error": "Участник или время не указаны"}), 400
-        result = db.get_result_by_rider(int(rid))
+        result = db.get_result_by_rider(rid)
         if not result or result["status"] != "FINISHED":
             return jsonify({"error": "Участник не FINISHED"}), 400
         start = result.get("start_time") or 0
         absolute_finish = int(start) + int(finish_time_ms)
-        ok = engine.edit_finish_time(int(rid), absolute_finish)
+        ok = engine.edit_finish_time(rid, absolute_finish)
         if not ok:
             return jsonify(
                 {"error": "Невозможно — категория закрыта или участник не FINISHED"}
@@ -457,23 +451,21 @@ def register_judge(app, db: Database, engine: RaceEngine = None):
     @app.route("/api/judge/manual-lap", methods=["POST"])
     @require_admin
     def api_judge_manual_lap():
-        err = _require_engine()
+        err = require_engine()
         if err:
             return err
         data, err = get_json_body()
         if err:
             return err
-        rid = data.get("rider_id")
-        if not rid:
-            return jsonify({"error": "Участник не выбран"}), 400
-        rider = db.get_rider(int(rid))
+        rid, err = require_int(data, "rider_id", "Участник не выбран")
+        if err:
+            return err
+        rider = db.get_rider(rid)
         if rider and rider.get("category_id"):
             if db.is_category_closed(rider["category_id"]):
                 return jsonify({"error": "Категория закрыта"}), 400
-        result = engine.manual_lap(int(rid))
-        if not result:
-            return jsonify({"error": "Невозможно — участник не в гонке"}), 400
-        return jsonify({"ok": True, "result": result})
+        body, status = actions.action_manual_lap(engine, rid)
+        return jsonify(body), status
 
     @app.route("/api/judge/notes", methods=["GET"])
     def api_judge_notes_list():
