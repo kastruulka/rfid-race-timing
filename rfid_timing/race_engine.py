@@ -392,15 +392,15 @@ class RaceEngine:
 
     def finish_all(self, category_id: int) -> dict:
         results = self.db.get_results_by_category(category_id)
-        finished = 0
-        dnf_count = 0
+        newly_finished = 0
+        newly_dnf = 0
 
         for r in results:
             if r["status"] != "RACING":
                 continue
             if r.get("finish_time"):
                 self.db.update_result(r["id"], status="FINISHED")
-                finished += 1
+                newly_finished += 1
             else:
                 self.db.update_result(
                     r["id"], status="DNF", dnf_reason="Гонка завершена судьёй"
@@ -408,22 +408,33 @@ class RaceEngine:
                 self.db.add_penalty(
                     r["id"], "DNF", value=0, reason="Гонка завершена судьёй"
                 )
-                dnf_count += 1
+                newly_dnf += 1
 
         self.calculate_places(category_id)
         self.db.close_category(category_id)
+
+        final_results = self.db.get_results_by_category(category_id)
+        finished = sum(1 for r in final_results if r["status"] == "FINISHED")
+        dnf_count = sum(1 for r in final_results if r["status"] in ("DNF", "DSQ"))
 
         if self.db.are_all_categories_closed():
             self.db.close_race()
             logger.info("Все категории завершены — гонка закрыта")
 
         logger.info(
-            "Категория %d завершена: финиш: %d, DNF: %d",
+            "Категория %d завершена: итоговый финиш: %d, итоговый DNF/DSQ: %d (новых финишей: %d, новых DNF: %d)",
             category_id,
             finished,
             dnf_count,
+            newly_finished,
+            newly_dnf,
         )
-        return {"finished": finished, "dnf_count": dnf_count}
+        return {
+            "finished": finished,
+            "dnf_count": dnf_count,
+            "newly_finished": newly_finished,
+            "newly_dnf": newly_dnf,
+        }
 
     def unfinish_rider(self, rider_id: int) -> bool:
         result = self.db.get_result_by_rider(rider_id)

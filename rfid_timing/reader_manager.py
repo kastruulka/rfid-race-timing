@@ -99,6 +99,7 @@ class ReaderManager:
             self._reader = EmulatorReader(
                 on_event=self._on_event,
                 db=self._db,
+                antennas=antennas,
                 rssi_window_sec=rssi_window_sec,
                 min_lap_time_sec=emulator_min_lap_sec,
             )

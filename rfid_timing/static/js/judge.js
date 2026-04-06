@@ -30,12 +30,20 @@ function setStateDisabled(el, disabled) {
   el.dataset.stateDisabled = disabled ? 'true' : 'false';
   const authLocked = !authManager || !authManager.isAuthenticated();
   const finalDisabled = authLocked || !!disabled;
-  el.disabled = finalDisabled;
+  if ('disabled' in el) el.disabled = finalDisabled;
   el.setAttribute('aria-disabled', finalDisabled ? 'true' : 'false');
   el.style.pointerEvents = finalDisabled ? 'none' : '';
   el.style.opacity = finalDisabled ? '0.55' : '';
   el.style.cursor = finalDisabled ? 'not-allowed' : '';
   el.classList.toggle('is-disabled', finalDisabled);
+}
+
+function setSectionStateDisabled(selector, disabled, excludeIds) {
+  const exclude = new Set(excludeIds || []);
+  document.querySelectorAll(selector).forEach(function (el) {
+    if (exclude.has(el.id)) return;
+    setStateDisabled(el, disabled);
+  });
 }
 
 function ensureProtocolCategory(message) {
@@ -826,10 +834,11 @@ async function loadRaceStatus() {
     const finBtn = document.getElementById('btn-finish-race');
     finBtn.textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить категорию';
     document.getElementById('btn-finish-race-ind').textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить';
-    document.querySelectorAll('.actions-grid .btn, #laps-section .btn').forEach(b => {
-      if (b.dataset.stateDisabled !== undefined) return;
-      b.disabled = effectivelyClosed;
-    });
+    setSectionStateDisabled(
+      '#laps-section [data-auth-required], .actions-grid [data-auth-required], .notes-section [data-auth-required]',
+      effectivelyClosed,
+      ['btn-mass-start', 'btn-finish-race', 'btn-finish-race-ind', 'btn-sp-launch', 'btn-individual-start']
+    );
     if (authManager) authManager.syncProtectedControls();
     if (startMode === 'individual' && catId) await spSyncStatus(catId, false);
   } catch(e) {}

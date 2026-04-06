@@ -2,6 +2,8 @@ let allRiders = [];
 let categories = [];
 let selectedCatId = '';
 let authManager = null;
+let tagScannerTimer = null;
+let tagScannerLastHash = '';
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_BIRTH_YEAR = 1900;
 const MAX_NUMBER = 99999;
@@ -223,6 +225,86 @@ function updateStats() {
   document.getElementById('stat-noepc').textContent = total - withEpc;
 }
 
+function getCurrentEditingRiderId() {
+  return parseInt(document.getElementById('rider-edit-id').value, 10) || null;
+}
+
+function getEpcOwner(epc) {
+  if (!epc) return null;
+  return allRiders.find(r => (r.epc || '') === epc) || null;
+}
+
+function renderTagScanner(events) {
+  const list = document.getElementById('tag-scanner-list');
+  const status = document.getElementById('tag-scanner-status');
+  if (!Array.isArray(events) || !events.length) {
+    status.textContent = 'Последних считываний пока нет';
+    list.innerHTML = '<div style="padding:12px;border:1px dashed var(--line);border-radius:12px;color:var(--text-dim);font-size:12px">Поднесите метку к антенне и дождитесь нового EPC.</div>';
+    return;
+  }
+
+  status.textContent = 'Последние считанные метки';
+  const editingRiderId = getCurrentEditingRiderId();
+  list.innerHTML = events.map(event => {
+    const owner = getEpcOwner(event.epc);
+    const belongsToCurrent = owner && editingRiderId && owner.id === editingRiderId;
+    const busy = owner && !belongsToCurrent;
+    const ownerLabel = owner
+      ? ('#' + owner.number + ' ' + (owner.last_name || '') + (belongsToCurrent ? ' (этот участник)' : ''))
+      : 'не привязана';
+    return '<div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center">' +
+      '<div>' +
+        '<div class="mono" style="font-size:13px;font-weight:700;word-break:break-all">' + esc(event.epc || '') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-dim);margin-top:4px">Время: ' + esc(event.timestamp || '') + ' · Антенна: ' + esc(String(event.antenna ?? '—')) + ' · RSSI: ' + esc(String(event.rssi ?? '—')) + '</div>' +
+        '<div style="font-size:11px;color:' + (busy ? 'var(--red)' : 'var(--text-dim)') + ';margin-top:4px">Привязка: ' + esc(ownerLabel) + '</div>' +
+      '</div>' +
+      '<div><button class="btn btn-sm' + (!busy ? ' btn-accent' : '') + '" type="button" ' + (busy ? 'disabled ' : '') + 'onclick="useScannedTag(\'' + escJs(event.epc || '') + '\')">' + (busy ? 'Занято' : 'Использовать') + '</button></div>' +
+    '</div>';
+  }).join('');
+}
+
+async function pollTagScanner() {
+  const modal = document.getElementById('tag-scanner-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const events = await api('/api/events', 'GET');
+  const normalized = Array.isArray(events) ? events.filter(e => e && e.epc).slice(0, 12) : [];
+  const hash = normalized.map(e => [e.epc, e.timestamp, e.antenna].join('|')).join('||');
+  if (hash === tagScannerLastHash) return;
+  tagScannerLastHash = hash;
+  renderTagScanner(normalized);
+}
+
+async function openTagScanner() {
+  if (!await authManager.requireAuth('Для считывания EPC нужен пароль администратора')) return;
+  if (!document.getElementById('rider-modal').classList.contains('open')) return;
+  tagScannerLastHash = '';
+  document.getElementById('tag-scanner-status').textContent = 'Ожидание считывания…';
+  document.getElementById('tag-scanner-list').innerHTML = '';
+  document.getElementById('tag-scanner-modal').classList.add('open');
+  await pollTagScanner();
+  if (!tagScannerTimer) tagScannerTimer = setInterval(pollTagScanner, 1000);
+}
+
+function closeTagScanner() {
+  document.getElementById('tag-scanner-modal').classList.remove('open');
+  if (tagScannerTimer) {
+    clearInterval(tagScannerTimer);
+    tagScannerTimer = null;
+  }
+}
+
+function useScannedTag(epc) {
+  const owner = getEpcOwner(epc);
+  const editingRiderId = getCurrentEditingRiderId();
+  if (owner && owner.id !== editingRiderId) {
+    toast('Эта метка уже привязана к #' + owner.number, true);
+    return;
+  }
+  document.getElementById('r-epc').value = epc || '';
+  closeTagScanner();
+  toast('EPC подставлен в карточку участника');
+}
+
 async function openRiderModal(rider) {
   const reason = rider
     ? 'Для редактирования участника нужен пароль администратора'
@@ -253,7 +335,10 @@ async function openRiderModal(rider) {
 
   document.getElementById('rider-modal').classList.add('open');
 }
-function closeRiderModal() { document.getElementById('rider-modal').classList.remove('open'); }
+function closeRiderModal() {
+  closeTagScanner();
+  document.getElementById('rider-modal').classList.remove('open');
+}
 
 async function saveRider() {
   if (!await authManager.requireAuth('Для сохранения участника нужен пароль администратора')) return;
@@ -348,10 +433,17 @@ function esc(s) {
   return d.innerHTML;
 }
 
+function escJs(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function bindModalClose(id) {
   const modal = document.getElementById(id);
   modal.addEventListener('click', function (event) {
-    if (event.target === modal) modal.classList.remove('open');
+    if (event.target === modal) {
+      if (id === 'tag-scanner-modal') closeTagScanner();
+      else modal.classList.remove('open');
+    }
   });
 }
 
@@ -368,6 +460,7 @@ async function init() {
 
   bindModalClose('cat-modal');
   bindModalClose('rider-modal');
+  bindModalClose('tag-scanner-modal');
   document.getElementById('r-year').setAttribute('max', String(CURRENT_YEAR));
 
   await authManager.checkAuth();

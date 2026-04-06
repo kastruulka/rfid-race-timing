@@ -21,6 +21,34 @@ async function api(url, method, body) {
   return result;
 }
 
+function updateModeVisibility() {
+  const useEmulator = document.getElementById('s-use-emulator').checked;
+  const readerBlock = document.getElementById('reader-settings-block');
+  const emulatorBlock = document.getElementById('emulator-settings-block');
+  const filterBlock = document.getElementById('filter-settings-block');
+  const checkBtn = document.getElementById('btn-check-connection');
+  const connBadge = document.getElementById('conn-status');
+  const minLapLabel = document.getElementById('s-min-lap-label');
+  const readerLabel = document.getElementById('mode-label-reader');
+  const emulatorLabel = document.getElementById('mode-label-emulator');
+  const modeBadge = document.getElementById('reader-mode-badge');
+
+  if (readerBlock) readerBlock.style.display = useEmulator ? 'none' : 'block';
+  if (emulatorBlock) emulatorBlock.style.display = useEmulator ? 'block' : 'none';
+  if (filterBlock) filterBlock.style.display = useEmulator ? 'none' : 'grid';
+  if (checkBtn) checkBtn.style.display = useEmulator ? 'none' : '';
+  if (connBadge) connBadge.style.display = useEmulator ? 'none' : '';
+  if (readerLabel) readerLabel.classList.toggle('active', !useEmulator);
+  if (emulatorLabel) emulatorLabel.classList.toggle('active', useEmulator);
+  if (modeBadge) {
+    modeBadge.className = 'status-badge ' + (useEmulator ? 'wait' : 'ok');
+    modeBadge.textContent = useEmulator ? 'Эмулятор' : 'Считыватель';
+  }
+  if (minLapLabel) {
+    minLapLabel.textContent = useEmulator ? 'Антидребезг эмулятора (сек)' : 'Антидребезг ридера (сек)';
+  }
+}
+
 async function loadSettings() {
   const resp = await api('/api/settings', 'GET');
   if (!resp || !resp.data) return;
@@ -39,6 +67,7 @@ async function loadSettings() {
     document.getElementById('s-ant-' + i).checked = antennas.includes(i);
   }
 
+  updateModeVisibility();
   loadSysInfo();
 }
 
@@ -195,6 +224,7 @@ async function init() {
 
   await authManager.checkAuth();
   authReady = true;
+  document.getElementById('s-use-emulator').addEventListener('change', updateModeVisibility);
   loadSettings();
   loadReaderStatus();
 }
