@@ -82,12 +82,12 @@ async function loadRiders() {
 
 function requireJudgeEditAccess(message) {
   if (!authManager || authManager.isAuthenticated()) return true;
-  authManager.openLogin(message || 'Judge action requires login');
+  authManager.openLogin(message || 'Для выполнения действия судьи требуется войти в систему');
   return false;
 }
 
 async function ensureJudgeAuth(message) {
-  return await authManager.requireAuth(message || 'Judge action requires login');
+  return await authManager.requireAuth(message || 'Для выполнения действия судьи требуется войти в систему');
 }
 
 function fmtMs(ms) {
@@ -289,7 +289,7 @@ function spRenderSearchDropdown() {
 }
 
 function spSelectFromSearch(riderId) {
-  if (!requireJudgeEditAccess('Judge action requires login')) return;
+  if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) return;
   if (!ensureProtocolCategory('Нельзя собирать очередь без выбранной категории')) return;
   const r = riders.find(x => x.id === riderId);
   if (!r) return;
@@ -310,7 +310,7 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function spRemoveEntry(index) { if (!requireJudgeEditAccess('Judge action requires login')) return; spEntries.splice(index, 1); spRenderList(); spSaveToServer(); }
+function spRemoveEntry(index) { if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) return; spEntries.splice(index, 1); spRenderList(); spSaveToServer(); }
 
 function spRenderList() {
   const list = document.getElementById('sp-list');
@@ -357,13 +357,13 @@ function spFindNextVisualIndex(catId) {
 }
 
 let spDragIdx = null;
-function spDragStart(e) { if (!requireJudgeEditAccess('Judge action requires login')) { e.preventDefault(); return; } spDragIdx = parseInt(e.target.dataset.idx); e.target.classList.add('dragging'); }
+function spDragStart(e) { if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) { e.preventDefault(); return; } spDragIdx = parseInt(e.target.dataset.idx); e.target.classList.add('dragging'); }
 function spDragEnd(e) { e.target.classList.remove('dragging'); document.querySelectorAll('.sp-item').forEach(el => el.classList.remove('drag-over')); }
 function spDragOver(e) { e.preventDefault(); const el = e.target.closest('.sp-item'); if (el) { document.querySelectorAll('.sp-item').forEach(x => x.classList.remove('drag-over')); el.classList.add('drag-over'); } }
-function spDrop(e) { if (!requireJudgeEditAccess('Judge action requires login')) { e.preventDefault(); return; } e.preventDefault(); const el = e.target.closest('.sp-item'); if (!el) return; const dropIdx = parseInt(el.dataset.idx); if (spDragIdx === null || spDragIdx === dropIdx) return; const [moved] = spEntries.splice(spDragIdx, 1); spEntries.splice(dropIdx, 0, moved); spDragIdx = null; spRenderList(); spSaveToServer(); }
+function spDrop(e) { if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) { e.preventDefault(); return; } e.preventDefault(); const el = e.target.closest('.sp-item'); if (!el) return; const dropIdx = parseInt(el.dataset.idx); if (spDragIdx === null || spDragIdx === dropIdx) return; const [moved] = spEntries.splice(spDragIdx, 1); spEntries.splice(dropIdx, 0, moved); spDragIdx = null; spRenderList(); spSaveToServer(); }
 
 async function spAutoFill() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
   if (spIsRunning(catId)) { toast('Протокол запущен — остановите сначала', true); return; }
@@ -513,7 +513,7 @@ function spUpdateCountdownDisplay(catId) {
 }
 
 async function doIndividualStart() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   const startBtn = document.getElementById('btn-individual-start');
   if (startBtn && startBtn.disabled) {
     toast(startBtn.textContent || 'Индивидуальный старт сейчас недоступен', true);
@@ -640,27 +640,27 @@ async function loadRiderLaps(riderId) {
 async function refreshRiderPanel() { if (selectedRiderId) { await loadRiderFinishInfo(selectedRiderId); await loadRiderLaps(selectedRiderId); } }
 
 async function saveLap(lapId) {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; const mm = document.getElementById('lap-mm-'+lapId).value.trim(); const ss = document.getElementById('lap-ss-'+lapId).value.trim(); const minutes = parseInt(mm)||0; const seconds = parseFloat(ss)||0; if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; } const lapTimeMs = Math.round((minutes*60+seconds)*1000); const res = await api('/api/judge/lap/'+lapId, 'PUT', { lap_time_ms: lapTimeMs }); if (res.ok) { toast('Круг обновлён'); lastLapsHash=''; await refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; const mm = document.getElementById('lap-mm-'+lapId).value.trim(); const ss = document.getElementById('lap-ss-'+lapId).value.trim(); const minutes = parseInt(mm)||0; const seconds = parseFloat(ss)||0; if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; } const lapTimeMs = Math.round((minutes*60+seconds)*1000); const res = await api('/api/judge/lap/'+lapId, 'PUT', { lap_time_ms: lapTimeMs }); if (res.ok) { toast('Круг обновлён'); lastLapsHash=''; await refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
 async function deleteLap(lapId) {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!confirm('Удалить этот круг?')) return; const res = await api('/api/judge/lap/'+lapId, 'DELETE'); if (res.ok) { toast('Круг удалён'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!confirm('Удалить этот круг?')) return; const res = await api('/api/judge/lap/'+lapId, 'DELETE'); if (res.ok) { toast('Круг удалён'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 async function doAddManualLap() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Круг добавлен'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const res = await api('/api/judge/manual-lap', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Круг добавлен'); lastLapsHash=''; await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 
 function requireRider() { if (!selectedRiderId) { toast('Выберите участника', true); return false; } return true; }
 
 async function doDNF(reason) {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const res = await api('/api/judge/dnf', 'POST', { rider_id: selectedRiderId, reason_code: reason }); if (res.ok) { toast('DNF зафиксирован'); loadLog(); refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const res = await api('/api/judge/dnf', 'POST', { rider_id: selectedRiderId, reason_code: reason }); if (res.ok) { toast('DNF зафиксирован'); loadLog(); refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
 async function doDSQ() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const reason = document.getElementById('dsq-reason').value.trim(); const res = await api('/api/judge/dsq', 'POST', { rider_id: selectedRiderId, reason }); if (res.ok) { toast('DSQ — дисквалификация'); document.getElementById('dsq-reason').value=''; loadLog(); refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const reason = document.getElementById('dsq-reason').value.trim(); const res = await api('/api/judge/dsq', 'POST', { rider_id: selectedRiderId, reason }); if (res.ok) { toast('DSQ — дисквалификация'); document.getElementById('dsq-reason').value=''; loadLog(); refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
 async function doTimePenalty() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const seconds = parseFloat(document.getElementById('pen-seconds').value)||0; const reason = document.getElementById('pen-reason').value.trim(); if (seconds <= 0) { toast('Укажите время штрафа', true); return; } const res = await api('/api/judge/time-penalty', 'POST', { rider_id: selectedRiderId, seconds, reason }); if (res.ok) { toast('+'+seconds+' сек штрафа'); document.getElementById('pen-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const seconds = parseFloat(document.getElementById('pen-seconds').value)||0; const reason = document.getElementById('pen-reason').value.trim(); if (seconds <= 0) { toast('Укажите время штрафа', true); return; } const res = await api('/api/judge/time-penalty', 'POST', { rider_id: selectedRiderId, seconds, reason }); if (res.ok) { toast('+'+seconds+' сек штрафа'); document.getElementById('pen-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
 async function doExtraLap() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const laps = parseInt(document.getElementById('extra-laps').value)||1; const reason = document.getElementById('extra-reason').value.trim(); const res = await api('/api/judge/extra-lap', 'POST', { rider_id: selectedRiderId, laps, reason }); if (res.ok) { toast('+'+laps+' штрафной круг'); document.getElementById('extra-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const laps = parseInt(document.getElementById('extra-laps').value)||1; const reason = document.getElementById('extra-reason').value.trim(); const res = await api('/api/judge/extra-lap', 'POST', { rider_id: selectedRiderId, laps, reason }); if (res.ok) { toast('+'+laps+' штрафной круг'); document.getElementById('extra-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
 async function doWarning() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const reason = document.getElementById('warn-reason').value.trim(); const res = await api('/api/judge/warning', 'POST', { rider_id: selectedRiderId, reason }); if (res.ok) { toast('Предупреждение выдано'); document.getElementById('warn-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const reason = document.getElementById('warn-reason').value.trim(); const res = await api('/api/judge/warning', 'POST', { rider_id: selectedRiderId, reason }); if (res.ok) { toast('Предупреждение выдано'); document.getElementById('warn-reason').value=''; loadLog(); } else toast(res.error||'Ошибка', true); }
 
 async function deletePenalty(pid) {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!confirm('Удалить это решение?')) return; const res = await api('/api/judge/penalty/'+pid, 'DELETE'); if (res.ok) { toast('Решение отменено'); loadLog(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!confirm('Удалить это решение?')) return; const res = await api('/api/judge/penalty/'+pid, 'DELETE'); if (res.ok) { toast('Решение отменено'); loadLog(); } else toast(res.error||'Ошибка', true); }
 
 async function loadLog() {
   try {
@@ -849,7 +849,7 @@ document.getElementById('sp-interval').addEventListener('change', function() { c
 document.getElementById('sp-interval').addEventListener('input', function() { const c = getCatId(); if (c) sessionStorage.setItem('sp_interval_' + c, this.value); spRenderList(); });
 
 async function doMassStart() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   const startBtn = document.getElementById('btn-mass-start');
   if (startBtn && startBtn.disabled) {
     toast(startBtn.textContent || 'Старт уже недоступен', true);
@@ -865,9 +865,9 @@ async function doMassStart() {
   } else toast(res.error || 'Ошибка', true);
 }
 async function doUnfinishRider() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; if (!requireRider()) return; const r = riders.find(x => x.id === selectedRiderId); const label = r ? '#'+r.number+' '+r.last_name : '#'+selectedRiderId; if (!confirm('Отменить финиш '+label+'?\nУчастник вернётся в статус RACING.')) return; const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Финиш отменён: '+label); await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; if (!requireRider()) return; const r = riders.find(x => x.id === selectedRiderId); const label = r ? '#'+r.number+' '+r.last_name : '#'+selectedRiderId; if (!confirm('Отменить финиш '+label+'?\nУчастник вернётся в статус RACING.')) return; const res = await api('/api/judge/unfinish-rider', 'POST', { rider_id: selectedRiderId }); if (res.ok) { toast('Финиш отменён: '+label); await refreshRiderPanel(); loadRaceStatus(); } else toast(res.error||'Ошибка', true); }
 async function doEditFinishTime() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   if (!requireRider()) return;
   const mm = document.getElementById('edit-finish-mm').value.trim(); const ss = document.getElementById('edit-finish-ss').value.trim();
   if (!mm && !ss) { toast('Введите время ММ:СС.д', true); return; }
@@ -884,9 +884,9 @@ async function doEditFinishTime() {
 }
 
 async function addNote() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; const text = document.getElementById('note-text').value.trim(); if (!text) { toast('Введите текст заметки', true); return; } const res = await api('/api/judge/notes', 'POST', { text, rider_id: selectedRiderId||null }); if (res.ok) { toast('Заметка сохранена'); document.getElementById('note-text').value=''; loadNotes(); } else toast(res.error||'Ошибка', true); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; const text = document.getElementById('note-text').value.trim(); if (!text) { toast('Введите текст заметки', true); return; } const res = await api('/api/judge/notes', 'POST', { text, rider_id: selectedRiderId||null }); if (res.ok) { toast('Заметка сохранена'); document.getElementById('note-text').value=''; loadNotes(); } else toast(res.error||'Ошибка', true); }
 async function deleteNote(nid) {
-  if (!await ensureJudgeAuth('Judge action requires login')) return; const res = await api('/api/judge/notes/'+nid, 'DELETE'); if (res.ok) loadNotes(); }
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; const res = await api('/api/judge/notes/'+nid, 'DELETE'); if (res.ok) loadNotes(); }
 async function loadNotes() {
   try {
     const data = await api('/api/judge/notes', 'GET');
@@ -906,7 +906,7 @@ async function loadNotes() {
 }
 
 async function doFinishRace() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
   const catName = (window._catNameMap || {})[catId] || catId;
@@ -920,7 +920,7 @@ async function doFinishRace() {
 }
 
 async function doResetCategory() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   const catId = getCatId();
   if (!catId) { toast('Выберите категорию для сброса', true); return; }
   const catName = (window._catNameMap || {})[catId] || catId;
@@ -936,7 +936,7 @@ async function doResetCategory() {
 }
 
 async function doNewRace() {
-  if (!await ensureJudgeAuth('Judge action requires login')) return;
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
   if (!confirm('Создать полностью новую гоночную сессию?\nРезультаты ВСЕХ категорий будут архивированы.\n\nДля сброса одной категории используйте «Сбросить категорию».')) return;
   const res = await api('/api/settings/reset-race', 'POST');
   if (res.ok) {

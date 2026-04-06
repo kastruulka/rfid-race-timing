@@ -14,7 +14,6 @@ class TagEvent:
 
 
 def make_tag_event(epc: str, timestamp: float, rssi: float, antenna: int) -> TagEvent:
-    """Фабрика TagEvent — общая для RFIDReader и EmulatorReader."""
     ts_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
     epc_short = f"...{epc[-4:]}" if len(epc) >= 4 else epc
     return TagEvent(

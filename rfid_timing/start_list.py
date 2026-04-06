@@ -5,7 +5,7 @@ from flask import render_template, jsonify, request, Response
 from .database import Database
 from .race_engine import RaceEngine
 from .request_helpers import get_json_body, require_int
-from .settings import require_admin
+from .security.auth import require_admin
 from .csv_import import sanitize_for_export, parse_csv_text, import_riders
 
 

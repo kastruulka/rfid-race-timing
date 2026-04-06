@@ -3,9 +3,7 @@ import os
 import signal
 import sys
 
-from dotenv import load_dotenv
-
-from rfid_timing.settings import ConfigState
+from rfid_timing.config_state import ConfigState
 from rfid_timing.event_store import EventStore
 from rfid_timing.reader_manager import ReaderManager
 from rfid_timing.web import create_app
@@ -20,8 +18,6 @@ from rfid_timing.config import (
     TARGET_LAPS,
     DB_PATH,
 )
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

@@ -229,7 +229,6 @@ class RaceEngine:
         rssi: float = 0,
         antenna: int = 0,
     ) -> Optional[Dict]:
-        """Общая логика записи круга для RFID и ручного ввода."""
         current_laps = self.db.count_laps(result["id"])
         last_lap = self.db.get_last_lap(result["id"])
         category = self.db.get_category(result["category_id"])

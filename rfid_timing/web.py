@@ -7,7 +7,8 @@ from .race_engine import RaceEngine
 from .race_service import build_race_state
 from .start_list import register_start_list
 from .protocol import register_protocol
-from .settings import register_settings, ConfigState
+from .config_state import ConfigState
+from .settings import register_settings
 from .judge import register_judge
 from .request_helpers import get_json_body, require_int, make_require_engine, safe_400
 from . import actions

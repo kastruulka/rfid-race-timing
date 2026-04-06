@@ -4,7 +4,7 @@ from typing import Callable
 
 from .reader import RFIDReader
 from .emulator import EmulatorReader
-from .settings import ConfigState
+from .config_state import ConfigState
 
 logger = logging.getLogger(__name__)
 

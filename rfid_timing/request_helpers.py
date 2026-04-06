@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 def get_json_body() -> tuple:
-    """Парсит JSON из тела запроса. Возвращает (data, None) или (None, error_response)."""
     data = request.get_json(silent=True)
     if data is None:
         return None, (jsonify({"error": "Невалидный JSON"}), 400)

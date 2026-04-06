@@ -114,7 +114,9 @@ class EmulatorReader:
         first_pass_at = max(
             now + 0.3,
             start_time_sec
-            + max(EMULATOR_FIRST_PASS_GRACE_SEC, base_pace * first_factor + pack_offset),
+            + max(
+                EMULATOR_FIRST_PASS_GRACE_SEC, base_pace * first_factor + pack_offset
+            ),
         )
 
         return {

@@ -5,7 +5,7 @@ from flask import render_template, jsonify, request
 from .database import Database
 from .race_engine import RaceEngine
 from .request_helpers import get_json_body, require_int, make_require_engine, safe_400
-from .settings import require_admin
+from .security.auth import require_admin
 from . import actions
 
 logger = logging.getLogger(__name__)
