@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Dict
 
 from .database import Database
-from .logger import RawLogger
+from .infra.logger import RawLogger
 from .timing import calc_required_laps, calc_finish_time
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,12 @@ class PenaltyService:
         details_parts.extend(f"{k}={v}" for k, v in extra.items() if v)
         self.raw_logger.log_event(event, epc=epc, details=",".join(details_parts))
         return rider, num
+
+    def _is_result_category_closed(self, result: Optional[Dict]) -> bool:
+        if not result:
+            return False
+        category_id = result.get("category_id")
+        return bool(category_id and self.db.is_category_closed(category_id))
 
     def _sync_finish_state(self, result_id: int):
         result = self.db.get_result_by_id(result_id)
@@ -75,6 +81,8 @@ class PenaltyService:
         on_status_change=None,
     ) -> bool:
         result = self.db.get_result_by_rider(rider_id)
+        if self._is_result_category_closed(result):
+            return False
         if not result or result["status"] not in ("RACING", "DNS", "FINISHED"):
             return False
 
@@ -103,6 +111,8 @@ class PenaltyService:
         on_status_change=None,
     ) -> bool:
         result = self.db.get_result_by_rider(rider_id)
+        if self._is_result_category_closed(result):
+            return False
         if not result:
             return False
 
@@ -127,6 +137,8 @@ class PenaltyService:
         self, rider_id: int, seconds: float, reason: str = ""
     ) -> Optional[Dict]:
         result = self.db.get_result_by_rider(rider_id)
+        if self._is_result_category_closed(result):
+            return None
         if not result:
             return None
         pid = self.db.add_penalty(
@@ -143,6 +155,8 @@ class PenaltyService:
         self, rider_id: int, laps: int = 1, reason: str = ""
     ) -> Optional[Dict]:
         result = self.db.get_result_by_rider(rider_id)
+        if self._is_result_category_closed(result):
+            return None
         if not result:
             return None
         pid = self.db.add_penalty(result["id"], "EXTRA_LAP", value=laps, reason=reason)
@@ -155,6 +169,8 @@ class PenaltyService:
 
     def add_warning(self, rider_id: int, reason: str = "") -> Optional[Dict]:
         result = self.db.get_result_by_rider(rider_id)
+        if self._is_result_category_closed(result):
+            return None
         if not result:
             return None
         pid = self.db.add_penalty(result["id"], "WARNING", value=0, reason=reason)
@@ -169,6 +185,9 @@ class PenaltyService:
             return False
 
         result_id = penalty["result_id"]
+        result = self.db.get_result_by_id(result_id)
+        if self._is_result_category_closed(result):
+            return False
         penalty_type = penalty["type"]
 
         self.db.delete_penalty(penalty_id)

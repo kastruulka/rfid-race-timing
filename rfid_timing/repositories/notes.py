@@ -1,0 +1,42 @@
+import time
+from typing import TYPE_CHECKING, Dict, List
+
+if TYPE_CHECKING:
+    from ..database import Database
+
+
+class NotesRepository:
+    def __init__(self, db: "Database"):
+        self._db = db
+
+    def add_note(self, text: str, rider_id: int = None, race_id: int = None) -> int:
+        race_id = self._db._resolve_race(race_id)
+        cur = self._db._exec(
+            """INSERT INTO note (race_id, rider_id, text, created_at)
+               VALUES (?,?,?,?)""",
+            (race_id, rider_id, text, time.time()),
+        )
+        self._db._commit()
+        return cur.lastrowid
+
+    def get_notes(self, race_id: int = None) -> List[Dict]:
+        race_id = self._db._resolve_race(race_id)
+        if race_id is None:
+            return []
+        rows = self._db._exec(
+            """
+            SELECT n.*, rd.number as rider_number,
+                   rd.last_name, rd.first_name
+            FROM note n
+            LEFT JOIN rider rd ON n.rider_id = rd.id
+            WHERE n.race_id = ?
+            ORDER BY n.created_at DESC
+        """,
+            (race_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_note(self, note_id: int) -> bool:
+        self._db._exec("DELETE FROM note WHERE id=?", (note_id,))
+        self._db._commit()
+        return True

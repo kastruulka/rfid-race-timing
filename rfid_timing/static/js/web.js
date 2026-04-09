@@ -1,18 +1,30 @@
 function fmtMs(ms) {
-  if (ms === null || ms === undefined) return '—';
+  if (ms === null || ms === undefined) return '-';
   const totalSec = Math.abs(ms) / 1000;
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return String(m).padStart(2, '0') + ':' + s.toFixed(1).padStart(4, '0');
 }
 
-let serverElapsedMs = null;   // elapsed на момент последнего ответа сервера
-let perfAtSync = null;        // performance.now() в момент синхронизации
+let serverElapsedMs = null;
+let perfAtSync = null;
 let clockTimer = null;
-let lastFeedIds = '';         // для предотвращения мигания
-let raceStopped = false;      // флаг для глушения таймера при закрытой гонке
+let lastFeedIds = '';
+let fetchStateInFlight = false;
 
-let catTimerData = {};        // category_id -> {elapsed, perfRef, closed, name}
+const WEB_STATE_POLL_MS = 500;
+
+function stopClock() {
+  if (!clockTimer) return;
+  clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+function setClockDisplay(text, color) {
+  const clock = document.getElementById('main-clock');
+  clock.textContent = text;
+  clock.style.color = color || '';
+}
 
 function updateClock() {
   if (serverElapsedMs === null) return;
@@ -26,7 +38,35 @@ function getSelectedCategory() {
   return sel ? sel.value : '';
 }
 
+function getMaxActiveCategoryElapsed(catStates) {
+  let maxElapsed = null;
+  for (const cs of Object.values(catStates || {})) {
+    if (!cs || cs.closed || cs.elapsed_ms === null || cs.elapsed_ms === undefined) {
+      continue;
+    }
+    if (maxElapsed === null || cs.elapsed_ms > maxElapsed) {
+      maxElapsed = cs.elapsed_ms;
+    }
+  }
+  return maxElapsed;
+}
+
+function getLastClosedCategorySnapshot(catStates) {
+  let latest = null;
+  for (const cs of Object.values(catStates || {})) {
+    if (!cs || !cs.closed || cs.elapsed_ms === null || cs.elapsed_ms === undefined) {
+      continue;
+    }
+    if (latest === null || (cs.closed_at || 0) > (latest.closed_at || 0)) {
+      latest = cs;
+    }
+  }
+  return latest;
+}
+
 async function fetchState() {
+  if (fetchStateInFlight) return;
+  fetchStateInFlight = true;
   try {
     const catId = getSelectedCategory();
     const qs = catId ? '?category_id=' + encodeURIComponent(catId) : '';
@@ -34,59 +74,58 @@ async function fetchState() {
     const data = await resp.json();
 
     const catStates = data.category_states || {};
-    const catClosed = data.category_closed;
+    const maxActiveElapsed = getMaxActiveCategoryElapsed(catStates);
+    const lastClosedSnapshot = getLastClosedCategorySnapshot(catStates);
 
     if (catId && catStates[String(catId)]) {
       const cs = catStates[String(catId)];
       if (cs.closed) {
-        raceStopped = true;
-        if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+        serverElapsedMs = null;
+        stopClock();
         if (cs.elapsed_ms !== null) {
-          document.getElementById('main-clock').textContent = fmtMs(cs.elapsed_ms);
-          document.getElementById('main-clock').style.color = 'var(--text-dim)';
+          setClockDisplay(fmtMs(cs.elapsed_ms), 'var(--text-dim)');
         }
       } else if (cs.elapsed_ms !== null) {
-        raceStopped = false;
         serverElapsedMs = cs.elapsed_ms;
         perfAtSync = performance.now();
-        document.getElementById('main-clock').style.color = '';
+        setClockDisplay(document.getElementById('main-clock').textContent, '');
         if (!clockTimer) {
           clockTimer = setInterval(updateClock, 100);
         }
+      } else {
+        serverElapsedMs = null;
+        stopClock();
+        setClockDisplay('00:00.0', '');
       }
     } else if (catId && !catStates[String(catId)]) {
-      raceStopped = false;
       serverElapsedMs = null;
-      if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
-      document.getElementById('main-clock').textContent = '00:00.0';
-      document.getElementById('main-clock').style.color = '';
-    } else {
-      if (data.race_closed) {
-        raceStopped = true;
-        if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
-        if (data.server_elapsed_ms !== null) {
-          document.getElementById('main-clock').textContent = fmtMs(data.server_elapsed_ms);
-          document.getElementById('main-clock').style.color = 'var(--text-dim)';
-        }
-      } else {
-        raceStopped = false;
-        if (data.server_elapsed_ms !== null && data.server_elapsed_ms !== undefined) {
-          serverElapsedMs = data.server_elapsed_ms;
-          perfAtSync = performance.now();
-          document.getElementById('main-clock').style.color = '';
-          if (!clockTimer) {
-            clockTimer = setInterval(updateClock, 100);
-          }
-        }
+      stopClock();
+      setClockDisplay('00:00.0', '');
+    } else if (maxActiveElapsed !== null) {
+      serverElapsedMs = maxActiveElapsed;
+      perfAtSync = performance.now();
+      setClockDisplay(document.getElementById('main-clock').textContent, '');
+      if (!clockTimer) {
+        clockTimer = setInterval(updateClock, 100);
       }
+    } else if (lastClosedSnapshot) {
+      serverElapsedMs = null;
+      stopClock();
+      setClockDisplay(fmtMs(lastClosedSnapshot.elapsed_ms), 'var(--text-dim)');
+    } else {
+      serverElapsedMs = null;
+      stopClock();
+      setClockDisplay('00:00.0', '');
     }
 
-    updateFeed(data.feed);
-    updateResults(data.results);
-    updateCounters(data.status);
-    updateCategories(data.categories);
+    updateFeed(data.feed || []);
+    updateResults(data.results || []);
+    updateCounters(data.status || {});
+    updateCategories(data.categories || []);
   } catch (e) {
     console.error('Fetch error', e);
+  } finally {
+    fetchStateInFlight = false;
   }
 }
 
@@ -106,15 +145,19 @@ function updateFeed(feed) {
     if (isWarmup) cls += ' warmup';
     if (hadChildren && i === 0) cls += ' new-item';
 
-    const lapLabel = isWarmup ? 'разгонный' :
-      (isFinishLap ? 'ФИНИШ · круг ' + item.lap_number + '/' + item.laps_required
-                   : 'круг ' + item.lap_number + '/' + item.laps_required);
+    const lapLabel = isWarmup
+      ? 'разгонный'
+      : (
+          isFinishLap
+            ? 'ФИНИШ - круг ' + item.lap_number + '/' + item.laps_required
+            : 'круг ' + item.lap_number + '/' + item.laps_required
+        );
 
     return '<div class="' + cls + '">' +
       '<div class="feed-number">' + item.rider_number + '</div>' +
       '<div class="feed-info">' +
         '<div class="feed-name">' + item.rider_name + '</div>' +
-        '<div class="feed-detail">' + lapLabel + ' · ' + item.time_str + '</div>' +
+        '<div class="feed-detail">' + lapLabel + ' - ' + item.time_str + '</div>' +
       '</div>' +
       '<div class="feed-time">' + fmtMs(item.lap_time) + '</div>' +
     '</div>';
@@ -126,7 +169,7 @@ function updateResults(results) {
   let leaderTime = null;
 
   tbody.innerHTML = results.map((r, i) => {
-    const pos = r.status === 'FINISHED' ? String(i + 1) : '—';
+    const pos = r.status === 'FINISHED' ? String(i + 1) : '-';
     if (r.status === 'FINISHED' && leaderTime === null) leaderTime = r.total_time;
 
     const gap = (r.status === 'FINISHED' && leaderTime !== null && r.total_time !== leaderTime)
@@ -189,11 +232,10 @@ function updateCategories(cats) {
 document.getElementById('category-select').addEventListener('change', () => {
   serverElapsedMs = null;
   perfAtSync = null;
-  raceStopped = false;
-  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
-  document.getElementById('main-clock').textContent = '00:00.0';
-  document.getElementById('main-clock').style.color = '';
+  stopClock();
+  setClockDisplay('00:00.0', '');
   fetchState();
 });
+
 fetchState();
-setInterval(fetchState, 1000);
+setInterval(fetchState, WEB_STATE_POLL_MS);

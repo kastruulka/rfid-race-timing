@@ -6,4 +6,9 @@ __pycache__/
 data/
 backups/
 .ruff_cache/
+.pytest_cache/
 .env
+README.md
+.pytest_tmp/
+tests/
+pytest.ini

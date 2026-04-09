@@ -1,7 +1,7 @@
 import logging
-from typing import Optional, Tuple, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
-from .race_engine import RaceEngine
+from ..race_engine import RaceEngine
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +15,6 @@ def action_mass_start(engine: RaceEngine, category_id: int) -> ResponseTuple:
     except ValueError as e:
         logger.warning("mass_start: %s", e)
         return {"error": "Невозможно запустить категорию"}, 400
-    except Exception as e:
-        logger.warning("mass_start: %s", e)
-        return {"error": "Неверный запрос"}, 400
 
 
 def action_individual_start(
@@ -31,15 +28,12 @@ def action_individual_start(
     except ValueError as e:
         logger.warning("individual_start: %s", e)
         return {"error": "Невозможно стартовать участника"}, 400
-    except Exception as e:
-        logger.warning("individual_start: %s", e)
-        return {"error": "Неверный запрос"}, 400
 
 
 def action_manual_lap(engine: RaceEngine, rider_id: int) -> ResponseTuple:
     result = engine.manual_lap(rider_id)
     if not result:
-        return {"error": "Невозможно — участник не в гонке"}, 400
+        return {"error": "Невозможно: участник не в гонке"}, 400
     return {"ok": True, "result": result}, 200
 
 
@@ -51,7 +45,7 @@ def action_dnf(
 ) -> ResponseTuple:
     ok = engine.set_dnf(rider_id, reason_code=reason_code, reason_text=reason_text)
     if not ok:
-        return {"error": "Невозможно — участник не в гонке"}, 400
+        return {"error": "Невозможно: участник не в гонке"}, 400
     return {"ok": True}, 200
 
 

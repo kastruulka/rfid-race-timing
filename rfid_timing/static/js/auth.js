@@ -65,16 +65,34 @@
     const authHint = cfg.authHintId ? document.getElementById(cfg.authHintId) : null;
 
     let authenticated = false;
+    let csrfToken = null;
     let isOpen = false;
+
+    function isMutatingMethod(method) {
+      const upper = String(method || 'GET').toUpperCase();
+      return upper === 'POST' || upper === 'PUT' || upper === 'PATCH' || upper === 'DELETE';
+    }
+
+    function setCsrfToken(nextToken) {
+      csrfToken = nextToken || null;
+    }
+
+    function getCsrfHeaders(method) {
+      if (!csrfToken || !isMutatingMethod(method)) return {};
+      return { 'X-CSRF-Token': csrfToken };
+    }
 
     function syncProtectedControls() {
       document.querySelectorAll('[data-auth-required]').forEach(function (el) {
         const shouldLock = !authenticated;
         const stateLocked = el.dataset.stateDisabled === 'true';
-        if ('disabled' in el) {
-          el.disabled = shouldLock || stateLocked;
+        const finalDisabled = shouldLock || stateLocked;
+        if ('disabled' in el && el.disabled !== finalDisabled) {
+          el.disabled = finalDisabled;
         }
-        el.classList.toggle('auth-disabled', shouldLock);
+        if (el.classList.contains('auth-disabled') !== shouldLock) {
+          el.classList.toggle('auth-disabled', shouldLock);
+        }
       });
     }
 
@@ -93,8 +111,7 @@
     }
 
     function openLogin(reason) {
-      if (reason) subtitleEl.textContent = reason;
-      else subtitleEl.textContent = 'Введите пароль администратора';
+      subtitleEl.textContent = reason || 'Введите пароль администратора';
       clearError();
       overlay.classList.remove('hidden');
       isOpen = true;
@@ -122,8 +139,10 @@
         const resp = await fetch(cfg.statusUrl, { credentials: 'same-origin' });
         const data = await resp.json();
         authenticated = !!data.authenticated;
+        setCsrfToken(data && data.csrf_token);
       } catch (err) {
         authenticated = false;
+        setCsrfToken(null);
       }
       syncAuthState();
       return authenticated;
@@ -156,6 +175,7 @@
           return false;
         }
 
+        setCsrfToken(data && data.csrf_token);
         await setAuthenticated(true);
         cfg.toast('Авторизация успешна');
         return true;
@@ -169,11 +189,16 @@
 
     async function logout() {
       try {
-        await fetch(cfg.logoutUrl, { method: 'POST', credentials: 'same-origin' });
+        await fetch(cfg.logoutUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: getCsrfHeaders('POST'),
+        });
       } catch (err) {
         // ignore network problems and still drop local state
       }
       authenticated = false;
+      setCsrfToken(null);
       syncAuthState();
       cfg.toast('Вы вышли');
     }
@@ -186,6 +211,7 @@
 
     async function handleUnauthorized(reason) {
       authenticated = false;
+      setCsrfToken(null);
       syncAuthState();
       openLogin(reason || 'Сессия истекла. Войдите заново');
       cfg.toast('Требуется авторизация', true);
@@ -193,7 +219,11 @@
     }
 
     async function fetchJson(url, options) {
-      const resp = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}));
+      const opts = Object.assign({ credentials: 'same-origin' }, options || {});
+      const method = opts.method || 'GET';
+      opts.headers = Object.assign({}, getCsrfHeaders(method), opts.headers || {});
+
+      const resp = await fetch(url, opts);
       let data = null;
       try {
         data = await resp.json();
@@ -204,6 +234,11 @@
       if (resp.status === 401) {
         await handleUnauthorized((data && data.error) || 'Сессия истекла. Войдите заново');
         return { ok: false, unauthorized: true, status: resp.status, data: data };
+      }
+
+      if (resp.status === 403 && data && data.error === 'CSRF token missing or invalid') {
+        setCsrfToken(null);
+        await checkAuth();
       }
 
       return { ok: resp.ok, status: resp.status, data: data };
@@ -242,6 +277,7 @@
       requireAuth: requireAuth,
       handleUnauthorized: handleUnauthorized,
       fetchJson: fetchJson,
+      getCsrfHeaders: getCsrfHeaders,
       isAuthenticated: function () { return authenticated; },
       syncProtectedControls: syncProtectedControls,
     };

@@ -1,7 +1,7 @@
 import logging
-from typing import Optional, Tuple, Any
+from typing import Any, Optional, Tuple
 
-from flask import request, jsonify
+from flask import jsonify, request
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ def require_int(data: dict, key: str, label: str = "") -> Tuple[Optional[int], A
 
 
 def make_require_engine(engine):
-
     def require_engine():
         if not engine:
             return jsonify({"error": "Engine unavailable"}), 500
@@ -41,5 +40,7 @@ def safe_error(e: Exception, context: str = "") -> tuple:
 
 
 def safe_400(e: Exception, context: str = "") -> tuple:
+    if not isinstance(e, (ValueError, TypeError)):
+        return safe_error(e, context)
     logger.warning("Ошибка запроса%s: %s", f" ({context})" if context else "", e)
     return jsonify({"error": "Неверный запрос"}), 400

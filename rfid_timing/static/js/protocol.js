@@ -1,13 +1,34 @@
 async function api(url, method, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
-  return r;
+  const opts = { method: method || 'GET' };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  return await fetch(url, opts);
+}
+
+function getSelectedCategoryId() {
+  return parseInt(document.getElementById('p-category').value, 10) || null;
+}
+
+function ensureCategorySelected(categoryId) {
+  if (categoryId) return true;
+  alert('Выберите категорию');
+  return false;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function getConfig() {
   return {
-    category_id: parseInt(document.getElementById('p-category').value) || null,
+    category_id: getSelectedCategoryId(),
     meta: {
       title: document.getElementById('p-title').value.trim(),
       subtitle: document.getElementById('p-subtitle').value.trim(),
@@ -49,7 +70,7 @@ async function loadCategories() {
 
 async function generatePreview() {
   const cfg = getConfig();
-  if (!cfg.category_id) { alert('Выберите категорию'); return; }
+  if (!ensureCategorySelected(cfg.category_id)) return;
 
   const resp = await api('/api/protocol/preview', 'POST', cfg);
   const html = await resp.text();
@@ -69,7 +90,7 @@ async function generatePreview() {
 
 async function downloadPDF() {
   const cfg = getConfig();
-  if (!cfg.category_id) { alert('Выберите категорию'); return; }
+  if (!ensureCategorySelected(cfg.category_id)) return;
 
   const resp = await api('/api/protocol/pdf', 'POST', cfg);
   if (!resp.ok) {
@@ -78,12 +99,7 @@ async function downloadPDF() {
     return;
   }
   const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'protocol.pdf';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, 'protocol.pdf');
 }
 
 loadCategories();

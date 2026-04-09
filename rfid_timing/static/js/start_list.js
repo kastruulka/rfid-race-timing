@@ -94,8 +94,8 @@ function renderCategories() {
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div class="cat-count">' + (c.rider_count || 0) + '</div>' +
         '<div class="cat-actions">' +
-          '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();editCat(' + c.id + ')" title="Редакт.">✎</button>' +
-          '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();deleteCat(' + c.id + ')" title="Удалить">✕</button>' +
+          '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();editCat(' + c.id + ')" title="Редакт.">E</button>' +
+          '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();deleteCat(' + c.id + ')" title="Удалить">X</button>' +
         '</div>' +
       '</div>';
     list.appendChild(div);
@@ -204,10 +204,10 @@ function renderRiders() {
       '<td>' + esc(r.club || '') + '</td>' +
       '<td>' + esc(r.category_name || '—') + '</td>' +
       '<td class="epc-col' + (hasEpc ? ' bound' : '') + '" title="' + esc(r.epc || '') + '">' +
-        (hasEpc ? esc(r.epc) : '—') + '</td>' +
+        (hasEpc ? esc(r.epc) : '-') + '</td>' +
       '<td><div class="actions-col">' +
-        '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="editRider(' + r.id + ')" title="Редакт.">✎</button>' +
-        '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="deleteRider(' + r.id + ')" title="Удалить">✕</button>' +
+        '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="editRider(' + r.id + ')" title="Редакт.">E</button>' +
+        '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="deleteRider(' + r.id + ')" title="Удалить">X</button>' +
       '</div></td>' +
     '</tr>';
   }).join('');
@@ -408,10 +408,11 @@ async function importCSV(event) {
   formData.append('file', file);
   try {
     const resp = await fetch('/api/riders/import', {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: formData,
-    });
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authManager.getCsrfHeaders('POST'),
+        body: formData,
+      });
     const res = await resp.json();
     if (resp.status === 401) {
       await authManager.handleUnauthorized('Сессия истекла. Войдите заново для импорта');

@@ -3,7 +3,6 @@ let selectedRiderId = null;
 let startMode = 'mass';
 
 let spStates = {};
-let spGlobalTimer = null;
 let spCountdownTimer = null;
 
 let spEntries = [];
@@ -15,7 +14,12 @@ let globalTimerRef = null;
 let authManager = null;
 let currentCategoryStarted = false;
 let currentCategoryClosed = false;
-let currentRaceClosed = false;
+let raceStatusRequestInFlight = false;
+let riderPanelRequestInFlight = false;
+
+const JUDGE_LOG_POLL_MS = 5000;
+const JUDGE_RACE_STATUS_POLL_MS = 500;
+const JUDGE_RIDER_PANEL_POLL_MS = 700;
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -27,15 +31,20 @@ function toast(msg, isError) {
 
 function setStateDisabled(el, disabled) {
   if (!el) return;
-  el.dataset.stateDisabled = disabled ? 'true' : 'false';
+  const stateValue = disabled ? 'true' : 'false';
   const authLocked = !authManager || !authManager.isAuthenticated();
   const finalDisabled = authLocked || !!disabled;
-  if ('disabled' in el) el.disabled = finalDisabled;
-  el.setAttribute('aria-disabled', finalDisabled ? 'true' : 'false');
-  el.style.pointerEvents = finalDisabled ? 'none' : '';
-  el.style.opacity = finalDisabled ? '0.55' : '';
-  el.style.cursor = finalDisabled ? 'not-allowed' : '';
-  el.classList.toggle('is-disabled', finalDisabled);
+  const ariaValue = finalDisabled ? 'true' : 'false';
+  if (el.dataset.stateDisabled !== stateValue) el.dataset.stateDisabled = stateValue;
+  if ('disabled' in el && el.disabled !== finalDisabled) el.disabled = finalDisabled;
+  if (el.getAttribute('aria-disabled') !== ariaValue) el.setAttribute('aria-disabled', ariaValue);
+  const pointerValue = finalDisabled ? 'none' : '';
+  const opacityValue = finalDisabled ? '0.55' : '';
+  const cursorValue = finalDisabled ? 'not-allowed' : '';
+  if (el.style.pointerEvents !== pointerValue) el.style.pointerEvents = pointerValue;
+  if (el.style.opacity !== opacityValue) el.style.opacity = opacityValue;
+  if (el.style.cursor !== cursorValue) el.style.cursor = cursorValue;
+  if (el.classList.contains('is-disabled') !== finalDisabled) el.classList.toggle('is-disabled', finalDisabled);
 }
 
 function setSectionStateDisabled(selector, disabled, excludeIds) {
@@ -106,13 +115,12 @@ function getCatId() {
 function spGetState(catId) {
   if (!catId) return null;
   if (!spStates[catId]) {
-    spStates[catId] = { entries: [], planned: null, running: false, startedSet: new Set(), starting: false };
+    spStates[catId] = { entries: [], planned: null, running: false, startedSet: new Set(), starting: false, pausedDelayMs: null };
   }
   return spStates[catId];
 }
 
 function spIsRunning(catId) { const s = spStates[catId]; return s && s.running; }
-function spAnyRunning() { return Object.values(spStates).some(s => s.running); }
 
 function spEnsureCountdownTick() {
   if (spCountdownTimer) return;
@@ -130,13 +138,20 @@ async function spSyncStatus(catId, silent) {
   }
   const res = await api('/api/judge/start-protocol/status?category_id=' + catId, 'GET');
   const st = spGetState(catId);
+  const prevRunning = !!st.running;
+  const prevPlannedKey = Array.isArray(st.planned)
+    ? st.planned.map(e => [e.entry_id || e.id, e.status, e.planned_time, e.actual_time].join(':')).join('|')
+    : '';
   const prevStarted = new Set(st.startedSet || []);
 
   if (!res || !res.running && !Array.isArray(res.planned)) {
+    const hadProtocol = prevRunning || prevPlannedKey !== '';
     st.running = false;
     st.planned = null;
     st.startedSet = new Set();
+    st.pausedDelayMs = null;
     spSaveAllStates();
+    if (hadProtocol) spRenderList();
     spUpdateUI();
     return;
   }
@@ -148,6 +163,12 @@ async function spSyncStatus(catId, silent) {
       .filter(e => e.status === 'STARTED')
       .map(e => e.rider_id)
   );
+  if (st.running) st.pausedDelayMs = null;
+  const nextPlannedKey = st.planned.map(e => [e.entry_id || e.id, e.status, e.planned_time, e.actual_time].join(':')).join('|');
+  const startedChanged =
+    prevStarted.size !== st.startedSet.size ||
+    Array.from(st.startedSet).some(riderId => !prevStarted.has(riderId));
+  const protocolChanged = prevRunning !== st.running || prevPlannedKey !== nextPlannedKey;
 
   if (!silent) {
     st.planned.forEach(entry => {
@@ -158,14 +179,20 @@ async function spSyncStatus(catId, silent) {
   }
 
   spSaveAllStates();
+  if (protocolChanged || startedChanged) spRenderList();
   spUpdateUI();
 }
 
 function spSaveAllStates() {
   const data = {};
   Object.entries(spStates).forEach(([catId, s]) => {
-    if (s.running && s.planned && s.planned.length) {
-      data[catId] = { planned: s.planned, startedRiders: Array.from(s.startedSet) };
+    if (s.planned && s.planned.length) {
+      data[catId] = {
+        planned: s.planned,
+        startedRiders: Array.from(s.startedSet),
+        running: !!s.running,
+        pausedDelayMs: s.pausedDelayMs
+      };
     }
   });
   if (Object.keys(data).length) sessionStorage.setItem('sp_states', JSON.stringify(data));
@@ -184,12 +211,13 @@ function spRestoreAllStates() {
       const remaining = saved.planned.filter(p => !started.has(p.rider_id));
       if (!remaining.length) return;
       const lastPlanned = saved.planned[saved.planned.length - 1].planned_time;
-      if (Date.now() - lastPlanned > 10 * 60 * 1000) return;
+      if (saved.running && lastPlanned && Date.now() - lastPlanned > 10 * 60 * 1000) return;
       const s = spGetState(catId);
       s.planned = saved.planned;
       s.startedSet = started;
-      s.running = true;
+      s.running = !!saved.running;
       s.starting = false;
+      s.pausedDelayMs = saved.pausedDelayMs ?? null;
       restored = true;
     });
     if (!restored) sessionStorage.removeItem('sp_states');
@@ -203,6 +231,7 @@ function spClearStateFor(catId) {
     spStates[catId].planned = null;
     spStates[catId].startedSet = new Set();
     spStates[catId].starting = false;
+    spStates[catId].pausedDelayMs = null;
   }
   spSaveAllStates();
 }
@@ -310,45 +339,6 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function spRemoveEntry(index) { if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) return; spEntries.splice(index, 1); spRenderList(); spSaveToServer(); }
-
-function spRenderList() {
-  const list = document.getElementById('sp-list');
-  const interval = parseInt(document.getElementById('sp-interval').value) || 30;
-  const catId = getCatId();
-  const isRunning = spIsRunning(catId);
-  const startedSet = isRunning ? spStates[catId].startedSet : new Set();
-
-  if (!catId) {
-    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Выберите категорию, чтобы собирать очередь индивидуального старта</div>';
-    return;
-  }
-
-  if (!spEntries.length) {
-    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Протокол пуст — нажмите «Авто» или добавьте участников</div>';
-    return;
-  }
-
-  list.innerHTML = spEntries.map((e, i) => {
-    const offsetSec = i * interval;
-    const mm = Math.floor(offsetSec / 60); const ss = offsetSec % 60;
-    const timeStr = (mm > 0 ? mm + ':' + String(ss).padStart(2, '0') : ss + 'с');
-    const isStarted = startedSet.has(e.rider_id);
-    const isNext = isRunning && !isStarted && i === spFindNextVisualIndex(catId);
-    let cls = 'sp-item';
-    if (isStarted) cls += ' sp-started';
-    if (isNext) cls += ' sp-active';
-    return '<div class="' + cls + '" draggable="' + (isRunning ? 'false' : 'true') + '" data-idx="' + i + '"' +
-      ' ondragstart="spDragStart(event)" ondragover="spDragOver(event)" ondrop="spDrop(event)" ondragend="spDragEnd(event)">' +
-      '<span class="sp-pos">' + (i+1) + '</span><span class="sp-num">#' + e.rider_number + '</span>' +
-      '<span class="sp-name">' + e.last_name + ' ' + e.first_name + '</span>' +
-      '<span class="sp-time">+' + timeStr + '</span>' +
-      (isRunning ? (isStarted ? '<span style="color:var(--green);font-size:10px;font-weight:700">✓</span>' : '') :
-        '<span class="sp-del" onclick="spRemoveEntry(' + i + ')">✕</span>') +
-    '</div>';
-  }).join('');
-}
-
 function spFindNextVisualIndex(catId) {
   const st = spStates[catId];
   if (!st || !st.planned) return -1;
@@ -414,102 +404,6 @@ function spSwitchToCategory() {
   }
   spLoadProtocol();
   spUpdateUI();
-}
-
-function spUpdateUI() {
-  const catId = getCatId();
-  const isRunning = spIsRunning(catId);
-  const launchBtn = document.getElementById('btn-sp-launch');
-  const stopBtn = document.getElementById('btn-sp-stop');
-  const searchEl = document.getElementById('sp-search');
-  const intervalEl = document.getElementById('sp-interval');
-  const hasCategory = !!catId;
-  const blockedByRaceState = currentCategoryStarted || currentCategoryClosed || currentRaceClosed;
-  launchBtn.style.display = isRunning ? 'none' : 'block';
-  setStateDisabled(launchBtn, isRunning || !hasCategory || blockedByRaceState);
-  stopBtn.style.display = isRunning ? 'block' : 'none';
-  document.getElementById('sp-countdown-area').style.display = isRunning ? 'block' : 'none';
-  searchEl.disabled = isRunning || !hasCategory || blockedByRaceState;
-  intervalEl.disabled = isRunning || !hasCategory || blockedByRaceState;
-  searchEl.setAttribute('aria-disabled', searchEl.disabled ? 'true' : 'false');
-  intervalEl.setAttribute('aria-disabled', intervalEl.disabled ? 'true' : 'false');
-  if (isRunning) spUpdateCountdownDisplay(catId);
-  spRenderList();
-}
-
-
-async function spLaunch() {
-  if (!await ensureJudgeAuth('Launching protocol requires login')) return;
-  const catId = getCatId();
-  if (!catId) { toast('Выберите категорию', true); return; }
-
-  await loadRaceStatus();
-
-  const massBtn = document.getElementById('btn-mass-start');
-  const raceAlreadyStarted = massBtn && massBtn.disabled && massBtn.textContent !== 'Категория завершена';
-
-  if (spIsRunning(catId)) {
-    toast('Протокол уже запущен', true);
-    return;
-  }
-
-  if (raceAlreadyStarted) {
-    toast('Категория уже стартовала — повторный запуск протокола невозможен', true);
-    return;
-  }
-
-  if (!spEntries.length) { toast('Протокол пуст', true); return; }
-  await spSaveToServer();
-  if (!confirm('Запустить стартовый протокол?\nПервый участник стартует СЕЙЧАС.')) return;
-
-  const res = await api('/api/judge/start-protocol/launch', 'POST', { category_id: parseInt(catId) });
-  if (!res.ok) { toast(res.error || 'Ошибка запуска', true); return; }
-  await spSyncStatus(catId, true);
-  loadRaceStatus();
-  toast('Протокол запущен');
-}
-
-
-async function spStop() {
-  if (!await ensureJudgeAuth('Stopping protocol requires login')) return;
-  const catId = getCatId();
-  if (!catId) return;
-  const res = await api('/api/judge/start-protocol/stop', 'POST', { category_id: parseInt(catId) });
-  if (!res.ok) { toast(res.error || 'Ошибка остановки', true); return; }
-  spClearStateFor(catId);
-  await spSyncStatus(catId, true);
-  toast('Протокол остановлен');
-}
-
-async function spStartOneRider(catId, entry) {
-  const res = await api('/api/judge/start-protocol/start-rider', 'POST', { entry_id: entry.entry_id, rider_id: entry.rider_id });
-  const st = spStates[catId];
-  if (!st) return;
-  if (res.ok) {
-    st.startedSet.add(entry.rider_id); spSaveAllStates();
-    toast('СТАРТ: #' + entry.rider_number + ' ' + entry.rider_name); loadRaceStatus();
-  } else {
-    if (res.error && res.error.includes('уже в гонке')) { st.startedSet.add(entry.rider_id); spSaveAllStates(); }
-    else toast('Ошибка старта #' + entry.rider_number + ': ' + (res.error || ''), true);
-  }
-}
-
-function spUpdateCountdownDisplay(catId) {
-  const st = spStates[catId];
-  if (!st || !st.running || !st.planned) return;
-  let nextIdx = -1;
-  for (let i = 0; i < st.planned.length; i++) { if (!st.startedSet.has(st.planned[i].rider_id)) { nextIdx = i; break; } }
-  const timerEl = document.getElementById('sp-countdown-timer');
-  const infoEl = document.getElementById('sp-next-info');
-  if (nextIdx === -1) { timerEl.textContent = '00:00'; timerEl.className = 'sp-countdown go'; infoEl.innerHTML = 'Все стартовали'; return; }
-  const next = st.planned[nextIdx];
-  const remain = Math.max(0, next.planned_time - Date.now());
-  const sec = remain > 0 ? Math.floor((remain + 999) / 1000) : 0;
-  const mm = Math.floor(sec / 60);
-  const ss = sec % 60;
-  timerEl.textContent = String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
-  timerEl.className = 'sp-countdown' + (sec <= 3 ? ' go' : '');
-  infoEl.innerHTML = 'Следующий: <b>#' + next.rider_number + '</b> ' + next.rider_name;
 }
 
 async function doIndividualStart() {
@@ -637,7 +531,16 @@ async function loadRiderLaps(riderId) {
   } catch(e) {}
 }
 
-async function refreshRiderPanel() { if (selectedRiderId) { await loadRiderFinishInfo(selectedRiderId); await loadRiderLaps(selectedRiderId); } }
+async function refreshRiderPanel() {
+  if (!selectedRiderId || riderPanelRequestInFlight) return;
+  riderPanelRequestInFlight = true;
+  try {
+    await loadRiderFinishInfo(selectedRiderId);
+    await loadRiderLaps(selectedRiderId);
+  } finally {
+    riderPanelRequestInFlight = false;
+  }
+}
 
 async function saveLap(lapId) {
   if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return; const mm = document.getElementById('lap-mm-'+lapId).value.trim(); const ss = document.getElementById('lap-ss-'+lapId).value.trim(); const minutes = parseInt(mm)||0; const seconds = parseFloat(ss)||0; if (seconds >= 60 || seconds < 0) { toast('Неверное время', true); return; } const lapTimeMs = Math.round((minutes*60+seconds)*1000); const res = await api('/api/judge/lap/'+lapId, 'PUT', { lap_time_ms: lapTimeMs }); if (res.ok) { toast('Круг обновлён'); lastLapsHash=''; await refreshRiderPanel(); } else toast(res.error||'Ошибка', true); }
@@ -755,9 +658,9 @@ async function initJudge() {
 }
 
 initJudge();
-setInterval(loadLog, 5000);
-setInterval(loadRaceStatus, 2000);
-setInterval(function() { if (!selectedRiderId) return; const el = document.activeElement; if (el && el.tagName === 'INPUT' && el.closest('#laps-section')) return; refreshRiderPanel(); }, 3000);
+setInterval(loadLog, JUDGE_LOG_POLL_MS);
+setInterval(loadRaceStatus, JUDGE_RACE_STATUS_POLL_MS);
+setInterval(function() { if (!selectedRiderId) return; const el = document.activeElement; if (el && el.tagName === 'INPUT' && el.closest('#laps-section')) return; refreshRiderPanel(); }, JUDGE_RIDER_PANEL_POLL_MS);
 
 async function loadCategoriesAndRestore() {
   const cats = await api('/api/categories', 'GET');
@@ -772,6 +675,8 @@ async function loadCategoriesAndRestore() {
 }
 
 async function loadRaceStatus() {
+  if (raceStatusRequestInFlight) return;
+  raceStatusRequestInFlight = true;
   const catId = getCatId();
   if (catId) sessionStorage.setItem('judge_cat_id', catId);
   try {
@@ -807,11 +712,9 @@ async function loadRaceStatus() {
     document.getElementById('race-status-bar').style.display = 'block';
     const thisCatClosed = data.category_closed === true;
     const thisCatStarted = data.category_started === true;
-    const raceClosed = data.race_closed === true;
     currentCategoryClosed = thisCatClosed;
     currentCategoryStarted = thisCatStarted;
-    currentRaceClosed = raceClosed;
-    const effectivelyClosed = thisCatClosed || raceClosed;
+    const effectivelyClosed = thisCatClosed;
     const startBtn = document.getElementById('btn-mass-start');
     const finishBtn = document.getElementById('btn-finish-race');
     const finishIndBtn = document.getElementById('btn-finish-race-ind');
@@ -823,13 +726,21 @@ async function loadRaceStatus() {
     else startBtn.textContent = '▶ Масс-старт';
     const spLaunchBtn = document.getElementById('btn-sp-launch');
     const individualStartBtn = document.getElementById('btn-individual-start');
-    const canLaunchProtocol = !thisCatStarted && !effectivelyClosed && !spIsRunning(catId);
+    const currentProtocolState = catId ? spGetState(catId) : null;
+    const hasPendingProtocolEntries = !!(
+      catId &&
+      (
+        (currentProtocolState && Array.isArray(currentProtocolState.planned) && currentProtocolState.planned.some(e => e.status !== 'STARTED')) ||
+        ((!currentProtocolState || !Array.isArray(currentProtocolState.planned)) && spEntries.length > 0)
+      )
+    );
+    const canLaunchProtocol = !effectivelyClosed && !spIsRunning(catId) && hasPendingProtocolEntries;
 
-    setStateDisabled(individualStartBtn, effectivelyClosed || thisCatStarted || !catId);
+    setStateDisabled(individualStartBtn, effectivelyClosed || !catId);
     setStateDisabled(spLaunchBtn, !canLaunchProtocol || !catId);
 
     if (effectivelyClosed) spLaunchBtn.textContent = 'Категория завершена';
-    else if (thisCatStarted) spLaunchBtn.textContent = 'Протокол недоступен';
+    else if (thisCatStarted && hasPendingProtocolEntries) spLaunchBtn.textContent = '▶ Продолжить протокол';
     else spLaunchBtn.textContent = '▶ Запустить протокол';
     const finBtn = document.getElementById('btn-finish-race');
     finBtn.textContent = effectivelyClosed ? 'Категория завершена' : '■ Завершить категорию';
@@ -842,6 +753,26 @@ async function loadRaceStatus() {
     if (authManager) authManager.syncProtectedControls();
     if (startMode === 'individual' && catId) await spSyncStatus(catId, false);
   } catch(e) {}
+  finally { raceStatusRequestInFlight = false; }
+}
+
+function spHasPendingEntries(catId) {
+  const st = catId ? spGetState(catId) : null;
+  return !!(
+    catId &&
+    (
+      (st && Array.isArray(st.planned) && st.planned.some(e => e.status !== 'STARTED')) ||
+      ((!st || !Array.isArray(st.planned)) && spEntries.length > 0)
+    )
+  );
+}
+
+function spComputePausedDelayMs(catId) {
+  const st = catId ? spGetState(catId) : null;
+  if (!st || !st.running || !Array.isArray(st.planned)) return 0;
+  const next = st.planned.find(e => !st.startedSet.has(e.rider_id));
+  if (!next || next.planned_time === null || next.planned_time === undefined) return 0;
+  return Math.max(0, next.planned_time - Date.now());
 }
 
 document.getElementById('race-category').addEventListener('change', function() { loadRaceStatus(); if (startMode === 'individual') spSwitchToCategory(); });
@@ -895,7 +826,7 @@ async function loadNotes() {
     if (!notes.length) { list.innerHTML = ''; return; }
     list.innerHTML = notes.map(n => {
       const timeStr = new Date(n.created_at*1000).toLocaleTimeString('ru-RU');
-      const rider = n.rider_number ? '#'+n.rider_number+' '+(n.last_name||'')+' — ' : '';
+      const rider = n.rider_number ? '#'+n.rider_number+' '+(n.last_name||'')+' - ' : '';
       return '<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">' +
         '<div style="flex:1;min-width:0"><span style="color:var(--accent);font-weight:600">'+rider+'</span><span style="color:var(--text)">'+n.text+'</span></div>' +
         '<span style="color:var(--text-dim);font-family:var(--mono);font-size:10px;white-space:nowrap">'+timeStr+'</span>' +
@@ -910,7 +841,7 @@ async function doFinishRace() {
   const catId = getCatId();
   if (!catId) { toast('Выберите категорию', true); return; }
   const catName = (window._catNameMap || {})[catId] || catId;
-  if (!confirm('Завершить категорию «' + catName + '»?\n• Участники, проехавшие все круги → FINISHED\n• Остальные → DNF\n• Таймер категории остановится')) return;
+  if (!confirm('Завершить категорию «' + catName + '»?\n* Участники, проехавшие все круги -> FINISHED\n* Остальные -> DNF\n* Таймер категории остановится')) return;
   const res = await api('/api/judge/finish-race', 'POST', { category_id: parseInt(catId) });
   if (res.ok) {
     toast('Категория завершена. Финиш: '+(res.finished||0)+', DNF: '+(res.dnf_count||0));
@@ -947,4 +878,181 @@ async function doNewRace() {
     catTimerElapsed = {}; catTimerPerf = {}; catTimerClosed = {};
     spUpdateUI(); loadRaceStatus(); loadLog();
   } else toast(res.error||'Ошибка', true);
+}
+
+function spRemoveEntry(index) {
+  if (!requireJudgeEditAccess('Для выполнения действия судьи требуется войти в систему')) return;
+  const entry = spEntries[index];
+  const catId = getCatId();
+  const st = catId ? spGetState(catId) : null;
+  if (entry && st && st.startedSet && st.startedSet.has(entry.rider_id)) {
+    toast('Уже стартовавшего участника нельзя убрать из протокола', true);
+    return;
+  }
+  spEntries.splice(index, 1);
+  spRenderList();
+  spSaveToServer();
+}
+
+function spRenderList() {
+  const list = document.getElementById('sp-list');
+  const interval = parseInt(document.getElementById('sp-interval').value) || 30;
+  const catId = getCatId();
+  const isRunning = spIsRunning(catId);
+  const st = catId ? spGetState(catId) : null;
+  const startedSet = st ? st.startedSet : new Set();
+
+  if (!catId) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Выберите категорию, чтобы собирать очередь индивидуального старта</div>';
+    return;
+  }
+
+  if (!spEntries.length) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">Протокол пуст - нажмите «Авто» или добавьте участников</div>';
+    return;
+  }
+
+  list.innerHTML = spEntries.map((e, i) => {
+    const offsetSec = i * interval;
+    const mm = Math.floor(offsetSec / 60);
+    const ss = offsetSec % 60;
+    const timeStr = mm > 0 ? (mm + ':' + String(ss).padStart(2, '0')) : (ss + 'с');
+    const isStarted = startedSet.has(e.rider_id);
+    const isNext = isRunning && !isStarted && i === spFindNextVisualIndex(catId);
+    const canEditEntry = !isRunning && !isStarted;
+    let cls = 'sp-item';
+    if (isStarted) cls += ' sp-started';
+    if (isNext) cls += ' sp-active';
+    const actionHtml = isStarted
+      ? '<span style="color:var(--green);font-size:10px;font-weight:700">OK</span>'
+      : '<span class="sp-del" onclick="spRemoveEntry(' + i + ')">X</span>';
+    return '<div class="' + cls + '" draggable="' + (canEditEntry ? 'true' : 'false') + '" data-idx="' + i + '"' +
+      ' ondragstart="spDragStart(event)" ondragover="spDragOver(event)" ondrop="spDrop(event)" ondragend="spDragEnd(event)">' +
+      '<span class="sp-pos">' + (i + 1) + '</span><span class="sp-num">#' + e.rider_number + '</span>' +
+      '<span class="sp-name">' + e.last_name + ' ' + e.first_name + '</span>' +
+      '<span class="sp-time">+' + timeStr + '</span>' +
+      actionHtml +
+    '</div>';
+  }).join('');
+}
+
+function spUpdateUI() {
+  const catId = getCatId();
+  const isRunning = spIsRunning(catId);
+  const launchBtn = document.getElementById('btn-sp-launch');
+  const stopBtn = document.getElementById('btn-sp-stop');
+  const searchEl = document.getElementById('sp-search');
+  const intervalEl = document.getElementById('sp-interval');
+  const hasCategory = !!catId;
+  const st = catId ? spGetState(catId) : null;
+  const hasPendingProtocolEntries = spHasPendingEntries(catId);
+  const isPausedWithQueue = !!(st && !st.running && st.pausedDelayMs !== null && hasPendingProtocolEntries);
+  const protocolEditable = !isRunning && hasCategory && !currentCategoryClosed && (!currentCategoryStarted || hasPendingProtocolEntries);
+  const showCountdown = hasCategory && (isRunning || isPausedWithQueue);
+
+  launchBtn.style.display = isRunning ? 'none' : 'block';
+  setStateDisabled(launchBtn, isRunning || !hasCategory || currentCategoryClosed || !hasPendingProtocolEntries);
+  stopBtn.style.display = isRunning ? 'block' : 'none';
+  document.getElementById('sp-countdown-area').style.display = showCountdown ? 'block' : 'none';
+  setStateDisabled(searchEl, !protocolEditable);
+  setStateDisabled(intervalEl, !protocolEditable);
+  if (showCountdown) spUpdateCountdownDisplay(catId);
+}
+
+async function spLaunch() {
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
+  const catId = getCatId();
+  if (!catId) { toast('Выберите категорию', true); return; }
+
+  await loadRaceStatus();
+
+  if (spIsRunning(catId)) {
+    toast('Протокол уже запущен', true);
+    return;
+  }
+
+  if (currentCategoryClosed) {
+    toast('Категория завершена', true);
+    return;
+  }
+
+  const st = spGetState(catId);
+  const isResume = currentCategoryStarted;
+  const resumeDelayMs = isResume && st && st.pausedDelayMs ? st.pausedDelayMs : 0;
+  if (!spEntries.length) { toast('Протокол пуст', true); return; }
+
+  await spSaveToServer();
+
+  const confirmText = (isResume ? 'Продолжить' : 'Запустить') + ' стартовый протокол?'
+    + (resumeDelayMs > 0
+      ? '\nОчередь продолжится с оставшегося времени.'
+      : '\nПервый оставшийся участник стартует сейчас.');
+  if (!confirm(confirmText)) return;
+
+  const body = { category_id: parseInt(catId) };
+  if (resumeDelayMs > 0) body.resume_delay_ms = resumeDelayMs;
+  const res = await api('/api/judge/start-protocol/launch', 'POST', body);
+  if (!res.ok) { toast(res.error || 'Ошибка запуска', true); return; }
+
+  if (st) st.pausedDelayMs = null;
+  await spSyncStatus(catId, true);
+  loadRaceStatus();
+  toast(isResume ? 'Протокол продолжен' : 'Протокол запущен');
+}
+
+async function spStop() {
+  if (!await ensureJudgeAuth('Для выполнения действия судьи требуется войти в систему')) return;
+  const catId = getCatId();
+  if (!catId) return;
+  const pausedDelayMs = spComputePausedDelayMs(catId);
+  const res = await api('/api/judge/start-protocol/stop', 'POST', { category_id: parseInt(catId) });
+  if (!res.ok) { toast(res.error || 'Ошибка остановки', true); return; }
+  spClearStateFor(catId);
+  const st = spGetState(catId);
+  st.pausedDelayMs = pausedDelayMs;
+  await spSyncStatus(catId, true);
+  spSaveAllStates();
+  spUpdateUI();
+  toast('Протокол поставлен на паузу');
+}
+
+function spUpdateCountdownDisplay(catId) {
+  const st = spStates[catId];
+  if (!st || !st.planned) return;
+  let nextIdx = -1;
+  for (let i = 0; i < st.planned.length; i++) {
+    if (!st.startedSet.has(st.planned[i].rider_id)) {
+      nextIdx = i;
+      break;
+    }
+  }
+  const timerEl = document.getElementById('sp-countdown-timer');
+  const infoEl = document.getElementById('sp-next-info');
+  if (nextIdx === -1) {
+    if (timerEl.textContent !== '00:00') timerEl.textContent = '00:00';
+    if (timerEl.className !== 'sp-countdown go') timerEl.className = 'sp-countdown go';
+    if (infoEl.dataset.nextKey !== 'done') {
+      infoEl.textContent = 'Все стартовали';
+      infoEl.dataset.nextKey = 'done';
+    }
+    return;
+  }
+
+  const next = st.planned[nextIdx];
+  let remain = 0;
+  if (st.running) remain = Math.max(0, (next.planned_time || 0) - Date.now());
+  else if (st.pausedDelayMs !== null && st.pausedDelayMs !== undefined) remain = Math.max(0, st.pausedDelayMs);
+  else return;
+
+  const sec = remain > 0 ? Math.floor((remain + 999) / 1000) : 0;
+  const mm = Math.floor(sec / 60);
+  const ss = sec % 60;
+  const timerText = String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+  const timerClass = 'sp-countdown' + (sec <= 3 ? ' go' : '');
+  const nextKey = String(next.rider_id) + ':' + String(st.running ? next.planned_time : st.pausedDelayMs);
+  if (timerEl.textContent === timerText && timerEl.className === timerClass && infoEl.dataset.nextKey === nextKey) return;
+  timerEl.textContent = timerText;
+  timerEl.className = timerClass;
+  infoEl.dataset.nextKey = nextKey;
+  infoEl.innerHTML = 'Следующий: <b>#' + next.rider_number + '</b> ' + next.rider_name;
 }

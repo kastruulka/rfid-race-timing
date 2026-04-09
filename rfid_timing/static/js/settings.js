@@ -21,6 +21,18 @@ async function api(url, method, body) {
   return result;
 }
 
+function getResponseData(resp) {
+  if (!resp || !resp.data) return null;
+  return resp.data;
+}
+
+function setStatusBadge(el, className, text, title) {
+  if (!el) return;
+  el.className = 'status-badge ' + className;
+  el.textContent = text;
+  if (title !== undefined) el.title = title;
+}
+
 function updateModeVisibility() {
   const useEmulator = document.getElementById('s-use-emulator').checked;
   const readerBlock = document.getElementById('reader-settings-block');
@@ -51,13 +63,13 @@ function updateModeVisibility() {
 
 async function loadSettings() {
   const resp = await api('/api/settings', 'GET');
-  if (!resp || !resp.data) return;
-  const s = resp.data;
+  const s = getResponseData(resp);
+  if (!s) return;
 
   document.getElementById('s-reader-ip').value = s.reader_ip || '';
   document.getElementById('s-reader-port').value = s.reader_port || 5084;
   document.getElementById('s-tx-power').value = s.tx_power || 30;
-  document.getElementById('s-rssi-window').value = s.rssi_window_sec || 2.0;
+  document.getElementById('s-rssi-window').value = s.rssi_window_sec || 0.5;
   document.getElementById('s-min-lap').value = s.min_lap_time_sec || 120;
   document.getElementById('s-use-emulator').checked = !!s.use_emulator;
   document.getElementById('s-emu-lap').value = s.emulator_min_lap_sec || 15;
@@ -84,15 +96,15 @@ async function saveSettings() {
     reader_port: parseInt(document.getElementById('s-reader-port').value, 10) || 5084,
     tx_power: parseFloat(document.getElementById('s-tx-power').value) || 30,
     antennas: antennas,
-    rssi_window_sec: parseFloat(document.getElementById('s-rssi-window').value) || 2.0,
+    rssi_window_sec: parseFloat(document.getElementById('s-rssi-window').value) || 0.5,
     min_lap_time_sec: parseFloat(document.getElementById('s-min-lap').value) || 120,
     use_emulator: document.getElementById('s-use-emulator').checked,
     emulator_min_lap_sec: parseFloat(document.getElementById('s-emu-lap').value) || 15,
   };
 
   const resp = await api('/api/settings/apply', 'POST', body);
-  if (!resp || !resp.data) return;
-  const data = resp.data;
+  const data = getResponseData(resp);
+  if (!data) return;
 
   if (data.ok) {
     toast(data.message || 'Настройки применены');
@@ -108,10 +120,9 @@ async function saveSettings() {
 async function loadReaderStatus() {
   try {
     const resp = await api('/api/settings/reader-status', 'GET');
-    if (!resp || !resp.data) return;
-    const st = resp.data;
+    const st = getResponseData(resp);
+    if (!st) return;
     const el = document.getElementById('reader-mode-badge');
-    if (!el) return;
     if (!st.running) {
       el.className = 'status-badge err';
       el.textContent = 'Остановлен';
@@ -164,8 +175,8 @@ async function backupDB() {
 
   try {
     const resp = await api('/api/settings/backup', 'POST');
-    if (!resp || !resp.data) return;
-    const data = resp.data;
+    const data = getResponseData(resp);
+    if (!data) return;
     if (data.ok) {
       toast('Бэкап создан: ' + data.filename);
     } else {
@@ -182,8 +193,8 @@ async function resetRace() {
 
   try {
     const resp = await api('/api/settings/reset-race', 'POST');
-    if (!resp || !resp.data) return;
-    const data = resp.data;
+    const data = getResponseData(resp);
+    if (!data) return;
     if (data.ok) {
       toast('Новая гоночная сессия: #' + data.race_id);
     } else {
@@ -197,8 +208,8 @@ async function resetRace() {
 async function loadSysInfo() {
   try {
     const resp = await api('/api/settings/sys-info', 'GET');
-    if (!resp || !resp.data) return;
-    const info = resp.data;
+    const info = getResponseData(resp);
+    if (!info) return;
     document.getElementById('si-db').textContent = info.db_size;
     document.getElementById('si-log').textContent = info.log_size;
     document.getElementById('si-bk').textContent = info.backups_count;

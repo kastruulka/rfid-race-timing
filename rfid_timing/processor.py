@@ -6,10 +6,10 @@ from typing import Callable, Optional, Dict, List, Tuple
 class TagProcessor:
     def __init__(
         self,
-        rssi_window_sec: float = 2.0,
+        rssi_window_sec: float = 0.5,
         min_lap_time_sec: float = 120.0,
         on_pass: Optional[Callable] = None,
-        tick_interval: float = 0.5,
+        tick_interval: float = 0.1,
     ):
         self.rssi_window_sec = rssi_window_sec
         self.min_lap_time_sec = min_lap_time_sec

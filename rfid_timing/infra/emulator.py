@@ -4,8 +4,8 @@ import threading
 import time
 from typing import Callable, Dict, List, Optional
 
-from .models import TagEvent, make_tag_event
-from .processor import TagProcessor
+from ..models import TagEvent, make_tag_event
+from ..processor import TagProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class EmulatorReader:
         epc_list: Optional[list[str]] = None,
         db=None,
         antennas: Optional[List[int]] = None,
-        rssi_window_sec: float = 2.0,
+        rssi_window_sec: float = 0.5,
         min_lap_time_sec: float = 10.0,
     ):
         self._static_epc_list = epc_list or []

@@ -85,7 +85,7 @@ class ConfigState:
         "reader_port": 5084,
         "tx_power": 30.0,
         "antennas": [1, 2, 3, 4],
-        "rssi_window_sec": 2.0,
+        "rssi_window_sec": 0.5,
         "min_lap_time_sec": 120.0,
         "use_emulator": True,
         "emulator_min_lap_sec": 15.0,

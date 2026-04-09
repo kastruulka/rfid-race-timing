@@ -3,11 +3,19 @@ import logging
 from flask import render_template, jsonify, send_file
 from .database import Database
 from .race_engine import RaceEngine
-from .request_helpers import get_json_body, require_int
+from .http.request_helpers import get_json_body, require_int
 from .timing import calc_total_time_with_penalty
 from .formatters import fmt_ms, fmt_gap, fmt_speed, fmt_start_time, fmt_start_offset
 
 logger = logging.getLogger(__name__)
+
+
+def _calculate_preview_places(results: list[dict]) -> dict[int, int]:
+    finished = sorted(
+        (result for result in results if result["status"] == "FINISHED"),
+        key=lambda result: result["finish_time"],
+    )
+    return {result["id"]: place for place, result in enumerate(finished, start=1)}
 
 
 def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
@@ -15,11 +23,8 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
     if not category:
         return None, [], {}
 
-    engine.calculate_places(category_id)
-
     results = db.get_results_by_category(category_id)
-    distance_total = (category.get("distance_km") or 0) * category["laps"]
-
+    preview_places = _calculate_preview_places(results)
     start_times = {int(r["start_time"]) for r in results if r.get("start_time")}
     is_individual_start = len(start_times) > 1
     first_start_ms = min(start_times) if start_times else None
@@ -71,10 +76,12 @@ def build_protocol_data(db: Database, engine: RaceEngine, category_id: int):
         ]
 
         rider_start_ms = int(r["start_time"]) if r.get("start_time") else None
+        effective_laps = category["laps"] + (r.get("extra_laps") or 0)
+        distance_total = (category.get("distance_km") or 0) * effective_laps
 
         rows.append(
             {
-                "place": r.get("place") or "",
+                "place": preview_places.get(r["id"], ""),
                 "number": r["number"],
                 "last_name": r["last_name"],
                 "first_name": r.get("first_name", ""),

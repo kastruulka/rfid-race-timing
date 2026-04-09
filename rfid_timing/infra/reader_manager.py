@@ -1,10 +1,10 @@
 import logging
 import threading
+from importlib import import_module
 from typing import Callable
 
-from .reader import RFIDReader
 from .emulator import EmulatorReader
-from .config_state import ConfigState
+from ..config.config_state import ConfigState
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,7 @@ class ReaderManager:
                 rssi_window_sec,
                 min_lap_time_sec,
             )
+            RFIDReader = _load_hardware_reader_class()
             self._reader = RFIDReader(
                 ip=reader_ip,
                 port=reader_port,
@@ -124,3 +125,8 @@ class ReaderManager:
                 rssi_window_sec=rssi_window_sec,
                 min_lap_time_sec=min_lap_time_sec,
             )
+
+
+def _load_hardware_reader_class():
+    module = import_module(".reader", package=__package__)
+    return module.RFIDReader

@@ -3,7 +3,8 @@ import io
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from datetime import date
+from typing import Dict, List, Optional
 
 from .database import Database
 
@@ -18,6 +19,9 @@ _COLUMN_ALIASES: Dict[str, str] = {
     "city": "city",
     "club": "club",
     "category": "category",
+    "category_laps": "category_laps",
+    "category_distance_km": "category_distance_km",
+    "category_has_warmup_lap": "category_has_warmup_lap",
     "epc": "epc",
     "номер": "number",
     "фамилия": "last_name",
@@ -28,15 +32,16 @@ _COLUMN_ALIASES: Dict[str, str] = {
     "клуб": "club",
     "команда": "club",
     "категория": "category",
+    "круги": "category_laps",
+    "кругов": "category_laps",
+    "дистанция": "category_distance_km",
+    "дистанция_км": "category_distance_km",
+    "разгонный_круг": "category_has_warmup_lap",
     "Number": "number",
-    "Номер": "number",
-    "Фамилия": "last_name",
-    "Имя": "first_name",
-    "Год": "birth_year",
-    "Город": "city",
-    "Команда": "club",
-    "Клуб": "club",
-    "Категория": "category",
+    "Category": "category",
+    "CategoryLaps": "category_laps",
+    "CategoryDistanceKm": "category_distance_km",
+    "CategoryWarmupLap": "category_has_warmup_lap",
     "EPC": "epc",
 }
 
@@ -45,8 +50,9 @@ _REQUIRED_COLUMNS = {"number", "last_name"}
 MAX_ROWS = 5000
 MAX_NUMBER = 99999
 MIN_BIRTH_YEAR = 1920
-MAX_BIRTH_YEAR = 2025
 MAX_FIELD_LEN = 200
+MAX_CATEGORY_LAPS = 1000
+MAX_CATEGORY_DISTANCE_KM = 1000.0
 
 _FORMULA_CHARS = frozenset("=+-@\t\r")
 
@@ -108,6 +114,34 @@ def _get_field(row: dict, col_map: Dict[str, str], canonical: str) -> str:
     return ""
 
 
+def get_max_birth_year() -> int:
+    return date.today().year
+
+
+def _parse_optional_int(value: str) -> Optional[int]:
+    if not value:
+        return None
+    return int(value)
+
+
+def _parse_optional_float(value: str) -> Optional[float]:
+    if not value:
+        return None
+    normalized = value.replace(",", ".")
+    return float(normalized)
+
+
+def _parse_optional_bool(value: str) -> Optional[bool]:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on", "да"}:
+        return True
+    if normalized in {"0", "false", "no", "off", "нет"}:
+        return False
+    raise ValueError(value)
+
+
 def import_riders(db: Database, csv_text: str) -> ImportResult:
     result = ImportResult()
 
@@ -126,9 +160,9 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
         result.errors.append(f"Столбцы в файле: {', '.join(reader.fieldnames)}")
         return result
 
-    cat_cache = {}
-    for c in db.get_categories():
-        cat_cache[c["name"].lower().strip()] = c["id"]
+    cat_cache: Dict[str, Dict] = {}
+    for category in db.get_categories():
+        cat_cache[category["name"].lower().strip()] = dict(category)
 
     for i, row in enumerate(reader, start=2):
         if result.imported + result.skipped >= MAX_ROWS:
@@ -154,7 +188,7 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
 
         if number <= 0 or number > MAX_NUMBER:
             result.warnings.append(
-                f"Строка {i}: номер {number} вне диапазона 1–{MAX_NUMBER}"
+                f"Строка {i}: номер {number} вне диапазона 1-{MAX_NUMBER}"
             )
             result.skipped += 1
             continue
@@ -176,13 +210,16 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
         if by_str:
             try:
                 birth_year = int(by_str)
-                if birth_year < MIN_BIRTH_YEAR or birth_year > MAX_BIRTH_YEAR:
+                max_birth_year = get_max_birth_year()
+                if birth_year < MIN_BIRTH_YEAR or birth_year > max_birth_year:
                     result.warnings.append(
-                        f"Строка {i}: год рождения {birth_year} вне диапазона — пропущен"
+                        f"Строка {i}: год рождения {birth_year} вне диапазона {MIN_BIRTH_YEAR}-{max_birth_year} - пропущен"
                     )
                     birth_year = None
             except ValueError:
-                pass
+                result.warnings.append(
+                    f"Строка {i}: неверный год рождения '{by_str}' - пропущен"
+                )
 
         city = _get_field(row, col_map, "city")[:MAX_FIELD_LEN]
         club = _get_field(row, col_map, "club")[:MAX_FIELD_LEN]
@@ -192,14 +229,60 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
         cat_id = None
         if cat_name:
             cat_key = cat_name.lower().strip()
-            if cat_key in cat_cache:
-                cat_id = cat_cache[cat_key]
+            category = cat_cache.get(cat_key)
+
+            if category is None:
+                laps = 1
+                laps_str = _get_field(row, col_map, "category_laps")
+                if laps_str:
+                    try:
+                        laps = _parse_optional_int(laps_str) or 1
+                        if laps < 1 or laps > MAX_CATEGORY_LAPS:
+                            raise ValueError(laps_str)
+                    except ValueError:
+                        result.warnings.append(
+                            f"Строка {i}: неверное число кругов '{laps_str}' для категории '{cat_name}', использовано значение 1"
+                        )
+                        laps = 1
+
+                distance_km = 0.0
+                distance_str = _get_field(row, col_map, "category_distance_km")
+                if distance_str:
+                    try:
+                        distance_km = _parse_optional_float(distance_str) or 0.0
+                        if distance_km < 0 or distance_km > MAX_CATEGORY_DISTANCE_KM:
+                            raise ValueError(distance_str)
+                    except ValueError:
+                        result.warnings.append(
+                            f"Строка {i}: неверная дистанция '{distance_str}' для категории '{cat_name}', использовано значение 0"
+                        )
+                        distance_km = 0.0
+
+                has_warmup_lap = True
+                warmup_str = _get_field(row, col_map, "category_has_warmup_lap")
+                if warmup_str:
+                    try:
+                        parsed = _parse_optional_bool(warmup_str)
+                        if parsed is not None:
+                            has_warmup_lap = parsed
+                    except ValueError:
+                        result.warnings.append(
+                            f"Строка {i}: неверный флаг разгонного круга '{warmup_str}' для категории '{cat_name}', использовано значение true"
+                        )
+
+                cat_id = db.add_category(
+                    name=cat_name,
+                    laps=laps,
+                    distance_km=distance_km,
+                    has_warmup_lap=has_warmup_lap,
+                )
+                category = db.get_category(cat_id)
+                cat_cache[cat_key] = dict(category)
             else:
-                cat_id = db.add_category(name=cat_name)
-                cat_cache[cat_key] = cat_id
+                cat_id = category["id"]
 
         if epc and db.get_rider_by_epc(epc):
-            result.warnings.append(f"Строка {i}: EPC '{epc}' уже привязан — пропущен")
+            result.warnings.append(f"Строка {i}: EPC '{epc}' уже привязан - пропущен")
             epc = None
 
         db.add_rider(

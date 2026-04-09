@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from .database import Database
 from .timing import calc_total_time_with_penalty, sort_results
@@ -16,8 +16,6 @@ def build_race_state(
     category_states = _build_category_states(db, now_ms)
 
     start_time_ms = db.get_earliest_start_time()
-
-    server_elapsed_ms = _calc_elapsed(db, start_time_ms, now_ms, race_closed)
 
     all_results = _build_results(db, categories, category_id)
 
@@ -40,7 +38,6 @@ def build_race_state(
             {"id": c["id"], "name": c["name"], "laps": c["laps"]} for c in categories
         ],
         "start_time": start_time_ms,
-        "server_elapsed_ms": server_elapsed_ms,
         "race_closed": race_closed,
         "category_closed": cat_closed,
         "category_started": cat_started,
@@ -66,20 +63,6 @@ def _build_category_states(db: Database, now_ms: int) -> dict:
             "elapsed_ms": elapsed,
         }
     return states
-
-
-def _calc_elapsed(
-    db: Database, start_time_ms: Optional[int], now_ms: int, race_closed: bool
-) -> Optional[int]:
-    if start_time_ms is None:
-        return None
-    if not race_closed:
-        return now_ms - start_time_ms
-
-    closed_at = db.get_race_closed_at()
-    if closed_at is not None:
-        return int(closed_at * 1000) - start_time_ms
-    return now_ms - start_time_ms
 
 
 def _build_results(

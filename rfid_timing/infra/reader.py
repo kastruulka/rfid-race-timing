@@ -1,11 +1,13 @@
 import logging
 import threading
 import time
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
-from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
-from .models import TagEvent, make_tag_event
-from .processor import TagProcessor
+from ..models import TagEvent, make_tag_event
+from ..processor import TagProcessor
+
+if TYPE_CHECKING:
+    from sllurp.llrp import LLRPReaderClient
 
 
 def dbm_to_power_index(dbm: float) -> int:
@@ -22,7 +24,7 @@ class RFIDReader:
         on_event: Callable[[TagEvent], None],
         tx_power: float = 30.0,
         antennas: list[int] = None,
-        rssi_window_sec: float = 2.0,
+        rssi_window_sec: float = 0.5,
         min_lap_time_sec: float = 120.0,
     ) -> None:
         self.ip = ip
@@ -32,9 +34,8 @@ class RFIDReader:
         self.tx_power = tx_power
         self.antennas = antennas or [1, 2, 3, 4]
 
-        self._client: Optional[LLRPReaderClient] = None
+        self._client: Optional["LLRPReaderClient"] = None
         self._thread: Optional[threading.Thread] = None
-        self._stop_flag = False
         self._logger = logging.getLogger(self.__class__.__name__)
 
         self.processor = TagProcessor(
@@ -77,7 +78,7 @@ class RFIDReader:
             self.processor.feed(epc, rssi, ant, timestamp=now)
 
     def _reader_loop(self):
-        from sllurp.llrp import LLRPReaderClient
+        from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
 
         config = LLRPReaderConfig()
         config.antennas = list(self.antennas)
@@ -113,23 +114,23 @@ class RFIDReader:
             if self._client is not None:
                 try:
                     self._client.disconnect()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self._logger.debug(
+                        "Reader disconnect during cleanup failed: %s", exc
+                    )
             self._logger.info("Поток ридера завершён")
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
             return
-        self._stop_flag = False
         self.processor.start()
         self._thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
-        self._stop_flag = True
         self.processor.stop()
         if self._client is not None:
             try:
                 self._client.disconnect()
-            except Exception:
-                pass
+            except Exception as exc:
+                self._logger.debug("Reader disconnect during stop failed: %s", exc)

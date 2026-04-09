@@ -4,11 +4,11 @@ import secrets
 
 from dotenv import load_dotenv
 
-from .config_state import ConfigState
+from .config.config_state import ConfigState
 from .database import Database
-from .runtime_secrets import get_or_create_runtime_secret
+from .infra.runtime_secrets import get_or_create_runtime_secret
 from .security.auth import register_auth_routes
-from .settings_routes import register_settings_routes
+from .routes.settings_routes import register_settings_routes
 
 logger = logging.getLogger(__name__)
 
