@@ -39,7 +39,6 @@
   margin-top: 0;
 }
 
-
 .actions-bar {
   display: flex;
   gap: 10px;
@@ -49,7 +48,6 @@
 .actions-bar .btn {
   flex: 1;
 }
-
 
 .preview-area {
   display: flex;
@@ -83,7 +81,6 @@
   justify-content: center;
   padding: 24px;
 }
-
 
 .preview-paper {
   width: 100%;
@@ -220,7 +217,6 @@
   font-size: 9px;
   color: #888;
 }
-
 
 @media (max-width: 900px) {
   .page {

@@ -1,310 +1,891 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Панель судьи</title>
-  <link rel="stylesheet" href="/static/css/web.css">
-  <link rel="stylesheet" href="/static/css/auth.css">
-  <link rel="stylesheet" href="/static/css/judge.css">
-  <style>
-    .toast {
-      left: 16px;
-      right: auto;
-    }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Панель судьи</title>
+    <link rel="stylesheet" href="/static/css/web.css" />
+    <link rel="stylesheet" href="/static/css/auth.css" />
+    <link rel="stylesheet" href="/static/css/judge.css" />
+    <link rel="stylesheet" href="/static/css/page-hydration.css" />
+    <style>
+      .toast {
+        left: 16px;
+        right: auto;
+      }
 
-    .btn.is-disabled,
-    .btn[disabled] {
-      opacity: 0.55;
-      cursor: not-allowed;
-      pointer-events: none;
-      filter: grayscale(0.15);
-    }
+      .btn.is-disabled,
+      .btn[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        pointer-events: none;
+        filter: grayscale(0.15);
+      }
 
-    .sp-list { max-height: 260px; overflow-y: auto; }
-    .sp-item {
-      display: flex; align-items: center; gap: 6px; padding: 4px 6px;
-      border-bottom: 1px solid rgba(42,53,72,0.3); font-size: 11px;
-      cursor: grab; user-select: none;
-    }
-    .sp-item:active { cursor: grabbing; }
-    .sp-item.dragging { opacity: 0.4; }
-    .sp-item.drag-over { border-top: 2px solid var(--accent); }
-    .sp-item .sp-pos {
-      font-family: var(--mono); font-weight: 700; color: var(--text-dim);
-      width: 20px; text-align: center;
-    }
-    .sp-item .sp-num {
-      font-family: var(--mono); font-weight: 700; color: var(--accent);
-      min-width: 32px;
-    }
-    .sp-item .sp-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden;
-      text-overflow: ellipsis; white-space: nowrap; }
-    .sp-item .sp-time {
-      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
-      min-width: 44px; text-align: right;
-    }
-    .sp-item .sp-del {
-      font-size: 10px; color: var(--text-dim); cursor: pointer;
-      padding: 1px 4px; border-radius: 3px;
-    }
-    .sp-item .sp-del:hover { color: var(--red); background: var(--red-glow); }
+      .sp-list {
+        max-height: 260px;
+        overflow-y: auto;
+      }
+      .sp-empty {
+        padding: 10px 8px;
+        font-size: 10px;
+        line-height: 1.45;
+        color: var(--text-dim);
+        text-align: center;
+        border: 1px dashed rgba(148, 163, 184, 0.18);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.12);
+      }
+      .sp-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 6px;
+        border-bottom: 1px solid rgba(42, 53, 72, 0.3);
+        font-size: 11px;
+        cursor: grab;
+        user-select: none;
+      }
+      .sp-item:active {
+        cursor: grabbing;
+      }
+      .sp-item.dragging {
+        opacity: 0.4;
+      }
+      .sp-item.drag-over {
+        border-top: 2px solid var(--accent);
+      }
+      .sp-item .sp-pos {
+        font-family: var(--mono);
+        font-weight: 700;
+        color: var(--text-dim);
+        width: 20px;
+        text-align: center;
+      }
+      .sp-item .sp-num {
+        font-family: var(--mono);
+        font-weight: 700;
+        color: var(--accent);
+        min-width: 32px;
+      }
+      .sp-item .sp-name {
+        flex: 1;
+        font-weight: 600;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sp-item .sp-time {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--text-dim);
+        min-width: 44px;
+        text-align: right;
+      }
+      .sp-item .sp-del {
+        font-size: 10px;
+        color: var(--text-dim);
+        cursor: pointer;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      .sp-item .sp-del:hover {
+        color: var(--red);
+        background: var(--red-glow);
+      }
 
-    .sp-item.sp-started { opacity: 0.5; }
-    .sp-item.sp-started .sp-pos { color: var(--green); }
-    .sp-item.sp-active { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+      .sp-item.sp-started {
+        opacity: 0.5;
+      }
+      .sp-item.sp-started .sp-pos {
+        color: var(--green);
+      }
+      .sp-item.sp-active {
+        background: var(--accent-glow);
+        border-left: 3px solid var(--accent);
+      }
 
-    .sp-countdown {
-      font-family: var(--mono); font-size: 28px; font-weight: 700;
-      color: var(--accent); text-align: center; padding: 8px 0;
-      text-shadow: 0 0 20px var(--accent-glow);
-    }
-    .sp-countdown.go { color: var(--green); text-shadow: 0 0 20px var(--green-glow); }
+      .sp-run-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 16px;
+        height: 15px;
+        padding: 0 3px;
+        border-radius: 999px;
+        background: var(--yellow-glow);
+        color: var(--yellow);
+        font-family: var(--sans);
+        font-size: 7px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
 
-    .sp-next-info {
-      text-align: center; font-size: 11px; color: var(--text-dim);
-      padding: 2px 0;
-    }
-    .sp-next-info b { color: var(--accent); font-family: var(--mono); }
+      .sp-countdown {
+        font-family: var(--mono);
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--accent);
+        text-align: center;
+        padding: 8px 0;
+        text-shadow: 0 0 20px var(--accent-glow);
+      }
+      .sp-countdown.go {
+        color: var(--green);
+        text-shadow: 0 0 20px var(--green-glow);
+      }
 
-    .sp-add-row {
-      display: flex; gap: 4px; margin-top: 6px;
-    }
-    .sp-add-row select {
-      flex: 1; padding: 4px 6px; font-size: 11px;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--text); font-family: var(--sans);
-    }
+      .sp-next-info {
+        text-align: center;
+        font-size: 11px;
+        color: var(--text-dim);
+        padding: 2px 0;
+      }
+      .sp-next-info b {
+        color: var(--accent);
+        font-family: var(--mono);
+      }
 
-    .cat-timers-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 8px 10px;
-    }
-  </style>
-</head>
-<body>
-  <nav class="topnav">
-    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
-    <a href="/start-list">Стартовый лист</a>
-    <a href="/">Хронометраж</a>
-    <a href="/protocol">Протокол</a>
-    <a href="/settings">Настройки</a>
-    <a href="/judge" class="active">Судья</a>
-    <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
-    <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
-  </nav>
+      .sp-add-row {
+        display: flex;
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .sp-add-row select {
+        flex: 1;
+        padding: 4px 6px;
+        font-size: 11px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-family: var(--sans);
+      }
 
-  <div class="page">
-    <div class="col-left">
-      <div class="cat-timers-card">
-        <div class="card-title" style="color:var(--green)">Таймеры категорий</div>
-        <div id="cat-timers">
-          <div style="font-size:11px;color:var(--text-dim);padding:4px 0">Нет запущенных категорий</div>
-        </div>
+      .cat-timers-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 8px 10px;
+        min-height: 96px;
+      }
+
+      #cat-timers {
+        min-height: 56px;
+      }
+
+      .cat-timer-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 3px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        min-width: 0;
+        overflow: hidden;
+        cursor: pointer;
+        transition:
+          background var(--transition-fast),
+          border-color var(--transition-fast),
+          transform var(--transition-fast);
+      }
+
+      .cat-timer-item:hover {
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      .cat-timer-item:focus-visible {
+        outline: 1px solid rgba(56, 189, 248, 0.7);
+        outline-offset: 1px;
+      }
+
+      .cat-timer-item.is-selected {
+        background: var(--accent-glow);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+      }
+
+      .cat-timer-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      .cat-timer-label {
+        min-width: 0;
+        max-width: 88px;
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .cat-timer-time {
+        flex: 0 0 auto;
+        font-family: var(--mono);
+        font-size: 16px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .cat-timer-flags {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        min-width: 0;
+      }
+
+      .cat-timer-status {
+        font-size: 9px;
+        color: var(--text-dim);
+        white-space: nowrap;
+      }
+
+      #race-control {
+        min-height: 248px;
+        overflow-x: hidden;
+      }
+
+      #race-control[data-start-mode='individual'] {
+        min-height: 320px;
+      }
+
+      #race-control[data-start-mode='mass'] {
+        min-height: 248px;
+      }
+
+      #race-control .btn-row {
+        flex-wrap: nowrap;
+        align-items: stretch;
+      }
+
+      #race-control .btn-row > .btn {
+        min-width: 0;
+      }
+
+      #individual-start-section {
+        min-width: 0;
+      }
+
+      #individual-start-section .btn-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: nowrap;
+        align-items: stretch;
+      }
+
+      #individual-start-section .btn-row > .btn {
+        min-width: 0;
+      }
+
+      .sp-toolbar {
+        display: grid;
+        grid-template-columns: auto 56px auto minmax(0, 1fr) auto auto;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+
+      .sp-toolbar > * {
+        min-width: 0;
+      }
+
+      .sp-toolbar-label,
+      .sp-toolbar-unit {
+        font-size: 10px;
+        color: var(--text-dim);
+        white-space: nowrap;
+      }
+
+      .sp-toolbar-spacer {
+        min-width: 0;
+      }
+
+      .sp-toolbar .btn {
+        min-height: 28px;
+        padding: 4px 8px;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .sp-action-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .sp-action-row > .btn {
+        width: 100%;
+        min-width: 0;
+        white-space: normal;
+        line-height: 1.15;
+        padding: 7px 8px;
+      }
+
+      .sp-manual-row {
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid var(--border);
+      }
+
+      .sp-manual-row .btn {
+        white-space: normal;
+        line-height: 1.2;
+        padding: 7px 8px;
+      }
+
+      .race-actions-row {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+      }
+
+      .race-actions-row > .btn {
+        min-width: 0;
+      }
+
+      .mass-action-row > .btn,
+      .race-actions-row > .btn {
+        white-space: normal;
+        line-height: 1.15;
+        text-align: center;
+      }
+
+      #race-status-bar {
+        min-height: 16px;
+      }
+
+      @media (max-width: 1180px) {
+        .sp-toolbar {
+          grid-template-columns: auto 56px auto 1fr;
+        }
+
+        .sp-toolbar .btn {
+          grid-row: 2;
+        }
+
+        .sp-toolbar-spacer {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body class="page-hydration-pending">
+    <nav class="topnav">
+      <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+      <a href="/start-list">Стартовый лист</a>
+      <a href="/">Хронометраж</a>
+      <a href="/protocol">Протокол</a>
+      <a href="/settings">Настройки</a>
+      <a href="/judge" class="active">Судья</a>
+      <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+      <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
+    </nav>
+
+    <div
+      class="page-hydration-skeleton"
+      aria-hidden="true"
+      style="
+        --hydration-columns: 1.1fr 1.4fr 0.9fr;
+        --hydration-gap: 16px;
+        --hydration-padding: 18px;
+      "
+    >
+      <div>
+        <div class="page-hydration-line" style="width: 62%"></div>
+        <div class="page-hydration-card" style="margin-bottom: 14px"></div>
+        <div class="page-hydration-card" style="min-height: 120px"></div>
       </div>
-
-      <div class="card" id="race-control">
-        <div class="card-title green">Управление гонкой</div>
-        <span class="auth-hint hidden" id="auth-hint"><span class="lock-icon">🔒</span> изменение только после входа</span>
-        <select id="race-category" style="margin-bottom:6px">
-          <option value="">  Загрузка категорий...  </option>
-        </select>
-        <div id="race-status-bar" style="display:none;margin-bottom:6px;font-size:11px;color:var(--text-dim)">
-          <span>В гонке: <b id="rs-racing" style="color:var(--accent);font-family:var(--mono)">0</b></span> ·
-          <span>Финиш: <b id="rs-finished" style="color:var(--green);font-family:var(--mono)">0</b></span> ·
-          <span>DNF: <b id="rs-dnf" style="color:var(--red);font-family:var(--mono)">0</b></span>
-        </div>
-
-        <div style="margin-bottom:6px">
-          <div style="display:flex;gap:2px;background:var(--surface2);border-radius:5px;padding:2px;border:1px solid var(--border)">
-            <button class="start-mode-btn active" id="btn-mode-mass" data-auth-required onclick="setStartMode('mass')"
-                    style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
-                           background:var(--accent);color:var(--bg);transition:all .15s">
-              Групповой
-            </button>
-            <button class="start-mode-btn" id="btn-mode-individual" data-auth-required onclick="setStartMode('individual')"
-                    style="flex:1;padding:5px 8px;font-size:10px;font-weight:700;font-family:var(--sans);border:none;border-radius:4px;cursor:pointer;
-                           background:transparent;color:var(--text-dim);transition:all .15s">
-              Индивидуальный
-            </button>
-          </div>
-        </div>
-
-        <div id="mass-start-section">
-          <div class="btn-row">
-            <button class="btn btn-accent" onclick="doMassStart()" id="btn-mass-start" data-auth-required style="flex:1">▶ Масс-старт</button>
-            <button class="btn" onclick="doFinishRace()" id="btn-finish-race" data-auth-required style="flex:1" disabled>■ Завершить</button>
-          </div>
-        </div>
-
-        <div id="individual-start-section" style="display:none">
-          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-            <span style="font-size:10px;color:var(--text-dim);white-space:nowrap">Интервал:</span>
-            <input type="number" id="sp-interval" data-auth-required value="30" min="5" max="600" step="5"
-                   style="width:56px;padding:4px 6px;font-size:11px;font-family:var(--mono);text-align:center;
-                          background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text)">
-            <span style="font-size:10px;color:var(--text-dim)">сек</span>
-            <div style="flex:1"></div>
-            <button class="btn" onclick="spAutoFill()" data-auth-required style="padding:4px 8px;font-size:10px" title="Заполнить всеми участниками категории">Авто</button>
-            <button class="btn" onclick="spClear()" data-auth-required style="padding:4px 8px;font-size:10px;color:var(--red)" title="Очистить протокол">✕</button>
-          </div>
-
-          <div class="sp-add-row">
-            <div class="rider-selector" style="flex:1;position:relative">
-              <input type="text" id="sp-search" data-auth-required placeholder="Номер или фамилия…"
-                     oninput="spOnSearchInput()" onfocus="spOnSearchFocus()"
-                     onkeydown="spOnSearchKey(event)" autocomplete="off"
-                     style="width:100%;padding:4px 8px;font-size:11px">
-              <div class="rider-dropdown" id="sp-dropdown"></div>
-            </div>
-          </div>
-
-          <div class="sp-list" id="sp-list">
-            <div style="padding:12px;text-align:center;color:var(--text-dim);font-size:11px">
-              Протокол пуст — нажмите «Авто» или добавьте участников
-            </div>
-          </div>
-
-          <div id="sp-countdown-area" style="display:none">
-            <div class="sp-countdown" id="sp-countdown-timer">00:00</div>
-            <div class="sp-next-info" id="sp-next-info"></div>
-          </div>
-
-          <div class="btn-row" style="margin-top:6px">
-            <button class="btn btn-accent" onclick="spLaunch()" id="btn-sp-launch" data-auth-required style="flex:1">▶ Запустить протокол</button>
-            <button class="btn" onclick="spStop()" id="btn-sp-stop" data-auth-required style="flex:1;display:none;color:var(--red)">|| Пауза</button>
-            <button class="btn" onclick="doFinishRace()" id="btn-finish-race-ind" data-auth-required style="flex:1" disabled>■ Завершить</button>
-          </div>
-
-          <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">
-            <button class="btn btn-full" onclick="doIndividualStart()" id="btn-individual-start" data-auth-required style="font-size:10px">
-              ▶ Ручной старт выбранного участника
-            </button>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <button class="btn btn-full" onclick="doResetCategory()" id="btn-reset-cat" data-auth-required style="flex:2;font-size:10px;color:var(--yellow)">↺ Сбросить категорию</button>
-          <button class="btn" onclick="doNewRace()" id="btn-new-race" data-auth-required style="flex:1;font-size:9px;color:var(--text-dim)" title="Создать полностью новую гоночную сессию для всех категорий">Новая сессия</button>
-        </div>
+      <div>
+        <div class="page-hydration-line" style="width: 48%"></div>
+        <div class="page-hydration-card" style="margin-bottom: 14px; min-height: 180px"></div>
+        <div class="page-hydration-card" style="min-height: 260px"></div>
       </div>
-
-      <div class="card">
-        <div class="card-title blue">Участник</div>
-        <div class="rider-selector">
-          <input type="text" id="rider-search" placeholder="Номер или фамилия…"
-                 oninput="onSearchInput()" onfocus="onSearchFocus()"
-                 onkeydown="onSearchKey(event)" autocomplete="off">
-          <div class="rider-dropdown" id="rider-dropdown"></div>
-        </div>
-        <label style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px;font-weight:600;color:var(--text-dim);cursor:pointer">
-          <input type="checkbox" id="search-filter-cat" onchange="onSearchInput()"
-                 style="width:13px;height:13px;accent-color:var(--accent);cursor:pointer">
-          Только текущая категория
-        </label>
-      </div>
-
-      <div class="selected-rider" id="selected-info">
-        <span class="sr-number" id="sr-num"></span><span class="sr-name" id="sr-name"></span>
-        <div class="sr-meta" id="sr-meta"></div>
-        <div id="sr-status" style="margin-top:4px"></div>
+      <div>
+        <div class="page-hydration-line" style="width: 56%"></div>
+        <div class="page-hydration-card" style="min-height: 420px"></div>
       </div>
     </div>
 
-    <div class="col-center">
-      <div class="card" id="laps-section">
-        <div class="card-title blue">Круги и финиш</div>
-        <div style="display:flex;gap:12px">
-          <div style="flex:1;min-width:0">
-            <div id="laps-list">
-              <div style="font-size:11px;color:var(--text-dim);padding:4px 0">Выберите участника</div>
+    <div class="page" data-hydration-content>
+      <div class="col-left">
+        <div class="cat-timers-card">
+          <div class="card-title" style="color: var(--green)">Таймеры категорий</div>
+          <div id="cat-timers">
+            <div style="font-size: 11px; color: var(--text-dim); padding: 4px 0">
+              Нет запущенных категорий
             </div>
-            <button class="btn btn-accent btn-full" onclick="doAddManualLap()" data-auth-required style="margin-top:6px">+ Добавить круг вручную</button>
           </div>
-          <div style="width:1px;background:var(--border)"></div>
-          <div style="width:200px;flex-shrink:0">
-            <div id="current-finish-info" style="display:none;margin-bottom:8px;padding:6px 8px;background:var(--surface2);border-radius:4px">
-              <div style="font-size:10px;color:var(--text-dim);margin-bottom:2px">Время финиша:</div>
-              <div id="current-finish-time" style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green)"></div>
-              <div class="input-row" style="margin-top:6px">
-                <input class="input-sm" id="edit-finish-mm" data-auth-required placeholder="ММ">
-                <span style="color:var(--text-dim);font-weight:700">:</span>
-                <input class="input-sm" id="edit-finish-ss" data-auth-required placeholder="СС.д" style="width:55px !important">
-                <button class="btn btn-accent" onclick="doEditFinishTime()" data-auth-required>OK</button>
+        </div>
+
+        <div class="card" id="race-control" data-start-mode="mass">
+          <div class="card-title green">Управление гонкой</div>
+          <span class="auth-hint hidden" id="auth-hint"
+            ><span class="lock-icon">🔒</span> изменение только после входа</span
+          >
+          <select id="race-category" style="margin-bottom: 6px">
+            <option value="">Загрузка категорий...</option>
+          </select>
+          <div
+            id="race-status-bar"
+            style="visibility: hidden; margin-bottom: 6px; font-size: 11px; color: var(--text-dim)"
+          >
+            <span
+              >В гонке:
+              <b id="rs-racing" style="color: var(--accent); font-family: var(--mono)">0</b></span
+            >
+            ·
+            <span
+              >Финиш:
+              <b id="rs-finished" style="color: var(--green); font-family: var(--mono)">0</b></span
+            >
+            ·
+            <span
+              >DNF: <b id="rs-dnf" style="color: var(--red); font-family: var(--mono)">0</b></span
+            >
+          </div>
+
+          <div style="margin-bottom: 6px">
+            <div
+              style="
+                display: flex;
+                gap: 2px;
+                background: var(--surface2);
+                border-radius: 5px;
+                padding: 2px;
+                border: 1px solid var(--border);
+              "
+            >
+              <button
+                class="start-mode-btn active"
+                id="btn-mode-mass"
+                data-auth-required
+                style="
+                  flex: 1;
+                  padding: 5px 8px;
+                  font-size: 10px;
+                  font-weight: 700;
+                  font-family: var(--sans);
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  background: var(--accent);
+                  color: var(--bg);
+                  transition: all 0.15s;
+                "
+              >
+                Групповой
+              </button>
+              <button
+                class="start-mode-btn"
+                id="btn-mode-individual"
+                data-auth-required
+                style="
+                  flex: 1;
+                  padding: 5px 8px;
+                  font-size: 10px;
+                  font-weight: 700;
+                  font-family: var(--sans);
+                  border: none;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  background: transparent;
+                  color: var(--text-dim);
+                  transition: all 0.15s;
+                "
+              >
+                Индивидуальный
+              </button>
+            </div>
+          </div>
+
+          <div id="mass-start-section">
+            <div class="btn-row mass-action-row">
+              <button class="btn btn-accent" id="btn-mass-start" data-auth-required style="flex: 1">
+                ▶ Масс-старт
+              </button>
+              <button class="btn" id="btn-finish-race" data-auth-required style="flex: 1" disabled>
+                ■ Завершить
+              </button>
+            </div>
+          </div>
+
+          <div id="individual-start-section" style="display: none">
+            <div class="sp-toolbar">
+              <span class="sp-toolbar-label">Интервал:</span>
+              <input
+                type="number"
+                id="sp-interval"
+                data-auth-required
+                value="30"
+                min="5"
+                max="600"
+                step="5"
+                style="
+                  width: 56px;
+                  padding: 4px 6px;
+                  font-size: 11px;
+                  font-family: var(--mono);
+                  text-align: center;
+                  background: var(--surface2);
+                  border: 1px solid var(--border);
+                  border-radius: 4px;
+                  color: var(--text);
+                "
+              />
+              <span class="sp-toolbar-unit">сек</span>
+              <div class="sp-toolbar-spacer"></div>
+              <button
+                class="btn"
+                id="btn-sp-autofill"
+                data-auth-required
+                style="padding: 4px 8px; font-size: 10px"
+                title="Заполнить всеми участниками категории"
+              >
+                Авто
+              </button>
+              <button
+                class="btn"
+                id="btn-sp-clear"
+                data-auth-required
+                style="padding: 4px 8px; font-size: 10px; color: var(--red)"
+                title="Очистить протокол"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div class="sp-add-row">
+              <div class="rider-selector" style="flex: 1; position: relative">
+                <input
+                  type="text"
+                  id="sp-search"
+                  data-auth-required
+                  placeholder="Номер или фамилия…"
+                  autocomplete="off"
+                  style="width: 100%; padding: 4px 8px; font-size: 11px"
+                />
+                <div class="rider-dropdown" id="sp-dropdown"></div>
               </div>
             </div>
-            <div id="no-finish-info" style="display:none;font-size:11px;color:var(--text-dim);margin-bottom:8px">Участник ещё не финишировал</div>
-            <button class="btn btn-full" onclick="doUnfinishRider()" data-auth-required>Отменить финиш</button>
+
+            <div class="sp-list" id="sp-list">
+              <div class="sp-empty">
+                Протокол пуст. Используйте «Авто» или добавьте участников вручную.
+              </div>
+            </div>
+
+            <div id="sp-countdown-area" style="display: none">
+              <div class="sp-countdown" id="sp-countdown-timer">00:00</div>
+              <div class="sp-next-info" id="sp-next-info"></div>
+            </div>
+
+            <div class="sp-action-row">
+              <button class="btn btn-accent" id="btn-sp-launch" data-auth-required style="flex: 1">
+                ▶ Запустить протокол
+              </button>
+              <button
+                class="btn"
+                id="btn-sp-stop"
+                data-auth-required
+                style="flex: 1; display: none; color: var(--red)"
+              >
+                ⏸ Пауза
+              </button>
+              <button
+                class="btn"
+                id="btn-finish-race-ind"
+                data-auth-required
+                style="flex: 1"
+                disabled
+              >
+                ■ Завершить
+              </button>
+            </div>
+
+            <div class="sp-manual-row">
+              <button
+                class="btn btn-full"
+                id="btn-individual-start"
+                data-auth-required
+                style="font-size: 10px"
+              >
+                ▶ Ручной старт выбранного участника
+              </button>
+            </div>
+          </div>
+
+          <div class="race-actions-row">
+            <button
+              class="btn btn-full"
+              id="btn-reset-cat"
+              data-auth-required
+              style="flex: 2; font-size: 10px; color: var(--yellow)"
+            >
+              ↺ Сбросить категорию
+            </button>
+            <button
+              class="btn"
+              id="btn-new-race"
+              data-auth-required
+              style="flex: 1; font-size: 9px; color: var(--text-dim)"
+              title="Создать полностью новую гоночную сессию для всех категорий"
+            >
+              Новая сессия
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title blue">Участник</div>
+          <div class="rider-selector">
+            <input
+              type="text"
+              id="rider-search"
+              placeholder="Номер или фамилия…"
+              autocomplete="off"
+            />
+            <div class="rider-dropdown" id="rider-dropdown"></div>
+          </div>
+          <label
+            style="
+              display: flex;
+              align-items: center;
+              gap: 5px;
+              margin-top: 5px;
+              font-size: 10px;
+              font-weight: 600;
+              color: var(--text-dim);
+              cursor: pointer;
+            "
+          >
+            <input
+              type="checkbox"
+              id="search-filter-cat"
+              style="width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer"
+            />
+            Только текущая категория
+          </label>
+        </div>
+
+        <div class="selected-rider" id="selected-info">
+          <span class="sr-number" id="sr-num"></span><span class="sr-name" id="sr-name"></span>
+          <div class="sr-meta" id="sr-meta"></div>
+          <div id="sr-status" style="margin-top: 4px"></div>
+        </div>
+      </div>
+
+      <div class="col-center">
+        <div class="card" id="laps-section">
+          <div class="card-title blue">Круги и финиш</div>
+          <div style="display: flex; gap: 12px">
+            <div style="flex: 1; min-width: 0">
+              <div id="laps-list">
+                <div style="font-size: 11px; color: var(--text-dim); padding: 4px 0">
+                  Выберите участника
+                </div>
+              </div>
+              <button
+                class="btn btn-accent btn-full"
+                id="btn-add-manual-lap"
+                data-auth-required
+                style="margin-top: 6px"
+              >
+                + Добавить круг вручную
+              </button>
+            </div>
+            <div style="width: 1px; background: var(--border)"></div>
+            <div style="width: 200px; flex-shrink: 0">
+              <div
+                id="current-finish-info"
+                style="
+                  display: none;
+                  margin-bottom: 8px;
+                  padding: 6px 8px;
+                  background: var(--surface2);
+                  border-radius: 4px;
+                "
+              >
+                <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 2px">
+                  Время финиша:
+                </div>
+                <div
+                  id="current-finish-time"
+                  style="
+                    font-family: var(--mono);
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: var(--green);
+                  "
+                ></div>
+                <div class="input-row" style="margin-top: 6px">
+                  <input class="input-sm" id="edit-finish-mm" data-auth-required placeholder="ММ" />
+                  <span style="color: var(--text-dim); font-weight: 700">:</span>
+                  <input
+                    class="input-sm"
+                    id="edit-finish-ss"
+                    data-auth-required
+                    placeholder="СС.д"
+                    style="width: 55px !important"
+                  />
+                  <button class="btn btn-accent" id="btn-edit-finish-time" data-auth-required>
+                    OK
+                  </button>
+                </div>
+              </div>
+              <div
+                id="no-finish-info"
+                style="display: none; font-size: 11px; color: var(--text-dim); margin-bottom: 8px"
+              >
+                Участник ещё не финишировал
+              </div>
+              <button class="btn btn-full" id="btn-unfinish-rider" data-auth-required>
+                Отменить финиш
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-grid">
+          <div class="card">
+            <div class="card-title red">DNF — Сход</div>
+            <div class="btn-row" style="flex-direction: column; gap: 4px">
+              <button class="btn btn-red btn-full" id="btn-dnf-voluntary" data-auth-required>
+                Добровольный сход
+              </button>
+              <button class="btn btn-red btn-full" id="btn-dnf-mechanical" data-auth-required>
+                Мех. поломка
+              </button>
+              <button class="btn btn-red btn-full" id="btn-dnf-injury" data-auth-required>
+                Травма
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title orange">Штраф времени</div>
+            <div class="input-row" style="margin-bottom: 4px">
+              <input
+                class="input-sm"
+                id="pen-seconds"
+                data-auth-required
+                value="30"
+                min="1"
+                type="number"
+              />
+              <span style="font-size: 10px; color: var(--text-dim)">сек</span>
+            </div>
+            <div class="input-row" style="margin-bottom: 4px">
+              <input id="pen-reason" data-auth-required placeholder="Причина" />
+            </div>
+            <button class="btn btn-orange btn-full" id="btn-time-penalty" data-auth-required>
+              + Штраф
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-title red">DSQ — Дисквалификация</div>
+            <div class="input-row" style="margin-bottom: 4px">
+              <input id="dsq-reason" data-auth-required placeholder="Причина" />
+            </div>
+            <button class="btn btn-red btn-full" id="btn-dsq" data-auth-required>
+              Дисквалифицировать
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-title orange">Штрафной круг</div>
+            <div class="input-row" style="margin-bottom: 4px">
+              <input
+                class="input-sm"
+                id="extra-laps"
+                data-auth-required
+                value="1"
+                min="1"
+                type="number"
+              />
+              <span style="font-size: 10px; color: var(--text-dim)">кр.</span>
+              <input id="extra-reason" data-auth-required placeholder="Причина" style="flex: 1" />
+            </div>
+            <button class="btn btn-orange btn-full" id="btn-extra-lap" data-auth-required>
+              + Штрафной круг
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-title yellow">Предупреждение</div>
+            <div class="input-row" style="margin-bottom: 4px">
+              <input id="warn-reason" data-auth-required placeholder="Причина" />
+            </div>
+            <button class="btn btn-yellow btn-full" id="btn-warning" data-auth-required>
+              Предупреждение
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="actions-grid">
-        <div class="card">
-          <div class="card-title red">DNF — Сход</div>
-          <div class="btn-row" style="flex-direction:column;gap:4px">
-            <button class="btn btn-red btn-full" onclick="doDNF('voluntary')" data-auth-required>Добровольный сход</button>
-            <button class="btn btn-red btn-full" onclick="doDNF('mechanical')" data-auth-required>Мех. поломка</button>
-            <button class="btn btn-red btn-full" onclick="doDNF('injury')" data-auth-required>Травма</button>
+      <div class="col-right">
+        <div class="log-header">Журнал решений</div>
+        <div class="log-scroll" id="log-list"></div>
+        <div class="notes-section">
+          <div
+            style="
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+              color: var(--text-dim);
+              margin-bottom: 6px;
+            "
+          >
+            Заметки
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-title orange">Штраф времени</div>
-          <div class="input-row" style="margin-bottom:4px">
-            <input class="input-sm" id="pen-seconds" data-auth-required value="30" min="1" type="number">
-            <span style="font-size:10px;color:var(--text-dim)">сек</span>
+          <div class="input-row" style="margin-bottom: 6px">
+            <input
+              id="note-text"
+              data-auth-required
+              placeholder="Текст заметки…"
+              style="padding: 8px 10px; font-size: 13px"
+            />
+            <button
+              class="btn btn-accent"
+              id="btn-add-note"
+              data-auth-required
+              style="padding: 8px 14px; font-size: 12px; white-space: nowrap"
+            >
+              + Заметка
+            </button>
           </div>
-          <div class="input-row" style="margin-bottom:4px">
-            <input id="pen-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doTimePenalty()">
-          </div>
-          <button class="btn btn-orange btn-full" onclick="doTimePenalty()" data-auth-required>+ Штраф</button>
-        </div>
-
-        <div class="card">
-          <div class="card-title red">DSQ — Дисквалификация</div>
-          <div class="input-row" style="margin-bottom:4px">
-            <input id="dsq-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doDSQ()">
-          </div>
-          <button class="btn btn-red btn-full" onclick="doDSQ()" data-auth-required>Дисквалифицировать</button>
-        </div>
-
-        <div class="card">
-          <div class="card-title orange">Штрафной круг</div>
-          <div class="input-row" style="margin-bottom:4px">
-            <input class="input-sm" id="extra-laps" data-auth-required value="1" min="1" type="number">
-            <span style="font-size:10px;color:var(--text-dim)">кр.</span>
-            <input id="extra-reason" data-auth-required placeholder="Причина" style="flex:1" onkeydown="if(event.key === 'Enter') doExtraLap()">
-          </div>
-          <button class="btn btn-orange btn-full" onclick="doExtraLap()" data-auth-required>+ Штрафной круг</button>
-        </div>
-
-        <div class="card">
-          <div class="card-title yellow">Предупреждение</div>
-          <div class="input-row" style="margin-bottom:4px">
-            <input id="warn-reason" data-auth-required placeholder="Причина" onkeydown="if(event.key === 'Enter') doWarning()">
-          </div>
-          <button class="btn btn-yellow btn-full" onclick="doWarning()" data-auth-required>Предупреждение</button>
+          <div id="notes-list"></div>
         </div>
       </div>
     </div>
 
-    <div class="col-right">
-      <div class="log-header">Журнал решений</div>
-      <div class="log-scroll" id="log-list"></div>
-      <div class="notes-section">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Заметки</div>
-        <div class="input-row" style="margin-bottom:6px">
-          <input id="note-text" data-auth-required placeholder="Текст заметки…" style="padding:8px 10px;font-size:13px" onkeydown="if(event.key === 'Enter') addNote()">
-          <button class="btn btn-accent" onclick="addNote()" data-auth-required style="padding:8px 14px;font-size:12px;white-space:nowrap">+ Заметка</button>
-        </div>
-        <div id="notes-list"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast" id="toast"></div>
-  <script src="/static/js/auth.js"></script>
-  <script src="/static/js/judge.js"></script>
-</body>
+    <div class="toast" id="toast"></div>
+    <script src="/static/js/ui/toast.js"></script>
+    <script src="/static/js/ui/http.js"></script>
+    <script src="/static/js/ui/page-hydration.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/ui/auth-http.js"></script>
+    <script src="/static/js/judge.state.js"></script>
+    <script src="/static/js/judge.api.js"></script>
+    <script src="/static/js/judge.riderSearch.js"></script>
+    <script src="/static/js/judge.startProtocol.js"></script>
+    <script src="/static/js/judge.riderPanel.js"></script>
+    <script src="/static/js/judge.racePolling.js"></script>
+    <script src="/static/js/judge.logNotes.js"></script>
+    <script src="/static/js/judge.js"></script>
+  </body>
 </html>

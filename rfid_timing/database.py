@@ -632,6 +632,12 @@ class Database:
     def delete_note(self, note_id: int) -> bool:
         return self.notes_repo.delete_note(note_id)
 
+    def delete_notes_by_category(self, category_id: int, race_id: int = None) -> int:
+        return self.notes_repo.delete_notes_by_category(
+            category_id=category_id,
+            race_id=race_id,
+        )
+
     # Start protocol
     def save_start_protocol(
         self, category_id: int, entries: List[Dict], race_id: int = None

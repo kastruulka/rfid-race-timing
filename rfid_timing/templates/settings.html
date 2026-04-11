@@ -1,131 +1,216 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Настройки</title>
-  <link rel="stylesheet" href="/static/css/web.css">
-  <link rel="stylesheet" href="/static/css/auth.css">
-  <link rel="stylesheet" href="/static/css/settings.css">
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Настройки</title>
+    <link rel="stylesheet" href="/static/css/web.css" />
+    <link rel="stylesheet" href="/static/css/auth.css" />
+    <link rel="stylesheet" href="/static/css/settings.css" />
+    <link rel="stylesheet" href="/static/css/page-hydration.css" />
+  </head>
+  <body class="page-hydration-pending">
+    <nav class="topnav">
+      <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+      <a href="/start-list">Стартовый лист</a>
+      <a href="/">Хронометраж</a>
+      <a href="/protocol">Протокол</a>
+      <a href="/settings" class="active">Настройки</a>
+      <a href="/judge">Судья</a>
+      <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+      <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
+    </nav>
 
-  <nav class="topnav">
-    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
-    <a href="/start-list">Стартовый лист</a>
-    <a href="/">Хронометраж</a>
-    <a href="/protocol">Протокол</a>
-    <a href="/settings" class="active">Настройки</a>
-    <a href="/judge">Судья</a>
-    <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
-    <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
-  </nav>
-
-  <div class="page-content">
-    <div class="page-header">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="page-title"><span>Настройки</span> системы</div>
-        <span class="status-badge wait" id="reader-mode-badge">Считыватель</span>
-        <span class="auth-hint hidden" id="auth-hint">
-          <span class="lock-icon">🔒</span> только чтение
-        </span>
-      </div>
-      <button class="btn btn-accent" type="button" data-auth-required onclick="saveSettings()" style="padding:8px 28px; font-size:12px">
-        Сохранить и применить
-      </button>
-    </div>
-
-    <div class="main-grid">
-      <div class="card">
-        <div class="card-title">RFID-ридер</div>
-        <div class="form-row">
-          <label>Режим работы</label>
-          <div class="mode-switch-row">
-            <span class="mode-switch-label" id="mode-label-reader">Считыватель</span>
-            <label class="mode-switch" aria-label="Переключить режим считыватель или эмулятор">
-              <input type="checkbox" id="s-use-emulator" data-auth-required>
-              <span class="mode-switch-slider"></span>
-            </label>
-            <span class="mode-switch-label" id="mode-label-emulator">Эмулятор</span>
-          </div>
-          <div class="form-hint">Когда переключатель включён, показываются только настройки эмулятора. Когда выключен — только настройки считывателя.</div>
-        </div>
-
-        <div id="reader-settings-block">
-          <div class="form-grid">
-            <div class="form-row">
-              <label>IP-адрес ридера</label>
-              <input type="text" id="s-reader-ip" data-auth-required placeholder="169.254.1.1">
-            </div>
-            <div class="form-row">
-              <label>Порт</label>
-              <input type="number" id="s-reader-port" data-auth-required placeholder="5084">
-            </div>
-          </div>
-          <div class="form-row">
-            <label>TX Power (dBm)</label>
-            <input type="number" id="s-tx-power" data-auth-required step="0.5" min="0" max="32.5" placeholder="30.0">
-            <div class="form-hint">27 dBm — ближняя зона (~3 м), 30 — средняя (~5–6 м), 32.5 — макс.</div>
-          </div>
-          <div class="form-row">
-            <label>Активные антенны</label>
-            <div class="checkbox-row">
-              <label class="cb-item"><input type="checkbox" id="s-ant-1" data-auth-required value="1"> 1</label>
-              <label class="cb-item"><input type="checkbox" id="s-ant-2" data-auth-required value="2"> 2</label>
-              <label class="cb-item"><input type="checkbox" id="s-ant-3" data-auth-required value="3"> 3</label>
-              <label class="cb-item"><input type="checkbox" id="s-ant-4" data-auth-required value="4"> 4</label>
-            </div>
-          </div>
-          <div class="conn-row">
-            <button class="btn" type="button" id="btn-check-connection" data-auth-required onclick="checkConnection()">Проверить подключение</button>
-            <span class="status-badge wait" id="conn-status">Не проверено</span>
-          </div>
-        </div>
-
-        <div id="filter-settings-block" class="form-grid">
-          <div class="form-row">
-            <label>RSSI Window (сек)</label>
-            <input type="number" id="s-rssi-window" data-auth-required step="0.1" min="0.5" max="10">
-            <div class="form-hint">Сколько секунд собирать считывания метки в один проезд. Больше — точнее пик RSSI, но дольше задержка.</div>
-          </div>
-          <div class="form-row">
-            <label id="s-min-lap-label">Антидребезг ридера (сек)</label>
-            <input type="number" id="s-min-lap" data-auth-required step="1" min="5" max="3600">
-            <div class="form-hint">Мин. время между проездами одной метки.</div>
-          </div>
-        </div>
-
-        <div id="emulator-settings-block" style="margin-top:4px; padding-top:6px; border-top:1px solid var(--border); display:none;">
-          <div class="form-row">
-            <label>Антидребезг эмулятора (сек)</label>
-            <input type="number" id="s-emu-lap" data-auth-required step="1" min="5">
-            <div class="form-hint">Короткий интервал для быстрого тестирования</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card card-system" style="display:flex; flex-direction:row; align-items:center; justify-content:space-between; gap:14px;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim);">Система</span>
-        </div>
-        <div class="info-row" style="margin-bottom:0; flex:1;">
-          <div class="info-item">БД: <b id="si-db">—</b></div>
-          <div class="info-item">Лог: <b id="si-log">—</b></div>
-          <div class="info-item">Бэкапы: <b id="si-bk">—</b></div>
-          <div class="info-item">Race: <b id="si-race">—</b></div>
-          <div class="info-item">Участников: <b id="si-riders">—</b></div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-green" type="button" data-auth-required onclick="backupDB()">Бэкап БД</button>
-          <button class="btn btn-danger" type="button" data-auth-required onclick="resetRace()">Сбросить гонку</button>
-        </div>
+    <div
+      class="page-hydration-skeleton"
+      aria-hidden="true"
+      style="--hydration-columns: 1fr; --hydration-gap: 18px; --hydration-padding: 24px"
+    >
+      <div class="page-hydration-line" style="width: 240px; margin-bottom: 18px"></div>
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 18px">
+        <div class="page-hydration-card"></div>
+        <div class="page-hydration-card"></div>
       </div>
     </div>
-  </div>
 
-  <div class="toast" id="toast"></div>
+    <div class="page-content" data-hydration-content>
+      <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <div class="page-title"><span>Настройки</span> системы</div>
+          <span class="status-badge wait" id="reader-mode-badge">Считыватель</span>
+          <span class="auth-hint hidden" id="auth-hint">
+            <span class="lock-icon">🔒</span> только чтение
+          </span>
+        </div>
+        <button
+          class="btn btn-accent"
+          type="button"
+          id="btn-save-settings"
+          data-auth-required
+          style="padding: 8px 28px; font-size: 12px"
+        >
+          Сохранить и применить
+        </button>
+      </div>
 
-  <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
-</body>
+      <div class="main-grid">
+        <div class="card">
+          <div class="card-title">RFID-ридер</div>
+          <div class="form-row">
+            <label>Режим работы</label>
+            <div class="mode-switch-row">
+              <span class="mode-switch-label" id="mode-label-reader">Считыватель</span>
+              <label class="mode-switch" aria-label="Переключить режим считыватель или эмулятор">
+                <input type="checkbox" id="s-use-emulator" data-auth-required />
+                <span class="mode-switch-slider"></span>
+              </label>
+              <span class="mode-switch-label" id="mode-label-emulator">Эмулятор</span>
+            </div>
+            <div class="form-hint">
+              Когда переключатель включён, показываются только настройки эмулятора. Когда выключен —
+              только настройки считывателя.
+            </div>
+          </div>
+
+          <div id="reader-settings-block">
+            <div class="form-grid">
+              <div class="form-row">
+                <label>IP-адрес ридера</label>
+                <input type="text" id="s-reader-ip" data-auth-required placeholder="169.254.1.1" />
+              </div>
+              <div class="form-row">
+                <label>Порт</label>
+                <input type="number" id="s-reader-port" data-auth-required placeholder="5084" />
+              </div>
+            </div>
+            <div class="form-row">
+              <label>TX Power (dBm)</label>
+              <input
+                type="number"
+                id="s-tx-power"
+                data-auth-required
+                step="0.5"
+                min="0"
+                max="32.5"
+                placeholder="30.0"
+              />
+              <div class="form-hint">
+                27 dBm — ближняя зона (~3 м), 30 — средняя (~5–6 м), 32.5 — макс.
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Активные антенны</label>
+              <div class="checkbox-row">
+                <label class="cb-item"
+                  ><input type="checkbox" id="s-ant-1" data-auth-required value="1" /> 1</label
+                >
+                <label class="cb-item"
+                  ><input type="checkbox" id="s-ant-2" data-auth-required value="2" /> 2</label
+                >
+                <label class="cb-item"
+                  ><input type="checkbox" id="s-ant-3" data-auth-required value="3" /> 3</label
+                >
+                <label class="cb-item"
+                  ><input type="checkbox" id="s-ant-4" data-auth-required value="4" /> 4</label
+                >
+              </div>
+            </div>
+            <div class="conn-row">
+              <button class="btn" type="button" id="btn-check-connection" data-auth-required>
+                Проверить подключение
+              </button>
+              <span class="status-badge wait" id="conn-status">Не проверено</span>
+            </div>
+          </div>
+
+          <div id="filter-settings-block" class="form-grid">
+            <div class="form-row">
+              <label>RSSI Window (сек)</label>
+              <input
+                type="number"
+                id="s-rssi-window"
+                data-auth-required
+                step="0.1"
+                min="0.5"
+                max="10"
+              />
+              <div class="form-hint">
+                Сколько секунд собирать считывания метки в один проезд. Больше — точнее пик RSSI, но
+                дольше задержка.
+              </div>
+            </div>
+            <div class="form-row">
+              <label id="s-min-lap-label">Антидребезг ридера (сек)</label>
+              <input type="number" id="s-min-lap" data-auth-required step="1" min="5" max="3600" />
+              <div class="form-hint">Мин. время между проездами одной метки.</div>
+            </div>
+          </div>
+
+          <div
+            id="emulator-settings-block"
+            class="hidden"
+            style="margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border)"
+          >
+            <div class="form-row">
+              <label>Антидребезг эмулятора (сек)</label>
+              <input type="number" id="s-emu-lap" data-auth-required step="1" min="5" />
+              <div class="form-hint">Короткий интервал для быстрого тестирования</div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="card card-system"
+          style="
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+          "
+        >
+          <div style="display: flex; align-items: center; gap: 6px">
+            <span
+              style="
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: var(--text-dim);
+              "
+              >Система</span
+            >
+          </div>
+          <div class="info-row" style="margin-bottom: 0; flex: 1">
+            <div class="info-item">БД: <b id="si-db">—</b></div>
+            <div class="info-item">Лог: <b id="si-log">—</b></div>
+            <div class="info-item">Бэкапы: <b id="si-bk">—</b></div>
+            <div class="info-item">Race: <b id="si-race">—</b></div>
+            <div class="info-item">Участников: <b id="si-riders">—</b></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-green" type="button" id="btn-backup-db" data-auth-required>
+              Бэкап БД
+            </button>
+            <button class="btn btn-danger" type="button" id="btn-reset-race" data-auth-required>
+              Сбросить гонку
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/ui/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/http.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/page-hydration.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/auth-http.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.form.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.status.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.maintenance.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.actions.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.init.js') }}"></script>
+  </body>
 </html>

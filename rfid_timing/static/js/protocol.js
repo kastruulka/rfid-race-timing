@@ -1,105 +1,211 @@
-async function api(url, method, body) {
-  const opts = { method: method || 'GET' };
-  if (body !== undefined) {
-    opts.headers = { 'Content-Type': 'application/json' };
-    opts.body = JSON.stringify(body);
-  }
-  return await fetch(url, opts);
-}
+const toast = window.showToast;
+
+const els = {
+  category: document.getElementById('p-category'),
+  title: document.getElementById('p-title'),
+  subtitle: document.getElementById('p-subtitle'),
+  date: document.getElementById('p-date'),
+  location: document.getElementById('p-location'),
+  weather: document.getElementById('p-weather'),
+  chiefJudge: document.getElementById('p-judge'),
+  secretary: document.getElementById('p-secretary'),
+  colPlace: document.getElementById('col-place'),
+  colNumber: document.getElementById('col-number'),
+  colName: document.getElementById('col-name'),
+  colBirthYear: document.getElementById('col-birth_year'),
+  colClub: document.getElementById('col-club'),
+  colCity: document.getElementById('col-city'),
+  colStartTime: document.getElementById('col-start_time'),
+  colTime: document.getElementById('col-time'),
+  colGap: document.getElementById('col-gap'),
+  colWarmupLap: document.getElementById('col-warmup_lap'),
+  colLaps: document.getElementById('col-laps'),
+  colSpeed: document.getElementById('col-speed'),
+  colStatus: document.getElementById('col-status'),
+  previewScroll: document.getElementById('preview-scroll'),
+  previewEmpty: document.getElementById('preview-empty'),
+  generatePreviewButton: document.getElementById('btn-generate-preview'),
+  downloadPdfButton: document.getElementById('btn-download-pdf'),
+};
 
 function getSelectedCategoryId() {
-  return parseInt(document.getElementById('p-category').value, 10) || null;
+  return parseInt(els.category.value, 10) || null;
+}
+
+function getSelectedCategoryOption() {
+  return els.category.options[els.category.selectedIndex] || null;
+}
+
+function getProtocolMeta() {
+  return {
+    title: els.title.value.trim(),
+    subtitle: els.subtitle.value.trim(),
+    date: els.date.value.trim(),
+    location: els.location.value.trim(),
+    weather: els.weather.value.trim(),
+    chief_judge: els.chiefJudge.value.trim(),
+    secretary: els.secretary.value.trim(),
+  };
+}
+
+function getProtocolColumns() {
+  return {
+    place: els.colPlace.checked,
+    number: els.colNumber.checked,
+    name: els.colName.checked,
+    birth_year: els.colBirthYear.checked,
+    club: els.colClub.checked,
+    city: els.colCity.checked,
+    start_time: els.colStartTime.checked,
+    time: els.colTime.checked,
+    gap: els.colGap.checked,
+    warmup_lap: els.colWarmupLap.checked,
+    laps: els.colLaps.checked,
+    speed: els.colSpeed.checked,
+    status: els.colStatus.checked,
+  };
+}
+
+function getProtocolRequestBody() {
+  return {
+    category_id: getSelectedCategoryId(),
+    meta: getProtocolMeta(),
+    columns: getProtocolColumns(),
+  };
 }
 
 function ensureCategorySelected(categoryId) {
   if (categoryId) return true;
-  alert('Выберите категорию');
+  toast('Выберите категорию', true);
   return false;
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
+function renderPreview(html) {
+  if (els.previewEmpty) {
+    els.previewEmpty.remove();
+    els.previewEmpty = null;
+  }
 
-function getConfig() {
-  return {
-    category_id: getSelectedCategoryId(),
-    meta: {
-      title: document.getElementById('p-title').value.trim(),
-      subtitle: document.getElementById('p-subtitle').value.trim(),
-      date: document.getElementById('p-date').value.trim(),
-      location: document.getElementById('p-location').value.trim(),
-      weather: document.getElementById('p-weather').value.trim(),
-      chief_judge: document.getElementById('p-judge').value.trim(),
-      secretary: document.getElementById('p-secretary').value.trim(),
-    },
-    columns: {
-      place: document.getElementById('col-place').checked,
-      number: document.getElementById('col-number').checked,
-      name: document.getElementById('col-name').checked,
-      birth_year: document.getElementById('col-birth_year').checked,
-      club: document.getElementById('col-club').checked,
-      city: document.getElementById('col-city').checked,
-      start_time: document.getElementById('col-start_time').checked,
-      time: document.getElementById('col-time').checked,
-      gap: document.getElementById('col-gap').checked,
-      warmup_lap: document.getElementById('col-warmup_lap').checked,
-      laps: document.getElementById('col-laps').checked,
-      speed: document.getElementById('col-speed').checked,
-      status: document.getElementById('col-status').checked,
-    },
-  };
-}
-
-async function loadCategories() {
-  const resp = await api('/api/categories', 'GET');
-  const cats = await resp.json();
-  const sel = document.getElementById('p-category');
-  cats.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name + ' (' + c.laps + ' кр.)';
-    sel.appendChild(o);
-  });
-}
-
-async function generatePreview() {
-  const cfg = getConfig();
-  if (!ensureCategorySelected(cfg.category_id)) return;
-
-  const resp = await api('/api/protocol/preview', 'POST', cfg);
-  const html = await resp.text();
-
-  const scroll = document.getElementById('preview-scroll');
-  const empty = document.getElementById('preview-empty');
-  if (empty) empty.remove();
-
-  let paper = scroll.querySelector('.preview-paper');
+  let paper = els.previewScroll.querySelector('.preview-paper');
   if (!paper) {
     paper = document.createElement('div');
     paper.className = 'preview-paper';
-    scroll.appendChild(paper);
+    els.previewScroll.appendChild(paper);
   }
+
+  // Trusted server-side HTML from our own preview endpoint.
   paper.innerHTML = html;
 }
 
-async function downloadPDF() {
-  const cfg = getConfig();
-  if (!ensureCategorySelected(cfg.category_id)) return;
-
-  const resp = await api('/api/protocol/pdf', 'POST', cfg);
-  if (!resp.ok) {
-    const err = await resp.json();
-    alert(err.error || 'Ошибка генерации PDF');
-    return;
-  }
-  const blob = await resp.blob();
-  downloadBlob(blob, 'protocol.pdf');
+function getErrorMessage(result, fallback) {
+  const data = result && result.data;
+  if (data && typeof data === 'object' && data.error) return data.error;
+  return fallback || 'Ошибка запроса';
 }
 
-loadCategories();
+function sanitizeFilenamePart(value, replacement) {
+  return String(value || '')
+    .split('')
+    .map(function (char) {
+      if (char.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(char)) {
+        return replacement;
+      }
+      return char;
+    })
+    .join('');
+}
+
+function buildPdfFilename() {
+  const option = getSelectedCategoryOption();
+  const categoryLabel =
+    option && option.value ? option.textContent.replace(/\s*\(.*/, '').trim() : 'protocol';
+  const dateLabel = els.date.value.trim() || new Date().toISOString().slice(0, 10);
+  const safeCategory = sanitizeFilenamePart(categoryLabel, '_');
+  const safeDate = sanitizeFilenamePart(dateLabel, '-');
+  return safeCategory + '-' + safeDate + '.pdf';
+}
+
+async function loadCategories() {
+  const result = await window.httpClient.fetchJson('/api/categories');
+  const cats = Array.isArray(result.data) ? result.data : [];
+  const selectedValue = els.category.value;
+
+  els.category.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = '-- Выберите категорию --';
+  els.category.appendChild(placeholder);
+
+  cats.forEach(function (category) {
+    const option = document.createElement('option');
+    option.value = category.id;
+    option.textContent = category.name + ' (' + category.laps + ' кр.)';
+    els.category.appendChild(option);
+  });
+
+  if (
+    selectedValue &&
+    cats.some(function (category) {
+      return String(category.id) === String(selectedValue);
+    })
+  ) {
+    els.category.value = selectedValue;
+  }
+}
+
+async function generatePreview() {
+  const body = getProtocolRequestBody();
+  if (!ensureCategorySelected(body.category_id)) return;
+
+  try {
+    const result = await window.httpClient.fetchText('/api/protocol/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!result.ok) {
+      toast(getErrorMessage(result, 'Ошибка генерации предпросмотра'), true);
+      return;
+    }
+
+    renderPreview(result.data || '');
+  } catch {
+    toast('Ошибка сети при загрузке предпросмотра', true);
+  }
+}
+
+async function downloadPDF() {
+  const body = getProtocolRequestBody();
+  if (!ensureCategorySelected(body.category_id)) return;
+
+  try {
+    const result = await window.httpClient.fetchBlob('/api/protocol/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!result.ok) {
+      toast(getErrorMessage(result, 'Ошибка генерации PDF'), true);
+      return;
+    }
+
+    window.downloadBlob(result.data, buildPdfFilename());
+  } catch {
+    toast('Ошибка сети при загрузке PDF', true);
+  }
+}
+
+function bindUi() {
+  els.generatePreviewButton.addEventListener('click', generatePreview);
+  els.downloadPdfButton.addEventListener('click', downloadPDF);
+}
+
+async function init() {
+  bindUi();
+  await loadCategories();
+}
+
+init();

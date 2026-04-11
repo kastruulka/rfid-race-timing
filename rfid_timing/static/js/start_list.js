@@ -1,471 +1,219 @@
-let allRiders = [];
-let categories = [];
-let selectedCatId = '';
-let authManager = null;
-let tagScannerTimer = null;
-let tagScannerLastHash = '';
-const CURRENT_YEAR = new Date().getFullYear();
-const MIN_BIRTH_YEAR = 1900;
-const MAX_NUMBER = 99999;
-const MAX_CATEGORY_LAPS = 1000;
-const MAX_CATEGORY_DISTANCE = 1000;
+(function () {
+  const page = window.StartListPage || (window.StartListPage = {});
 
-function toast(msg, isError) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (isError ? ' error' : '');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.className = 'toast', 2500);
-}
-
-function validateCategoryForm(body) {
-  if (!body.name) return 'Введите название';
-  if (!Number.isInteger(body.laps) || body.laps < 1 || body.laps > MAX_CATEGORY_LAPS) {
-    return 'Количество кругов должно быть от 1 до ' + MAX_CATEGORY_LAPS;
-  }
-  if (!Number.isFinite(body.distance_km) || body.distance_km < 0 || body.distance_km > MAX_CATEGORY_DISTANCE) {
-    return 'Дистанция круга должна быть от 0 до ' + MAX_CATEGORY_DISTANCE + ' км';
-  }
-  return null;
-}
-
-function validateRiderForm(body) {
-  if (!Number.isInteger(body.number) || body.number < 1 || body.number > MAX_NUMBER) {
-    return 'Стартовый номер должен быть от 1 до ' + MAX_NUMBER;
-  }
-  if (!body.last_name) return 'Номер и фамилия обязательны';
-  if (body.birth_year !== null) {
-    if (!Number.isInteger(body.birth_year) || body.birth_year < MIN_BIRTH_YEAR || body.birth_year > CURRENT_YEAR) {
-      return 'Год рождения должен быть в диапазоне ' + MIN_BIRTH_YEAR + '-' + CURRENT_YEAR;
-    }
-  }
-  return null;
-}
-
-async function api(url, method, body) {
-  const opts = { method: method || 'GET' };
-  if (body !== undefined) {
-    opts.headers = { 'Content-Type': 'application/json' };
-    opts.body = JSON.stringify(body);
-  }
-
-  const result = await authManager.fetchJson(url, opts);
-  if (result.unauthorized) return null;
-  return result.data;
-}
-
-async function loadAll() {
-  const data = await api('/api/categories', 'GET');
-  categories = Array.isArray(data) ? data : [];
-  renderCategories();
-  await loadRiders();
-}
-
-async function loadRiders() {
-  const qs = selectedCatId ? '?category_id=' + selectedCatId : '';
-  const data = await api('/api/riders' + qs, 'GET');
-  allRiders = Array.isArray(data) ? data : [];
-  renderRiders();
-  updateStats();
-}
-
-function renderCategories() {
-  const list = document.getElementById('cat-list');
-  const allItem = list.querySelector('[data-id=""]');
-  list.innerHTML = '';
-  list.appendChild(allItem);
-
-  let totalRiders = 0;
-  const canEdit = authManager && authManager.isAuthenticated();
-
-  categories.forEach(c => {
-    const warmupLabel = c.has_warmup_lap === false || c.has_warmup_lap === 0
-      ? ' · без разгонного'
-      : '';
-    const div = document.createElement('div');
-    div.className = 'cat-item' + (selectedCatId == c.id ? ' active' : '');
-    div.dataset.id = c.id;
-    div.onclick = () => selectCategory(div, c.id);
-    div.innerHTML =
-      '<div>' +
-        '<div class="cat-name">' + esc(c.name) + '</div>' +
-        '<div class="cat-meta">' + c.laps + ' кр. · ' + (c.distance_km || 0) + ' км' + warmupLabel + '</div>' +
-      '</div>' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<div class="cat-count">' + (c.rider_count || 0) + '</div>' +
-        '<div class="cat-actions">' +
-          '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();editCat(' + c.id + ')" title="Редакт.">E</button>' +
-          '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="event.stopPropagation();deleteCat(' + c.id + ')" title="Удалить">X</button>' +
-        '</div>' +
-      '</div>';
-    list.appendChild(div);
-    totalRiders += (c.rider_count || 0);
-  });
-
-  document.getElementById('cnt-all').textContent = totalRiders;
-  if (!selectedCatId) allItem.classList.add('active');
-  if (authManager) authManager.syncProtectedControls();
-}
-
-function selectCategory(el, catId) {
-  selectedCatId = catId;
-  document.querySelectorAll('.cat-item').forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  loadRiders();
-}
-
-async function openCatModal(cat) {
-  if (!cat && !await authManager.requireAuth('Для добавления категории нужен пароль администратора')) return;
-  if (cat && !authManager.isAuthenticated()) {
-    authManager.openLogin('Для редактирования категории нужен пароль администратора');
-    return;
-  }
-
-  document.getElementById('cat-edit-id').value = cat ? cat.id : '';
-  document.getElementById('cat-name').value = cat ? cat.name : '';
-  document.getElementById('cat-laps').value = cat ? cat.laps : 5;
-  document.getElementById('cat-dist').value = cat ? (cat.distance_km || 0) : 5;
-  document.getElementById('cat-has-warmup').checked = cat ? !(cat.has_warmup_lap === false || cat.has_warmup_lap === 0) : true;
-  document.getElementById('cat-modal-title').innerHTML = cat
-    ? '<span>Редактировать</span> категорию' : '<span>Новая</span> категория';
-  document.getElementById('cat-modal').classList.add('open');
-}
-function closeCatModal() { document.getElementById('cat-modal').classList.remove('open'); }
-
-async function saveCat() {
-  if (!await authManager.requireAuth('Для сохранения категории нужен пароль администратора')) return;
-
-  const id = document.getElementById('cat-edit-id').value;
-  const body = {
-    name: document.getElementById('cat-name').value.trim(),
-    laps: parseInt(document.getElementById('cat-laps').value, 10) || 1,
-    distance_km: parseFloat(document.getElementById('cat-dist').value) || 0,
-    has_warmup_lap: document.getElementById('cat-has-warmup').checked,
+  page.toast = window.showToast;
+  page.constants = {
+    CURRENT_YEAR: new Date().getFullYear(),
+    MIN_BIRTH_YEAR: 1900,
+    MAX_NUMBER: 99999,
+    MAX_CATEGORY_LAPS: 1000,
+    MAX_CATEGORY_DISTANCE: 1000,
   };
-  const error = validateCategoryForm(body);
-  if (error) { toast(error, true); return; }
 
-  const res = id
-    ? await api('/api/categories/' + id, 'PUT', body)
-    : await api('/api/categories', 'POST', body);
-  if (!res) return;
-
-  if (res.error) {
-    toast(res.error, true);
-    return;
-  }
-
-  toast(id ? 'Категория обновлена' : 'Категория создана');
-  closeCatModal();
-  loadAll();
-}
-
-async function editCat(catId) {
-  if (!await authManager.requireAuth('Для редактирования категории нужен пароль администратора')) return;
-  const cat = categories.find(c => c.id === catId);
-  if (cat) openCatModal(cat);
-}
-
-async function deleteCat(catId) {
-  if (!await authManager.requireAuth('Для удаления категории нужен пароль администратора')) return;
-  if (!confirm('Удалить категорию? Участники в ней не должны быть.')) return;
-  const res = await api('/api/categories/' + catId, 'DELETE');
-  if (!res) return;
-  if (res.error) { toast(res.error, true); return; }
-  toast('Категория удалена');
-  if (selectedCatId == catId) selectedCatId = '';
-  loadAll();
-}
-
-function renderRiders() {
-  const tbody = document.getElementById('riders-body');
-  const query = document.getElementById('search-input').value.toLowerCase();
-  const canEdit = authManager && authManager.isAuthenticated();
-  const filtered = allRiders.filter(r => {
-    if (!query) return true;
-    return (String(r.number).includes(query) ||
-            (r.last_name || '').toLowerCase().includes(query) ||
-            (r.first_name || '').toLowerCase().includes(query) ||
-            (r.club || '').toLowerCase().includes(query) ||
-            (r.city || '').toLowerCase().includes(query) ||
-            (r.epc || '').toLowerCase().includes(query));
-  });
-
-  document.getElementById('empty-state').style.display = filtered.length ? 'none' : 'flex';
-
-  tbody.innerHTML = filtered.map(r => {
-    const hasEpc = r.epc && r.epc.length > 0;
-    return '<tr>' +
-      '<td class="num-col">' + r.number + '</td>' +
-      '<td style="font-weight:600">' + esc(r.last_name || '') + '</td>' +
-      '<td>' + esc(r.first_name || '') + '</td>' +
-      '<td class="c mono">' + (r.birth_year || '—') + '</td>' +
-      '<td>' + esc(r.city || '') + '</td>' +
-      '<td>' + esc(r.club || '') + '</td>' +
-      '<td>' + esc(r.category_name || '—') + '</td>' +
-      '<td class="epc-col' + (hasEpc ? ' bound' : '') + '" title="' + esc(r.epc || '') + '">' +
-        (hasEpc ? esc(r.epc) : '-') + '</td>' +
-      '<td><div class="actions-col">' +
-        '<button class="btn btn-sm" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="editRider(' + r.id + ')" title="Редакт.">E</button>' +
-        '<button class="btn btn-sm btn-danger" type="button" data-auth-required ' + (!canEdit ? 'disabled ' : '') + 'onclick="deleteRider(' + r.id + ')" title="Удалить">X</button>' +
-      '</div></td>' +
-    '</tr>';
-  }).join('');
-
-  if (authManager) authManager.syncProtectedControls();
-}
-
-function applySearch() { renderRiders(); }
-
-function updateStats() {
-  const total = allRiders.length;
-  const withEpc = allRiders.filter(r => r.epc && r.epc.length > 0).length;
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-epc').textContent = withEpc;
-  document.getElementById('stat-noepc').textContent = total - withEpc;
-}
-
-function getCurrentEditingRiderId() {
-  return parseInt(document.getElementById('rider-edit-id').value, 10) || null;
-}
-
-function getEpcOwner(epc) {
-  if (!epc) return null;
-  return allRiders.find(r => (r.epc || '') === epc) || null;
-}
-
-function renderTagScanner(events) {
-  const list = document.getElementById('tag-scanner-list');
-  const status = document.getElementById('tag-scanner-status');
-  if (!Array.isArray(events) || !events.length) {
-    status.textContent = 'Последних считываний пока нет';
-    list.innerHTML = '<div style="padding:12px;border:1px dashed var(--line);border-radius:12px;color:var(--text-dim);font-size:12px">Поднесите метку к антенне и дождитесь нового EPC.</div>';
-    return;
-  }
-
-  status.textContent = 'Последние считанные метки';
-  const editingRiderId = getCurrentEditingRiderId();
-  list.innerHTML = events.map(event => {
-    const owner = getEpcOwner(event.epc);
-    const belongsToCurrent = owner && editingRiderId && owner.id === editingRiderId;
-    const busy = owner && !belongsToCurrent;
-    const ownerLabel = owner
-      ? ('#' + owner.number + ' ' + (owner.last_name || '') + (belongsToCurrent ? ' (этот участник)' : ''))
-      : 'не привязана';
-    return '<div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center">' +
-      '<div>' +
-        '<div class="mono" style="font-size:13px;font-weight:700;word-break:break-all">' + esc(event.epc || '') + '</div>' +
-        '<div style="font-size:11px;color:var(--text-dim);margin-top:4px">Время: ' + esc(event.timestamp || '') + ' · Антенна: ' + esc(String(event.antenna ?? '—')) + ' · RSSI: ' + esc(String(event.rssi ?? '—')) + '</div>' +
-        '<div style="font-size:11px;color:' + (busy ? 'var(--red)' : 'var(--text-dim)') + ';margin-top:4px">Привязка: ' + esc(ownerLabel) + '</div>' +
-      '</div>' +
-      '<div><button class="btn btn-sm' + (!busy ? ' btn-accent' : '') + '" type="button" ' + (busy ? 'disabled ' : '') + 'onclick="useScannedTag(\'' + escJs(event.epc || '') + '\')">' + (busy ? 'Занято' : 'Использовать') + '</button></div>' +
-    '</div>';
-  }).join('');
-}
-
-async function pollTagScanner() {
-  const modal = document.getElementById('tag-scanner-modal');
-  if (!modal || !modal.classList.contains('open')) return;
-  const events = await api('/api/events', 'GET');
-  const normalized = Array.isArray(events) ? events.filter(e => e && e.epc).slice(0, 12) : [];
-  const hash = normalized.map(e => [e.epc, e.timestamp, e.antenna].join('|')).join('||');
-  if (hash === tagScannerLastHash) return;
-  tagScannerLastHash = hash;
-  renderTagScanner(normalized);
-}
-
-async function openTagScanner() {
-  if (!await authManager.requireAuth('Для считывания EPC нужен пароль администратора')) return;
-  if (!document.getElementById('rider-modal').classList.contains('open')) return;
-  tagScannerLastHash = '';
-  document.getElementById('tag-scanner-status').textContent = 'Ожидание считывания…';
-  document.getElementById('tag-scanner-list').innerHTML = '';
-  document.getElementById('tag-scanner-modal').classList.add('open');
-  await pollTagScanner();
-  if (!tagScannerTimer) tagScannerTimer = setInterval(pollTagScanner, 1000);
-}
-
-function closeTagScanner() {
-  document.getElementById('tag-scanner-modal').classList.remove('open');
-  if (tagScannerTimer) {
-    clearInterval(tagScannerTimer);
-    tagScannerTimer = null;
-  }
-}
-
-function useScannedTag(epc) {
-  const owner = getEpcOwner(epc);
-  const editingRiderId = getCurrentEditingRiderId();
-  if (owner && owner.id !== editingRiderId) {
-    toast('Эта метка уже привязана к #' + owner.number, true);
-    return;
-  }
-  document.getElementById('r-epc').value = epc || '';
-  closeTagScanner();
-  toast('EPC подставлен в карточку участника');
-}
-
-async function openRiderModal(rider) {
-  const reason = rider
-    ? 'Для редактирования участника нужен пароль администратора'
-    : 'Для добавления участника нужен пароль администратора';
-  if (!await authManager.requireAuth(reason)) return;
-
-  document.getElementById('rider-edit-id').value = rider ? rider.id : '';
-  document.getElementById('r-number').value = rider ? rider.number : '';
-  document.getElementById('r-lastname').value = rider ? (rider.last_name || '') : '';
-  document.getElementById('r-firstname').value = rider ? (rider.first_name || '') : '';
-  document.getElementById('r-year').value = rider ? (rider.birth_year || '') : '';
-  document.getElementById('r-city').value = rider ? (rider.city || '') : '';
-  document.getElementById('r-club').value = rider ? (rider.club || '') : '';
-  document.getElementById('r-epc').value = rider ? (rider.epc || '') : '';
-  document.getElementById('rider-modal-title').innerHTML = rider
-    ? '<span>Редактировать</span> участника' : '<span>Новый</span> участник';
-
-  const sel = document.getElementById('r-category');
-  sel.innerHTML = '<option value="">— без категории —</option>';
-  categories.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.name;
-    if (rider && rider.category_id === c.id) o.selected = true;
-    sel.appendChild(o);
-  });
-  if (!rider && selectedCatId) sel.value = selectedCatId;
-
-  document.getElementById('rider-modal').classList.add('open');
-}
-function closeRiderModal() {
-  closeTagScanner();
-  document.getElementById('rider-modal').classList.remove('open');
-}
-
-async function saveRider() {
-  if (!await authManager.requireAuth('Для сохранения участника нужен пароль администратора')) return;
-
-  const id = document.getElementById('rider-edit-id').value;
-  const body = {
-    number: parseInt(document.getElementById('r-number').value, 10),
-    last_name: document.getElementById('r-lastname').value.trim(),
-    first_name: document.getElementById('r-firstname').value.trim(),
-    birth_year: parseInt(document.getElementById('r-year').value, 10) || null,
-    city: document.getElementById('r-city').value.trim(),
-    club: document.getElementById('r-club').value.trim(),
-    category_id: parseInt(document.getElementById('r-category').value, 10) || null,
-    epc: document.getElementById('r-epc').value.trim() || null,
+  page.state = {
+    categories: [],
+    riders: [],
+    selectedCatId: '',
+    tagScannerTimer: null,
+    tagScannerLastHash: '',
   };
-  const error = validateRiderForm(body);
-  if (error) { toast(error, true); return; }
 
-  const res = id
-    ? await api('/api/riders/' + id, 'PUT', body)
-    : await api('/api/riders', 'POST', body);
-  if (!res) return;
-  if (res.error) { toast(res.error, true); return; }
+  page.els = {
+    authHint: document.getElementById('auth-hint'),
+    categoryAddBtn: document.getElementById('btn-add-category'),
+    categoryList: document.getElementById('cat-list'),
+    allCount: document.getElementById('cnt-all'),
+    categoryModal: document.getElementById('cat-modal'),
+    categoryModalTitle: document.getElementById('cat-modal-title'),
+    categoryEditId: document.getElementById('cat-edit-id'),
+    categoryName: document.getElementById('cat-name'),
+    categoryLaps: document.getElementById('cat-laps'),
+    categoryDistance: document.getElementById('cat-dist'),
+    categoryWarmup: document.getElementById('cat-has-warmup'),
+    categoryCancelBtn: document.getElementById('btn-close-cat-modal'),
+    categorySaveBtn: document.getElementById('btn-save-category'),
+    searchInput: document.getElementById('search-input'),
+    riderAddBtn: document.getElementById('btn-add-rider'),
+    exportBtn: document.getElementById('btn-export-csv'),
+    importBtn: document.getElementById('btn-trigger-import'),
+    csvImportInput: document.getElementById('csv-import-input'),
+    statTotal: document.getElementById('stat-total'),
+    statEpc: document.getElementById('stat-epc'),
+    statNoEpc: document.getElementById('stat-noepc'),
+    ridersBody: document.getElementById('riders-body'),
+    emptyState: document.getElementById('empty-state'),
+    riderModal: document.getElementById('rider-modal'),
+    riderModalTitle: document.getElementById('rider-modal-title'),
+    riderEditId: document.getElementById('rider-edit-id'),
+    riderNumber: document.getElementById('r-number'),
+    riderCategory: document.getElementById('r-category'),
+    riderLastName: document.getElementById('r-lastname'),
+    riderFirstName: document.getElementById('r-firstname'),
+    riderBirthYear: document.getElementById('r-year'),
+    riderCity: document.getElementById('r-city'),
+    riderClub: document.getElementById('r-club'),
+    riderEpc: document.getElementById('r-epc'),
+    openTagScannerBtn: document.getElementById('btn-open-tag-scanner'),
+    riderCancelBtn: document.getElementById('btn-close-rider-modal'),
+    riderSaveBtn: document.getElementById('btn-save-rider'),
+    tagScannerModal: document.getElementById('tag-scanner-modal'),
+    tagScannerStatus: document.getElementById('tag-scanner-status'),
+    tagScannerList: document.getElementById('tag-scanner-list'),
+    tagScannerCloseBtn: document.getElementById('btn-close-tag-scanner'),
+  };
 
-  toast(id ? 'Участник обновлён' : 'Участник добавлен');
-  closeRiderModal();
-  loadAll();
-}
+  page.getResponseData = function getResponseData(result) {
+    if (!result || result.unauthorized) return null;
+    return result.data;
+  };
 
-async function editRider(riderId) {
-  if (!await authManager.requireAuth('Для редактирования участника нужен пароль администратора')) return;
-  const rider = allRiders.find(r => r.id === riderId);
-  if (rider) openRiderModal(rider);
-}
-
-async function deleteRider(riderId) {
-  if (!await authManager.requireAuth('Для удаления участника нужен пароль администратора')) return;
-  const rider = allRiders.find(r => r.id === riderId);
-  const label = rider ? '#' + rider.number + ' ' + rider.last_name : '#' + riderId;
-  if (!confirm('Удалить участника ' + label + '?')) return;
-  const res = await api('/api/riders/' + riderId, 'DELETE');
-  if (!res) return;
-  if (res.error) { toast(res.error, true); return; }
-  toast('Участник удалён');
-  loadAll();
-}
-
-function exportCSV() {
-  window.location.href = '/api/riders/export';
-}
-
-async function triggerImport() {
-  if (!await authManager.requireAuth('Для импорта нужен пароль администратора')) return;
-  document.getElementById('csv-import-input').click();
-}
-
-async function importCSV(event) {
-  if (!authManager.isAuthenticated()) {
-    authManager.openLogin('Для импорта нужен пароль администратора');
-    event.target.value = '';
-    return;
-  }
-
-  const file = event.target.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append('file', file);
-  try {
-    const resp = await fetch('/api/riders/import', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: authManager.getCsrfHeaders('POST'),
-        body: formData,
-      });
-    const res = await resp.json();
-    if (resp.status === 401) {
-      await authManager.handleUnauthorized('Сессия истекла. Войдите заново для импорта');
-      return;
+  page.getApiError = function getApiError(result, fallback) {
+    const data = page.getResponseData(result);
+    if (!data) return fallback || 'Ошибка';
+    if (Array.isArray(data.errors) && data.errors.length) {
+      return data.errors.join('; ');
     }
-    if (res.error) { toast(res.error, true); return; }
-    if (res.errors && res.errors.length) { toast(res.errors.join('; '), true); return; }
-    toast('Импортировано: ' + (res.imported || 0) + ' участников');
-    loadAll();
-  } catch (e) {
-    toast('Ошибка импорта', true);
-  }
-  event.target.value = '';
-}
+    return data.error || fallback || null;
+  };
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
+  page.handleApiError = function handleApiError(result, fallback) {
+    const message = page.getApiError(result, fallback);
+    if (!message) return false;
+    page.toast(message, true);
+    return true;
+  };
 
-function escJs(s) {
-  return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
+  page.fetchCollection = async function fetchCollection(url) {
+    const result = await page.http.fetchJson(url);
+    const data = page.getResponseData(result);
+    return Array.isArray(data) ? data : [];
+  };
 
-function bindModalClose(id) {
-  const modal = document.getElementById(id);
-  modal.addEventListener('click', function (event) {
-    if (event.target === modal) {
-      if (id === 'tag-scanner-modal') closeTagScanner();
-      else modal.classList.remove('open');
+  page.ensureAuthenticated = async function ensureAuthenticated(reason) {
+    if (page.authManager && page.authManager.state.authenticated) return true;
+    await page.authManager.login({ reason: reason, silent: true });
+    return false;
+  };
+
+  page.loadCategories = async function loadCategories() {
+    page.state.categories = await page.fetchCollection('/api/categories');
+    page.categories.renderCategories();
+  };
+
+  page.loadRiders = async function loadRiders() {
+    const suffix = page.state.selectedCatId ? '?category_id=' + page.state.selectedCatId : '';
+    page.state.riders = await page.fetchCollection('/api/riders' + suffix);
+    page.riders.renderRiders();
+    page.riders.updateStats();
+  };
+
+  page.loadInitialData = async function loadInitialData() {
+    await page.loadCategories();
+    await page.loadRiders();
+  };
+
+  page.initAuth = function initAuth() {
+    page.authManager = createAuthManager({
+      toast: page.toast,
+      authHintId: 'auth-hint',
+      logoutButtonId: 'logout-btn',
+      onAuthChange: function () {
+        page.categories.renderCategories();
+        page.riders.renderRiders();
+      },
+    });
+    page.http = createAuthHttpClient({ authManager: page.authManager });
+  };
+
+  page.bindModalClose = function bindModalClose(modal, onClose) {
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        onClose();
+      }
+    });
+  };
+
+  page.bindUi = function bindUi() {
+    const categoryActionHandlers = {
+      'edit-category': function (button) {
+        page.categories.editCat(button.dataset.categoryId);
+      },
+      'delete-category': function (button) {
+        page.categories.deleteCat(button.dataset.categoryId);
+      },
+    };
+    const riderActionHandlers = {
+      'edit-rider': function (button) {
+        page.riders.editRider(button.dataset.riderId);
+      },
+      'delete-rider': function (button) {
+        page.riders.deleteRider(button.dataset.riderId);
+      },
+    };
+
+    page.els.categoryAddBtn.addEventListener('click', function () {
+      page.categories.openCatModal();
+    });
+    page.els.categoryCancelBtn.addEventListener('click', page.categories.closeCatModal);
+    page.els.categorySaveBtn.addEventListener('click', page.categories.saveCat);
+
+    page.els.categoryList.addEventListener('click', function (event) {
+      const actionButton = event.target.closest('[data-action]');
+      if (actionButton && categoryActionHandlers[actionButton.dataset.action]) {
+        event.stopPropagation();
+        categoryActionHandlers[actionButton.dataset.action](actionButton);
+        return;
+      }
+
+      const item = event.target.closest('.cat-item');
+      if (!item) return;
+      page.categories.selectCategory(item.dataset.categoryId || '');
+    });
+
+    page.els.searchInput.addEventListener('input', page.riders.applySearch);
+    page.els.riderAddBtn.addEventListener('click', function () {
+      page.riders.openRiderModal();
+    });
+    page.els.exportBtn.addEventListener('click', page.importExport.exportCSV);
+    page.els.importBtn.addEventListener('click', page.importExport.triggerImport);
+    page.els.csvImportInput.addEventListener('change', page.importExport.importCSV);
+    page.els.riderCancelBtn.addEventListener('click', page.riders.closeRiderModal);
+    page.els.riderSaveBtn.addEventListener('click', page.riders.saveRider);
+    page.els.openTagScannerBtn.addEventListener('click', page.tagScanner.openTagScanner);
+    page.els.tagScannerCloseBtn.addEventListener('click', page.tagScanner.closeTagScanner);
+
+    page.els.ridersBody.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-action]');
+      if (!button || !riderActionHandlers[button.dataset.action]) return;
+      riderActionHandlers[button.dataset.action](button);
+    });
+
+    page.els.tagScannerList.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-action="use-tag"]');
+      if (!button) return;
+      page.tagScanner.useScannedTag(button.dataset.epc || '');
+    });
+
+    page.bindModalClose(page.els.categoryModal, page.categories.closeCatModal);
+    page.bindModalClose(page.els.riderModal, page.riders.closeRiderModal);
+    page.bindModalClose(page.els.tagScannerModal, page.tagScanner.closeTagScanner);
+  };
+
+  page.initFormConstraints = function initFormConstraints() {
+    page.els.riderBirthYear.setAttribute('max', String(page.constants.CURRENT_YEAR));
+  };
+
+  page.init = async function init() {
+    page.initAuth();
+    page.bindUi();
+    page.initFormConstraints();
+    try {
+      await page.authManager.checkAuth();
+      await page.loadInitialData();
+    } finally {
+      window.pageHydration.finish();
     }
-  });
-}
+  };
 
-async function init() {
-  authManager = createAuthManager({
-    toast: toast,
-    authHintId: 'auth-hint',
-    logoutButtonId: 'logout-btn',
-    onAuthChange: function () {
-      renderCategories();
-      renderRiders();
-    },
-  });
-
-  bindModalClose('cat-modal');
-  bindModalClose('rider-modal');
-  bindModalClose('tag-scanner-modal');
-  document.getElementById('r-year').setAttribute('max', String(CURRENT_YEAR));
-
-  await authManager.checkAuth();
-  await loadAll();
-}
-
-init();
+  page.init();
+})();

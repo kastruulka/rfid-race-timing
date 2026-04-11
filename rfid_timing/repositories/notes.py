@@ -40,3 +40,22 @@ class NotesRepository:
         self._db._exec("DELETE FROM note WHERE id=?", (note_id,))
         self._db._commit()
         return True
+
+    def delete_notes_by_category(self, category_id: int, race_id: int = None) -> int:
+        race_id = self._db._resolve_race(race_id)
+        if race_id is None:
+            return 0
+
+        cur = self._db._exec(
+            """
+            DELETE FROM note
+            WHERE race_id = ?
+              AND rider_id IN (
+                  SELECT id
+                  FROM rider
+                  WHERE category_id = ?
+              )
+            """,
+            (race_id, category_id),
+        )
+        return cur.rowcount or 0

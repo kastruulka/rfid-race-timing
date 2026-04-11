@@ -1,79 +1,79 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Хронометраж</title>
-  <link rel="stylesheet" href="/static/css/web.css">
-  <link rel="stylesheet" href="/static/css/home.css">
-</head>
-<body>
-
-  <nav class="topnav">
-    <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
-    <a href="/start-list">Стартовый лист</a>
-    <a href="/" class="active">Хронометраж</a>
-    <a href="/protocol">Протокол</a>
-    <a href="/settings">Настройки</a>
-    <a href="/judge">Судья</a>
-    <div class="nav-spacer"></div>
-    <div class="reader-status">
-      <div class="status-dot"></div>
-      <span>{{ reader_ip }} / Антенны: {{ antennas }}</span>
-    </div>
-  </nav>
-
-  <div class="timer-bar">
-    <div class="main-clock" id="main-clock">00:00.0</div>
-    <div class="stat-badges">
-      <div class="badge racing">
-        <div class="badge-num" id="cnt-racing">0</div>
-        <div class="badge-label">В гонке</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Хронометраж</title>
+    <link rel="stylesheet" href="/static/css/web.css" />
+    <link rel="stylesheet" href="/static/css/home.css" />
+  </head>
+  <body>
+    <nav class="topnav">
+      <div class="topnav-brand"><span>RFID</span> Хронометраж</div>
+      <a href="/start-list">Стартовый лист</a>
+      <a href="/" class="active">Хронометраж</a>
+      <a href="/protocol">Протокол</a>
+      <a href="/settings">Настройки</a>
+      <a href="/judge">Судья</a>
+      <div class="nav-spacer"></div>
+      <div class="reader-status">
+        <div class="status-dot"></div>
+        <span>{{ reader_ip }} / Антенны: {{ antennas }}</span>
       </div>
-      <div class="badge finished">
-        <div class="badge-num" id="cnt-finished">0</div>
-        <div class="badge-label">Финиш</div>
-      </div>
-      <div class="badge dnf">
-        <div class="badge-num" id="cnt-dnf">0</div>
-        <div class="badge-label">DNF</div>
-      </div>
-    </div>
-  </div>
+    </nav>
 
-  <div class="main-grid">
-    <div class="feed-panel">
-      <div class="panel-header">Лента проездов</div>
-      <div class="feed-list" id="feed-list"></div>
-    </div>
-
-    <div class="results-panel">
-      <div class="controls-bar">
-        <select id="category-select">
-          <option value="">Все категории</option>
-        </select>
-      </div>
-      <div class="results-scroll">
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th class="c-center">#</th>
-              <th class="c-center">Номер</th>
-              <th>Участник</th>
-              <th>Команда</th>
-              <th class="c-center">Круги</th>
-              <th class="c-right">Посл. круг</th>
-              <th class="c-right">Общее время</th>
-              <th class="c-right">Отстав.</th>
-              <th class="c-center">Статус</th>
-            </tr>
-          </thead>
-          <tbody id="results-body"></tbody>
-        </table>
+    <div class="timer-bar">
+      <div class="main-clock" id="main-clock">00:00.0</div>
+      <div class="stat-badges">
+        <div class="badge racing">
+          <div class="badge-num" id="cnt-racing">0</div>
+          <div class="badge-label">В гонке</div>
+        </div>
+        <div class="badge finished">
+          <div class="badge-num" id="cnt-finished">0</div>
+          <div class="badge-label">Финиш</div>
+        </div>
+        <div class="badge dnf">
+          <div class="badge-num" id="cnt-dnf">0</div>
+          <div class="badge-label">DNF</div>
+        </div>
       </div>
     </div>
-  </div>
 
-<script src="{{ url_for('static', filename='js/web.js') }}"></script>
-</body>
+    <div class="main-grid">
+      <div class="feed-panel">
+        <div class="panel-header">Лента проездов</div>
+        <div class="feed-list" id="feed-list"></div>
+      </div>
+
+      <div class="results-panel">
+        <div class="controls-bar">
+          <select id="category-select">
+            <option value="">Все категории</option>
+          </select>
+        </div>
+        <div class="results-scroll">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th class="c-center">#</th>
+                <th class="c-center">Номер</th>
+                <th>Участник</th>
+                <th>Команда</th>
+                <th class="c-center">Круги</th>
+                <th class="c-right">Посл. круг</th>
+                <th class="c-right">Общее время</th>
+                <th class="c-right">Отстав.</th>
+                <th class="c-center">Статус</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/ui/http.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/web.js') }}"></script>
+  </body>
 </html>

@@ -8,6 +8,10 @@ class CategoryResetService:
             return {"error": "no race"}
 
         with self._db._transaction():
+            deleted_notes = self._db.delete_notes_by_category(
+                category_id=category_id,
+                race_id=race_id,
+            )
             results = self._db._exec(
                 "SELECT id FROM result WHERE category_id=? AND race_id=?",
                 (category_id, race_id),
@@ -53,4 +57,5 @@ class CategoryResetService:
         return {
             "deleted_results": len(result_ids),
             "deleted_laps": deleted_laps,
+            "deleted_notes": deleted_notes,
         }

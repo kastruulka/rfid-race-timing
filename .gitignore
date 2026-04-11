@@ -12,3 +12,21 @@ README.md
 .pytest_tmp/
 tests/
 pytest.ini
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+e2e/
+.github/
+.prettierignore
+playwright.config.js
+package.json
+package-lock.json
+eslint.config.mjs
+.stylelintrc.json
+.stylelintignore
+.prettierrc.json

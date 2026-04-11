@@ -1,0 +1,58 @@
+@keyframes pageHydrationPulse {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+
+body.page-hydration-pending [data-hydration-content] {
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+
+[data-hydration-content] {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.page-hydration-skeleton {
+  display: none;
+}
+
+body.page-hydration-pending .page-hydration-skeleton {
+  display: grid;
+  grid-template-columns: var(--hydration-columns, 1fr);
+  gap: var(--hydration-gap, 16px);
+  padding: var(--hydration-padding, 18px);
+}
+
+.page-hydration-card,
+.page-hydration-line {
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.12),
+    rgba(148, 163, 184, 0.26),
+    rgba(148, 163, 184, 0.12)
+  );
+  background-size: 200% 100%;
+  animation: pageHydrationPulse 1.2s ease-in-out infinite;
+}
+
+.page-hydration-card {
+  min-height: var(--hydration-card-min-height, 180px);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+}
+
+.page-hydration-line {
+  height: 14px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
