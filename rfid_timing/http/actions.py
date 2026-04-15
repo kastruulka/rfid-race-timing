@@ -8,13 +8,17 @@ logger = logging.getLogger(__name__)
 ResponseTuple = Tuple[Dict[str, Any], int]
 
 
-def action_mass_start(engine: RaceEngine, category_id: int) -> ResponseTuple:
+def action_mass_start(
+    engine: RaceEngine,
+    category_id: int = None,
+    category_ids: Optional[list[int]] = None,
+) -> ResponseTuple:
     try:
-        info = engine.mass_start(category_id)
+        info = engine.mass_start(category_id=category_id, category_ids=category_ids)
         return {"ok": True, "info": info}, 200
     except ValueError as e:
         logger.warning("mass_start: %s", e)
-        return {"error": "Невозможно запустить категорию"}, 400
+        return {"error": str(e)}, 400
 
 
 def action_individual_start(

@@ -59,6 +59,17 @@ _TABLE_FIELDS = {
     "start_protocol": {"planned_time", "actual_time", "status"},
 }
 
+_TIMESTAMP_FIELDS = {
+    "created_at",
+    "closed_at",
+    "started_at",
+    "start_time",
+    "finish_time",
+    "timestamp",
+    "planned_time",
+    "actual_time",
+}
+
 
 class Database:
     def __init__(self, db_path: str = "data/race.db"):
@@ -113,7 +124,11 @@ class Database:
             raise ValueError(f"Table {table!r} is not in the safe update whitelist")
         table_allowed = _TABLE_FIELDS.get(table, allowed)
         safe_allowed = allowed & table_allowed
-        fields = {k: v for k, v in kw.items() if k in safe_allowed}
+        fields = {
+            k: self._normalize_db_value(k, v)
+            for k, v in kw.items()
+            if k in safe_allowed
+        }
         if not fields:
             return False
         set_clause = ",".join(f"{k}=?" for k in fields)
@@ -121,6 +136,13 @@ class Database:
         self._exec(sql, (*fields.values(), row_id))
         self._commit()
         return True
+
+    def _normalize_db_value(self, field: str, value):
+        if value is None:
+            return None
+        if field in _TIMESTAMP_FIELDS:
+            return int(round(float(value)))
+        return value
 
     def _init_schema(self):
         self._conn().executescript("""
@@ -254,11 +276,33 @@ class Database:
             self._commit()
 
         self._deduplicate_results_by_race_rider()
+        self._round_timestamp_columns()
         self._exec(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_result_race_rider "
             "ON result(race_id, rider_id)"
         )
         self._commit()
+
+    def _round_timestamp_columns(self):
+        timestamp_columns = {
+            "race": ("created_at", "closed_at"),
+            "result": ("start_time", "finish_time"),
+            "lap": ("timestamp",),
+            "penalty": ("created_at",),
+            "start_protocol": ("planned_time", "actual_time"),
+            "category_state": ("started_at", "closed_at"),
+            "note": ("created_at",),
+        }
+        for table, columns in timestamp_columns.items():
+            for column in columns:
+                self._exec(
+                    f"""
+                    UPDATE {table}
+                    SET {column} = CAST(ROUND({column}) AS INTEGER)
+                    WHERE {column} IS NOT NULL
+                      AND {column} != CAST({column} AS INTEGER)
+                    """
+                )
 
     def _deduplicate_results_by_race_rider(self):
         duplicate_groups = self._exec(

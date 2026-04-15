@@ -89,8 +89,13 @@ class RaceEngine:
         return self.penalties.get_rider_penalties(rider_id)
 
     # Starts
-    def mass_start(self, category_id: int, start_time: float = None) -> Dict[str, Any]:
-        return self.starts.mass_start(category_id, start_time)
+    def mass_start(
+        self,
+        category_id: int = None,
+        category_ids: Optional[list[int]] = None,
+        start_time: float = None,
+    ) -> Dict[str, Any]:
+        return self.starts.mass_start(category_id, category_ids, start_time)
 
     def individual_start(
         self, rider_id: int, start_time: float = None

@@ -20,12 +20,19 @@ class CategoryStateRepository:
             if existing["started_at"] is None:
                 self._db._exec(
                     "UPDATE category_state SET started_at=? WHERE id=?",
-                    (started_at, existing["id"]),
+                    (
+                        self._db._normalize_db_value("started_at", started_at),
+                        existing["id"],
+                    ),
                 )
         else:
             self._db._exec(
                 "INSERT INTO category_state (race_id, category_id, started_at) VALUES (?,?,?)",
-                (race_id, category_id, started_at),
+                (
+                    race_id,
+                    category_id,
+                    self._db._normalize_db_value("started_at", started_at),
+                ),
             )
         self._db._commit()
 
@@ -33,7 +40,7 @@ class CategoryStateRepository:
         race_id = self._db._resolve_race(race_id)
         if race_id is None:
             return
-        now = time.time()
+        now = self._db._normalize_db_value("closed_at", time.time())
         existing = self._db._exec(
             "SELECT id FROM category_state WHERE race_id=? AND category_id=?",
             (race_id, category_id),

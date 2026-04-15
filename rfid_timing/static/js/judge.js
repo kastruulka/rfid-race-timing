@@ -125,6 +125,104 @@
     }
   };
 
+  function getStoredMassStartSelectedIds() {
+    const raw = sessionStorage.getItem('judge_mass_start_selected') || '';
+    return raw
+      .split(',')
+      .map(function (value) {
+        return value.trim();
+      })
+      .filter(Boolean);
+  }
+
+  function saveMassStartSelectedIds(ids) {
+    sessionStorage.setItem('judge_mass_start_selected', (ids || []).join(','));
+  }
+
+  function getMassStartScope() {
+    return page.els.massStartScope ? page.els.massStartScope.value : 'current';
+  }
+
+  function getSelectedMassStartCategoryIds() {
+    if (!page.els.massStartCategoryList) return [];
+    return Array.from(
+      page.els.massStartCategoryList.querySelectorAll('input[type="checkbox"]:checked')
+    ).map(function (input) {
+      return String(input.value);
+    });
+  }
+
+  function getAllCategoryIds() {
+    return Array.from(page.els.raceCategory.querySelectorAll('option'))
+      .map(function (option) {
+        return String(option.value || '');
+      })
+      .filter(Boolean);
+  }
+
+  function getMassStartTargetCategoryIds() {
+    const scope = getMassStartScope();
+    if (scope === 'all') return getAllCategoryIds();
+    if (scope === 'selected') return getSelectedMassStartCategoryIds();
+    const currentId = page.getCatId();
+    return currentId ? [String(currentId)] : [];
+  }
+
+  function getMassStartTargetSummary(targetIds) {
+    const all = (targetIds || []).filter(Boolean);
+    const active = all.filter(function (catId) {
+      const lifecycle = page.getCategoryLifecycle(catId);
+      return !lifecycle.started && !lifecycle.closed;
+    });
+    return { all: all, active: active };
+  }
+
+  function getMassStartButtonLabel(summary) {
+    if (!summary.all.length) return 'Выберите категории';
+    if (!summary.active.length) return 'Старт недоступен';
+    if (summary.active.length === 1) return '▶ Масс-старт';
+    return '▶ Масс-старт x' + summary.active.length;
+  }
+
+  function updateMassStartScopeUI() {
+    if (!page.els.massStartSelectedWrap) return;
+    page.els.massStartSelectedWrap.style.display =
+      getMassStartScope() === 'selected' ? 'block' : 'none';
+  }
+
+  function renderMassStartCategoryOptions() {
+    if (!page.els.massStartCategoryList) return;
+    const selectedIds = new Set(getStoredMassStartSelectedIds());
+    page.els.massStartCategoryList.innerHTML = '';
+
+    Object.keys(page.categoryNames).forEach(function (catId) {
+      const option = document.createElement('label');
+      option.className = 'mass-start-check';
+
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = catId;
+      input.checked = selectedIds.has(String(catId));
+
+      const text = document.createElement('span');
+      text.textContent = page.categoryNames[catId];
+
+      option.appendChild(input);
+      option.appendChild(text);
+      page.els.massStartCategoryList.appendChild(option);
+    });
+  }
+
+  function updateMassStartControls() {
+    updateMassStartScopeUI();
+    const summary = getMassStartTargetSummary(getMassStartTargetCategoryIds());
+    page.setStateDisabled(page.els.btnMassStart, !summary.active.length);
+    page.els.btnMassStart.textContent = getMassStartButtonLabel(summary);
+  }
+
+  page.renderMassStartCategoryOptions = renderMassStartCategoryOptions;
+  page.updateMassStartControls = updateMassStartControls;
+
   function setStartMode(mode) {
     page.state.startMode = mode;
     sessionStorage.setItem('judge_start_mode', mode);
@@ -151,6 +249,49 @@
     if (!(await page.ensureJudgeAuth())) return;
     if (page.els.btnMassStart.disabled) {
       page.toast(page.els.btnMassStart.textContent || 'Старт уже недоступен', true);
+      return;
+    }
+    const summary = getMassStartTargetSummary(getMassStartTargetCategoryIds());
+    if (summary.all.length) {
+      if (!summary.active.length) {
+        page.toast('Для старта не осталось доступных категорий', true);
+        return;
+      }
+      const targetNames = summary.active.map(function (catId) {
+        return page.categoryNames[String(catId)] || String(catId);
+      });
+      const confirmText =
+        targetNames.length === 1
+          ? 'Запустить масс-старт для категории "' + targetNames[0] + '"?'
+          : 'Запустить масс-старт для категорий:\n• ' + targetNames.join('\n• ');
+      if (!window.confirm(confirmText)) return;
+
+      const payload =
+        summary.active.length === 1
+          ? { category_id: parseInt(summary.active[0], 10) }
+          : {
+              category_ids: summary.active.map(function (catId) {
+                return parseInt(catId, 10);
+              }),
+            };
+
+      const result = await page.api.massStart(payload);
+      if (page.isResponseOk(result)) {
+        const data = page.getResponseData(result) || {};
+        summary.active.forEach(function (catId) {
+          page.setCategoryLifecycleOverride(catId, { started: true, closed: false });
+        });
+        page.syncCurrentCategoryLifecycle(page.getCatId());
+        updateMassStartControls();
+        page.toast('Масс-старт! Участников: ' + (((data || {}).info || {}).riders_started || '?'));
+        await page.racePolling.loadRaceStatus();
+        return;
+      }
+      page.toast(page.getResponseError(result, 'Ошибка старта'), true);
+      return;
+    }
+    if (getMassStartScope() !== 'current') {
+      page.toast('Выберите категории для старта', true);
       return;
     }
     const catId = page.getCatId();
@@ -494,6 +635,18 @@
     page.els.btnExtraLap.addEventListener('click', doExtraLap);
     page.els.btnWarning.addEventListener('click', doWarning);
     page.els.btnAddNote.addEventListener('click', page.logNotes.addNote);
+    if (page.els.massStartScope) {
+      page.els.massStartScope.addEventListener('change', function () {
+        sessionStorage.setItem('judge_mass_start_scope', this.value);
+        updateMassStartControls();
+      });
+    }
+    if (page.els.massStartCategoryList) {
+      page.els.massStartCategoryList.addEventListener('change', function () {
+        saveMassStartSelectedIds(getSelectedMassStartCategoryIds());
+        updateMassStartControls();
+      });
+    }
   }
 
   function bindSubmitShortcuts() {
@@ -530,17 +683,34 @@
     });
     page.els.raceCategory.addEventListener('change', function () {
       page.syncCurrentCategoryLifecycle(page.getCatId());
+      updateMassStartControls();
       page.racePolling.loadRaceStatus();
       if (page.state.startMode === 'individual') page.startProtocol.switchToCategory();
     });
     page.els.spInterval.addEventListener('change', function () {
-      const catId = page.getCatId();
-      if (catId) sessionStorage.setItem('sp_interval_' + catId, this.value);
+      const ids =
+        page.startProtocol && page.startProtocol.getTargetCategoryIds
+          ? page.startProtocol.getTargetCategoryIds()
+          : page.getCatId()
+            ? [page.getCatId()]
+            : [];
+      if (ids.length) {
+        const key = ids.length === 1 ? String(ids[0]) : 'multi:' + ids.join(',');
+        sessionStorage.setItem('sp_interval_' + key, this.value);
+      }
       page.startProtocol.renderList();
     });
     page.els.spInterval.addEventListener('input', function () {
-      const catId = page.getCatId();
-      if (catId) sessionStorage.setItem('sp_interval_' + catId, this.value);
+      const ids =
+        page.startProtocol && page.startProtocol.getTargetCategoryIds
+          ? page.startProtocol.getTargetCategoryIds()
+          : page.getCatId()
+            ? [page.getCatId()]
+            : [];
+      if (ids.length) {
+        const key = ids.length === 1 ? String(ids[0]) : 'multi:' + ids.join(',');
+        sessionStorage.setItem('sp_interval_' + key, this.value);
+      }
       page.startProtocol.renderList();
     });
   }
@@ -604,8 +774,20 @@
       }
 
       const savedMode = sessionStorage.getItem('judge_start_mode');
+      const savedMassScope = sessionStorage.getItem('judge_mass_start_scope');
+      const savedIndividualScope = sessionStorage.getItem('judge_individual_start_scope');
+      const savedProtocolRunMode = sessionStorage.getItem('judge_sp_run_mode');
+      if (savedMassScope && page.els.massStartScope) page.els.massStartScope.value = savedMassScope;
+      if (savedIndividualScope && page.els.individualStartScope) {
+        page.els.individualStartScope.value = savedIndividualScope;
+      }
+      if (savedProtocolRunMode && page.els.spRunMode)
+        page.els.spRunMode.value = savedProtocolRunMode;
+      updateMassStartScopeUI();
+      if (page.startProtocol.updateScopeUI) page.startProtocol.updateScopeUI();
       if (savedMode === 'individual') setStartMode('individual');
       if (savedMode === 'individual') page.startProtocol.updateUI();
+      updateMassStartControls();
 
       page.racePolling.startTimerTick();
       page.startProtocol.ensureCountdownTick();

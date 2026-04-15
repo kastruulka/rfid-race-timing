@@ -30,6 +30,10 @@
       page.els.raceCategory.value = cats[0].id;
     }
 
+    if (page.renderMassStartCategoryOptions) page.renderMassStartCategoryOptions();
+    if (page.startProtocol && page.startProtocol.renderCategoryOptions) {
+      page.startProtocol.renderCategoryOptions();
+    }
     await loadRaceStatus();
     updateCategoryTimers();
   }
@@ -129,10 +133,10 @@
       if (!isClosed && perfRef) displayMs = elapsed + (performance.now() - perfRef);
 
       const isSelected = cid === String(selectedCatId);
-      const catName = page.categoryNames[cid] || 'Кат. ' + cid;
+      const catName = page.categoryNames[cid] || 'РљР°С‚. ' + cid;
       const isSpRun = !isClosed && page.startProtocol.isRunning(cid);
       const color = isClosed ? 'var(--text-dim)' : isSelected ? 'var(--accent)' : 'var(--green)';
-      const label = isClosed ? '✓ ' + catName : catName;
+      const label = isClosed ? 'вњ“ ' + catName : catName;
 
       let row = page.els.catTimers.querySelector('[data-cat-id="' + cid + '"]');
       if (!row) {
@@ -214,12 +218,12 @@
 
       page.replaceCategoryLifecycleState(nextLifecycleById);
       page.syncCurrentCategoryLifecycle(catId);
+      if (page.updateMassStartControls) page.updateMassStartControls();
 
       updateCategoryTimers();
 
       if (!catId) {
         page.els.raceStatusBar.style.visibility = 'hidden';
-        page.setStateDisabled(page.els.btnMassStart, false);
         page.setStateDisabled(page.els.btnFinishRace, true);
         page.setStateDisabled(page.els.btnFinishRaceInd, true);
         if (page.state.authManager) page.state.authManager.syncProtectedControls();
@@ -234,7 +238,6 @@
       const lifecycle = page.syncCurrentCategoryLifecycle(catId);
       const effectivelyClosed = lifecycle.closed;
 
-      page.setStateDisabled(page.els.btnMassStart, lifecycle.started || effectivelyClosed);
       page.setStateDisabled(page.els.btnFinishRace, !lifecycle.started || effectivelyClosed);
       page.setStateDisabled(page.els.btnFinishRaceInd, !lifecycle.started || effectivelyClosed);
       page.els.btnMassStart.textContent = effectivelyClosed
@@ -245,23 +248,29 @@
             : 'Гонка активна'
           : '▶ Масс-старт';
 
-      const pendingEntries = page.startProtocol.hasPendingEntries(catId);
+      if (page.updateMassStartControls) page.updateMassStartControls();
+      const protocolTargetIds =
+        page.state.startMode === 'individual' &&
+        page.startProtocol &&
+        page.startProtocol.getTargetCategoryIds
+          ? page.startProtocol.getTargetCategoryIds()
+          : catId
+            ? [catId]
+            : [];
+      const pendingEntries = page.startProtocol.hasPendingEntries(protocolTargetIds);
       const lockedByMassStart = page.startProtocol.isLockedByMassStart(catId);
       const canLaunch =
         !effectivelyClosed &&
         !lockedByMassStart &&
-        !page.startProtocol.isRunning(catId) &&
+        !page.startProtocol.isRunning(
+          protocolTargetIds.length > 1 ? 'multi:' + protocolTargetIds.join(',') : catId
+        ) &&
         pendingEntries;
       page.setStateDisabled(
         page.els.btnIndividualStart,
         effectivelyClosed || lockedByMassStart || !catId
       );
       page.setStateDisabled(page.els.btnSpLaunch, !canLaunch || !catId);
-      page.els.btnSpLaunch.textContent = effectivelyClosed
-        ? 'Категория закрыта'
-        : lifecycle.started && pendingEntries
-          ? '▶ Продолжить протокол'
-          : '▶ Запустить протокол';
       page.els.btnFinishRace.textContent = effectivelyClosed
         ? 'Категория закрыта'
         : '■ Завершить категорию';
@@ -282,8 +291,8 @@
       );
 
       if (page.state.authManager) page.state.authManager.syncProtectedControls();
-      if (page.state.startMode === 'individual' && catId)
-        await page.startProtocol.syncStatus(catId, false);
+      if (page.state.startMode === 'individual' && protocolTargetIds.length)
+        await page.startProtocol.syncStatus(protocolTargetIds, false);
     } catch {
       // ignore polling errors
     } finally {

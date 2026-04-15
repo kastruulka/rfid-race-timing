@@ -14,7 +14,12 @@ class NotesRepository:
         cur = self._db._exec(
             """INSERT INTO note (race_id, rider_id, text, created_at)
                VALUES (?,?,?,?)""",
-            (race_id, rider_id, text, time.time()),
+            (
+                race_id,
+                rider_id,
+                text,
+                self._db._normalize_db_value("created_at", time.time()),
+            ),
         )
         self._db._commit()
         return cur.lastrowid

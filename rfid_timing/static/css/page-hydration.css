@@ -1,10 +1,12 @@
-@keyframes pageHydrationPulse {
+@keyframes page-hydration-pulse {
   0% {
     opacity: 0.45;
   }
+
   50% {
     opacity: 0.8;
   }
+
   100% {
     opacity: 0.45;
   }
@@ -37,17 +39,17 @@ body.page-hydration-pending .page-hydration-skeleton {
 .page-hydration-line {
   background: linear-gradient(
     90deg,
-    rgba(148, 163, 184, 0.12),
-    rgba(148, 163, 184, 0.26),
-    rgba(148, 163, 184, 0.12)
+    rgb(148 163 184 / 12%),
+    rgb(148 163 184 / 26%),
+    rgb(148 163 184 / 12%)
   );
   background-size: 200% 100%;
-  animation: pageHydrationPulse 1.2s ease-in-out infinite;
+  animation: page-hydration-pulse 1.2s ease-in-out infinite;
 }
 
 .page-hydration-card {
   min-height: var(--hydration-card-min-height, 180px);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  border: 1px solid rgb(148 163 184 / 12%);
   border-radius: 12px;
 }
 

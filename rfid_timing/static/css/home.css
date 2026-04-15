@@ -88,7 +88,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  border-bottom: 1px solid rgba(42, 53, 72, 0.5);
+  border-bottom: 1px solid rgb(42 53 72 / 50%);
 }
 
 .feed-item.new-item {
@@ -100,6 +100,7 @@
     opacity: 0;
     transform: translateX(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -259,7 +260,7 @@ th.c-right {
 }
 
 .status-DNS {
-  background: rgba(100, 116, 139, 0.15);
+  background: rgb(100 116 139 / 15%);
   color: var(--text-dim);
 }
 
@@ -286,6 +287,7 @@ th.c-right {
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -304,7 +306,7 @@ th.c-right {
   cursor: pointer;
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .main-grid {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;

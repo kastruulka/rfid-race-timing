@@ -31,7 +31,13 @@ class ResultsRepository:
                 """INSERT INTO result
                    (rider_id, category_id, race_id, start_time, status)
                    VALUES (?,?,?,?,?)""",
-                (rider_id, category_id, race_id, start_time, status),
+                (
+                    rider_id,
+                    category_id,
+                    race_id,
+                    self._db._normalize_db_value("start_time", start_time),
+                    status,
+                ),
             )
             return cur.lastrowid
 

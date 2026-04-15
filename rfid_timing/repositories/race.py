@@ -9,7 +9,7 @@ class RaceRepository:
     def create_race(self, label: str = "") -> int:
         cur = self._db._exec(
             "INSERT INTO race (created_at, label) VALUES (?, ?)",
-            (time.time(), label),
+            (self._db._normalize_db_value("created_at", time.time()), label),
         )
         self._db._commit()
         return cur.lastrowid
@@ -22,7 +22,10 @@ class RaceRepository:
         race_id = race_id or self.get_current_race_id()
         if race_id is None:
             return
-        self._db._exec("UPDATE race SET closed_at=? WHERE id=?", (time.time(), race_id))
+        self._db._exec(
+            "UPDATE race SET closed_at=? WHERE id=?",
+            (self._db._normalize_db_value("closed_at", time.time()), race_id),
+        )
         self._db._commit()
 
     def is_race_closed(self, race_id: int = None) -> bool:

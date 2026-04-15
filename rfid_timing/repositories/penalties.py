@@ -15,7 +15,13 @@ class PenaltiesRepository:
         cur = self._db._exec(
             """INSERT INTO penalty (result_id, type, value, reason, created_at)
                VALUES (?,?,?,?,?)""",
-            (result_id, penalty_type, value, reason, time.time()),
+            (
+                result_id,
+                penalty_type,
+                value,
+                reason,
+                self._db._normalize_db_value("created_at", time.time()),
+            ),
         )
         self._db._commit()
         return cur.lastrowid

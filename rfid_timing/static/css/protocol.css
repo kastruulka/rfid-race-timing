@@ -93,7 +93,7 @@
   font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   font-size: 11px;
   line-height: 1.35;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 24px rgb(0 0 0 / 40%);
 }
 
 .preview-paper .protocol-header {
@@ -172,7 +172,7 @@
 }
 
 .preview-paper .mono {
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: Consolas, 'Courier New', monospace;
 }
 
 .preview-paper .place-1 td {
@@ -218,7 +218,7 @@
   color: #888;
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .page {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;

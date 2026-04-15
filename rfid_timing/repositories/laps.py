@@ -45,7 +45,14 @@ class LapsRepository:
             """INSERT INTO lap
                (result_id, lap_number, timestamp, lap_time, segment, source)
                VALUES (?,?,?,?,?,?)""",
-            (result_id, lap_number, timestamp, lap_time, segment, source),
+            (
+                result_id,
+                lap_number,
+                self._db._normalize_db_value("timestamp", timestamp),
+                lap_time,
+                segment,
+                source,
+            ),
         )
         self._db._commit()
         return cur.lastrowid

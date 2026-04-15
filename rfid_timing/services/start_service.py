@@ -38,10 +38,32 @@ class StartService:
         category_started = state is not None and state.get("started_at") is not None
         return not category_started
 
-    def mass_start(self, category_id: int, start_time: float = None) -> Dict[str, Any]:
-        if start_time is None:
-            start_time = time.time() * 1000
+    def _normalize_category_ids(
+        self,
+        category_id: Optional[int] = None,
+        category_ids: Optional[list[int]] = None,
+    ) -> list[int]:
+        ids: list[int] = []
+        if category_id is not None:
+            ids.append(int(category_id))
+        if category_ids:
+            ids.extend(int(current_id) for current_id in category_ids)
 
+        normalized: list[int] = []
+        seen = set()
+        for current_id in ids:
+            if current_id in seen:
+                continue
+            seen.add(current_id)
+            normalized.append(current_id)
+
+        if not normalized:
+            raise ValueError("Не выбраны категории для масс-старта")
+        return normalized
+
+    def _validate_mass_start_category(
+        self, category_id: int
+    ) -> tuple[Dict[str, Any], list[Dict]]:
         category = self.db.get_category(category_id)
         if not category:
             raise ValueError(f"Категория {category_id} не найдена")
@@ -52,6 +74,31 @@ class StartService:
             raise ValueError(f"Категория '{category['name']}' уже запущена")
 
         riders = self.db.get_riders(category_id=category_id)
+        available_to_start = 0
+        for rider in riders:
+            existing = self.db.get_result_by_rider(rider["id"])
+            if existing and not self.is_prestart_result(
+                existing, category_id=category_id
+            ):
+                continue
+            available_to_start += 1
+
+        if available_to_start == 0:
+            raise ValueError(
+                f"Для категории '{category['name']}' нет участников для старта"
+            )
+        return category, riders
+
+    def _mass_start_category(
+        self,
+        category_id: int,
+        start_time: float,
+        category: Optional[Dict[str, Any]] = None,
+        riders: Optional[list[Dict]] = None,
+    ) -> Dict[str, Any]:
+        if category is None or riders is None:
+            category, riders = self._validate_mass_start_category(category_id)
+
         started = 0
         for rider in riders:
             existing = self.db.get_result_by_rider(rider["id"])
@@ -77,11 +124,6 @@ class StartService:
             )
             started += 1
 
-        if started == 0:
-            raise ValueError(
-                f"Для категории '{category['name']}' нет участников для старта"
-            )
-
         self.db.set_category_started(category_id, start_time)
         self.raw_logger.log_event("MASS_START", details=f"cat={category['name']}")
 
@@ -98,6 +140,45 @@ class StartService:
         if self.on_status_change:
             self.on_status_change({"event": "MASS_START", **info})
         return info
+
+    def mass_start(
+        self,
+        category_id: int = None,
+        category_ids: Optional[list[int]] = None,
+        start_time: float = None,
+    ) -> Dict[str, Any]:
+        if start_time is None:
+            start_time = time.time() * 1000
+
+        normalized_ids = self._normalize_category_ids(category_id, category_ids)
+        prepared = []
+        for current_category_id in normalized_ids:
+            category, riders = self._validate_mass_start_category(current_category_id)
+            prepared.append((current_category_id, category, riders))
+
+        started_categories = [
+            self._mass_start_category(
+                current_category_id,
+                start_time,
+                category=category,
+                riders=riders,
+            )
+            for current_category_id, category, riders in prepared
+        ]
+
+        if len(started_categories) == 1:
+            return started_categories[0]
+
+        return {
+            "start_time": start_time,
+            "category_ids": [entry["category_id"] for entry in started_categories],
+            "categories": [entry["category"] for entry in started_categories],
+            "categories_started": len(started_categories),
+            "riders_started": sum(
+                entry["riders_started"] for entry in started_categories
+            ),
+            "details": started_categories,
+        }
 
     def individual_start(
         self, rider_id: int, start_time: float = None

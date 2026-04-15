@@ -5,6 +5,17 @@
     return page.state.http.requestData(url, method, body);
   }
 
+  function buildProtocolQuery(target) {
+    if (!target) return '';
+    if (Array.isArray(target.category_ids) && target.category_ids.length > 0) {
+      return '?category_ids=' + target.category_ids.join(',');
+    }
+    if (target.category_id) {
+      return '?category_id=' + target.category_id;
+    }
+    return '';
+  }
+
   page.api = {
     request: request,
     getCategories: function () {
@@ -16,41 +27,63 @@
     getRiders: function () {
       return request('/api/riders', 'GET');
     },
-    getStartProtocol: function (categoryId) {
-      return request('/api/judge/start-protocol?category_id=' + categoryId, 'GET');
+    getStartProtocol: function (target) {
+      if (typeof target !== 'object' || target === null) {
+        target = { category_id: target };
+      }
+      return request('/api/judge/start-protocol' + buildProtocolQuery(target), 'GET');
     },
-    saveStartProtocol: function (categoryId, intervalSec, riderIds) {
-      return request('/api/judge/start-protocol', 'POST', {
-        category_id: parseInt(categoryId, 10),
-        interval_sec: intervalSec,
-        rider_ids: riderIds,
-      });
+    saveStartProtocol: function (payload, intervalSec, riderIds) {
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        payload = {
+          category_id: parseInt(payload, 10),
+          interval_sec: intervalSec,
+          rider_ids: riderIds,
+        };
+      }
+      return request('/api/judge/start-protocol', 'POST', payload);
     },
-    autoFillStartProtocol: function (categoryId, intervalSec) {
-      return request('/api/judge/start-protocol/auto-fill', 'POST', {
-        category_id: parseInt(categoryId, 10),
-        interval_sec: intervalSec,
-      });
+    autoFillStartProtocol: function (payload, intervalSec) {
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        payload = {
+          category_id: parseInt(payload, 10),
+          interval_sec: intervalSec,
+        };
+      }
+      return request('/api/judge/start-protocol/auto-fill', 'POST', payload);
     },
-    clearStartProtocol: function (categoryId) {
-      return request('/api/judge/start-protocol?category_id=' + categoryId, 'DELETE');
+    clearStartProtocol: function (target) {
+      if (typeof target !== 'object' || target === null) {
+        target = { category_id: target };
+      }
+      return request('/api/judge/start-protocol' + buildProtocolQuery(target), 'DELETE');
     },
-    getStartProtocolStatus: function (categoryId) {
-      return request('/api/judge/start-protocol/status?category_id=' + categoryId, 'GET');
+    getStartProtocolStatus: function (target) {
+      if (typeof target !== 'object' || target === null) {
+        target = { category_id: target };
+      }
+      return request('/api/judge/start-protocol/status' + buildProtocolQuery(target), 'GET');
     },
     launchStartProtocol: function (payload) {
       return request('/api/judge/start-protocol/launch', 'POST', payload);
     },
-    stopStartProtocol: function (categoryId) {
-      return request('/api/judge/start-protocol/stop', 'POST', {
-        category_id: parseInt(categoryId, 10),
-      });
+    startProtocolRider: function (payload) {
+      return request('/api/judge/start-protocol/start-rider', 'POST', payload);
+    },
+    stopStartProtocol: function (payload) {
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        payload = { category_id: parseInt(payload, 10) };
+      }
+      return request('/api/judge/start-protocol/stop', 'POST', payload);
     },
     individualStart: function (riderId) {
       return request('/api/judge/individual-start', 'POST', { rider_id: riderId });
     },
-    massStart: function (categoryId) {
-      return request('/api/judge/mass-start', 'POST', { category_id: parseInt(categoryId, 10) });
+    massStart: function (payload) {
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        return request('/api/judge/mass-start', 'POST', payload);
+      }
+      return request('/api/judge/mass-start', 'POST', { category_id: parseInt(payload, 10) });
     },
     finishRace: function (categoryId) {
       return request('/api/judge/finish-race', 'POST', { category_id: parseInt(categoryId, 10) });

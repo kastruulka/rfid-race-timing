@@ -29,8 +29,7 @@
   display: grid;
   grid-template-columns: minmax(0, 760px);
   gap: 10px;
-  align-content: start;
-  justify-content: center;
+  place-content: start center;
 }
 
 .page-content .card {
@@ -95,7 +94,7 @@
   border-radius: 999px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 2%);
   cursor: pointer;
   transition:
     background 0.2s ease,
@@ -111,7 +110,7 @@
   height: 20px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   transition: transform 0.2s ease;
 }
 
@@ -159,7 +158,7 @@
   padding-top: 10px;
 }
 
-@media (max-width: 800px) {
+@media (width <= 800px) {
   .main-grid {
     grid-template-columns: 1fr;
   }

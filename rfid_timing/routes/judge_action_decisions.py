@@ -174,11 +174,38 @@ def register_judge_decision_routes(
         data, err = get_json_body()
         if err:
             return err
-        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
-        if err:
-            return err
+
+        category_id = data.get("category_id")
+        category_ids = data.get("category_ids")
+
+        if category_id is None and not category_ids:
+            return jsonify({"error": "Категория не выбрана"}), 400
+
+        if category_id is not None:
+            category_id, err = require_int(data, "category_id", "Категория не выбрана")
+            if err:
+                return err
+
+        normalized_ids = None
+        if category_ids is not None:
+            if not isinstance(category_ids, list):
+                return jsonify({"error": "Список категорий должен быть массивом"}), 400
+            try:
+                normalized_ids = [int(value) for value in category_ids]
+            except (TypeError, ValueError):
+                return (
+                    jsonify(
+                        {"error": "Список категорий содержит некорректные значения"}
+                    ),
+                    400,
+                )
+
         try:
-            body, status = actions.action_mass_start(engine, cat_id)
+            body, status = actions.action_mass_start(
+                engine,
+                category_id=category_id,
+                category_ids=normalized_ids,
+            )
             return jsonify(body), status
         except Exception as e:
             return safe_error(e, "judge_mass_start")
