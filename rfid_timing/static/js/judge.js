@@ -451,6 +451,8 @@
       page.toast('+' + seconds + ' сек штрафа');
       page.els.penReason.value = '';
       page.logNotes.loadLog();
+      await page.riderPanel.refreshRiderPanel();
+      await page.racePolling.loadRaceStatus();
       return;
     }
     page.toast(result.error || 'Ошибка', true);

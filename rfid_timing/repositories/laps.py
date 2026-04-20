@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database.database import Database
 
 
 class LapsRepository:
@@ -85,9 +85,15 @@ class LapsRepository:
             self._db.update_result(result_id, finish_time=current_ts + penalty_ms)
 
     def renumber_laps(self, result_id: int):
+        result = self._db.get_result_by_id(result_id)
+        category = self._db.get_category(result["category_id"]) if result else None
+        has_warmup_lap = True if category is None else bool(category.get("has_warmup_lap", 1))
         laps = self.get_laps(result_id)
         for i, lap in enumerate(laps):
-            new_num = 0 if i == 0 else i
+            if has_warmup_lap:
+                new_num = 0 if i == 0 else i
+            else:
+                new_num = i + 1
             if lap["lap_number"] != new_num:
                 self._db._exec(
                     "UPDATE lap SET lap_number=? WHERE id=?",

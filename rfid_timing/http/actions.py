@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from ..race_engine import RaceEngine
+from ..app.race_engine import RaceEngine
 
 logger = logging.getLogger(__name__)
 

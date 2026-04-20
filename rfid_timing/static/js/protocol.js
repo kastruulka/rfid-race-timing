@@ -93,7 +93,6 @@ function renderPreview(html) {
     els.previewScroll.appendChild(paper);
   }
 
-  // Trusted server-side HTML from our own preview endpoint.
   paper.innerHTML = html;
 }
 
@@ -125,6 +124,13 @@ function buildPdfFilename() {
   return safeCategory + '-' + safeDate + '.pdf';
 }
 
+function formatCategoryLabel(category) {
+  if (category && category.finish_mode === 'time' && category.time_limit_sec) {
+    return category.name + ' (' + category.time_limit_sec + ' сек)';
+  }
+  return category.name + ' (' + category.laps + ' кр.)';
+}
+
 async function loadCategories() {
   const result = await window.httpClient.fetchJson('/api/categories');
   const cats = Array.isArray(result.data) ? result.data : [];
@@ -140,7 +146,7 @@ async function loadCategories() {
   cats.forEach(function (category) {
     const option = document.createElement('option');
     option.value = category.id;
-    option.textContent = category.name + ' (' + category.laps + ' кр.)';
+    option.textContent = formatCategoryLabel(category);
     els.category.appendChild(option);
   });
 

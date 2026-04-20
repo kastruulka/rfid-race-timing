@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database.database import Database
 
 
 class ResultsRepository:
@@ -92,6 +92,8 @@ class ResultsRepository:
                 r.status, r.place, r.dnf_reason, r.penalty_time_ms, r.extra_laps,
                 rd.number, rd.last_name, rd.first_name, rd.club, rd.city, rd.birth_year,
                 c.laps as cat_laps, c.name as cat_name,
+                c.finish_mode as cat_finish_mode,
+                c.time_limit_sec as cat_time_limit_sec,
                 COALESCE(ls.laps_done, 0) as laps_done,
                 ls.last_lap_time, ls.last_lap_ts
             FROM result r

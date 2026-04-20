@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from importlib import import_module
 from typing import Callable
 
@@ -16,60 +17,135 @@ class ReaderManager:
         self._db = db
         self._reader = None
         self._lock = threading.Lock()
+        self._status = "stopped"
+        self._last_error = ""
 
     @property
     def reader(self):
         return self._reader
 
-    def start(self):
-        with self._lock:
-            self._create_reader()
-            if self._reader:
-                self._reader.start()
+    def _set_manager_status(self, status: str, last_error: str = "") -> None:
+        self._status = status
+        self._last_error = last_error
 
-    def restart(self):
-        with self._lock:
-            old_mode = (
-                "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
-            )
+    def _mode_for_reader(self, reader) -> str:
+        if reader is None:
+            return "none"
+        return "emulator" if isinstance(reader, EmulatorReader) else "reader"
 
+    def _reader_runtime_status(self, reader) -> dict:
+        if reader is None:
+            return {"status": self._status, "last_error": self._last_error}
+        getter = getattr(reader, "get_runtime_status", None)
+        if callable(getter):
+            runtime = getter()
+            return {
+                "status": runtime.get("status", self._status),
+                "last_error": runtime.get("last_error", self._last_error),
+            }
+        return {"status": self._status, "last_error": self._last_error}
+
+    def start(self, reason: str = "manual_start"):
+        with self._lock:
             if self._reader is not None:
+                return
+            self._set_manager_status("starting")
+            try:
+                self._create_reader()
+                if self._reader:
+                    logger.info(
+                        "Starting %s (reason=%s)",
+                        self._mode_for_reader(self._reader),
+                        reason,
+                    )
+                    self._reader.start()
+                    runtime = self._reader_runtime_status(self._reader)
+                    self._set_manager_status(
+                        runtime["status"],
+                        runtime.get("last_error", ""),
+                    )
+            except Exception as exc:
+                self._set_manager_status("error", str(exc))
+                raise
+
+    def restart(self, reason: str = "config_reload"):
+        with self._lock:
+            old_reader = self._reader
+            old_mode = self._mode_for_reader(old_reader)
+            logger.info("Restarting reader runtime (reason=%s, old_mode=%s)", reason, old_mode)
+
+            if old_reader is not None:
                 try:
-                    self._reader.stop()
-                    logger.info("Старый %s остановлен", old_mode)
-                except Exception as e:
-                    logger.warning("Ошибка остановки: %s", e)
+                    self._set_manager_status("stopping")
+                    stop_duration_ms = self._stop_reader(old_reader)
+                    logger.info(
+                        "Stopped %s during restart (reason=%s, stop_join_ms=%.1f)",
+                        old_mode,
+                        reason,
+                        stop_duration_ms,
+                    )
+                except Exception as exc:
+                    self._set_manager_status("error", str(exc))
+                    logger.warning("Stop failed during restart (reason=%s): %s", reason, exc)
                 self._reader = None
 
-            self._create_reader()
-            new_mode = (
-                "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
-            )
-
-            if self._reader:
-                self._reader.start()
-                logger.info("Новый %s запущен", new_mode)
+            self._set_manager_status("starting")
+            try:
+                self._create_reader()
+                new_mode = self._mode_for_reader(self._reader)
+                if self._reader:
+                    logger.info("Starting %s after restart (reason=%s)", new_mode, reason)
+                    self._reader.start()
+                    runtime = self._reader_runtime_status(self._reader)
+                    self._set_manager_status(
+                        runtime["status"],
+                        runtime.get("last_error", ""),
+                    )
+                    logger.info("Started %s after restart (status=%s)", new_mode, runtime["status"])
+                else:
+                    new_mode = "none"
+                    self._set_manager_status("stopped")
+            except Exception as exc:
+                self._set_manager_status("error", str(exc))
+                raise
 
             return {
                 "old_mode": old_mode,
                 "new_mode": new_mode,
                 "switched": old_mode != new_mode,
+                "status": self._status,
+                "last_error": self._last_error,
             }
 
-    def stop(self):
+    def stop(self, reason: str = "manual_stop"):
         with self._lock:
             if self._reader is not None:
-                self._reader.stop()
+                self._set_manager_status("stopping")
+                stop_duration_ms = self._stop_reader(self._reader)
+                logger.info(
+                    "Stopped %s (reason=%s, stop_join_ms=%.1f)",
+                    self._mode_for_reader(self._reader),
+                    reason,
+                    stop_duration_ms,
+                )
+                runtime = self._reader_runtime_status(self._reader)
                 self._reader = None
+                if runtime["status"] == "error":
+                    self._set_manager_status("error", runtime.get("last_error", ""))
+                else:
+                    self._set_manager_status("stopped")
 
     def get_status(self) -> dict:
         with self._lock:
-            if self._reader is None:
-                return {"running": False, "mode": "none"}
-            mode = "emulator" if isinstance(self._reader, EmulatorReader) else "reader"
+            mode = self._mode_for_reader(self._reader)
+            runtime = self._reader_runtime_status(self._reader)
+            status = runtime["status"] if self._reader is not None else self._status
+            last_error = runtime.get("last_error", "") if self._reader is not None else self._last_error
             return {
-                "running": True,
+                "running": status in {"starting", "running", "stopping"},
                 "mode": mode,
+                "status": status,
+                "last_error": last_error,
                 "use_emulator": self._config["use_emulator"],
                 "reader_ip": self._config["reader_ip"],
                 "reader_port": self._config["reader_port"],
@@ -105,8 +181,7 @@ class ReaderManager:
             )
         else:
             logger.info(
-                "Создаю RFIDReader %s:%d (TX=%.1f dBm, ант=%s, "
-                "RSSI=%.1f сек, мин.круг=%.1f сек)",
+                "Создаю RFIDReader %s:%d (TX=%.1f dBm, ант=%s, RSSI=%.1f сек, мин.круг=%.1f сек)",
                 reader_ip,
                 reader_port,
                 tx_power,
@@ -114,8 +189,8 @@ class ReaderManager:
                 rssi_window_sec,
                 min_lap_time_sec,
             )
-            RFIDReader = _load_hardware_reader_class()
-            self._reader = RFIDReader(
+            rfid_reader_class = _load_hardware_reader_class()
+            self._reader = rfid_reader_class(
                 ip=reader_ip,
                 port=reader_port,
                 finish_antennas=set(antennas),
@@ -125,6 +200,11 @@ class ReaderManager:
                 rssi_window_sec=rssi_window_sec,
                 min_lap_time_sec=min_lap_time_sec,
             )
+
+    def _stop_reader(self, reader) -> float:
+        started_at = time.perf_counter()
+        reader.stop()
+        return (time.perf_counter() - started_at) * 1000.0
 
 
 def _load_hardware_reader_class():

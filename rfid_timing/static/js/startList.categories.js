@@ -1,14 +1,64 @@
 (function () {
   const page = window.StartListPage || (window.StartListPage = {});
 
+  function getFinishModeLabel(category) {
+    return category && category.finish_mode === 'time' ? 'по времени' : 'по кругам';
+  }
+
+  function getCategoryMeta(category) {
+    const warmupLabel =
+      category.has_warmup_lap === false || category.has_warmup_lap === 0 ? ' · без разгонного' : '';
+    const modeLabel =
+      category.finish_mode === 'time'
+        ? (category.time_limit_sec || 0) + ' сек · ' + getFinishModeLabel(category)
+        : String(category.laps) + ' кр. · ' + getFinishModeLabel(category);
+    return modeLabel + ' · ' + String(category.distance_km || 0) + ' км' + warmupLabel;
+  }
+
+  function syncCategoryModeUI() {
+    const mode = page.els.categoryFinishMode ? page.els.categoryFinishMode.value : 'laps';
+    const finishModeRow = page.els.categoryFinishMode
+      ? page.els.categoryFinishMode.closest('.form-row')
+      : null;
+    if (finishModeRow) {
+      const labels = finishModeRow.querySelectorAll('label');
+      if (labels.length > 1) labels[0].remove();
+      if (labels.length) labels[labels.length - 1].textContent = 'Режим гонки';
+    }
+    if (page.els.categoryLapsWrap) {
+      const lapsLabel = page.els.categoryLapsWrap.querySelector('label');
+      if (lapsLabel) lapsLabel.textContent = 'Кругов';
+      page.els.categoryLapsWrap.style.display = mode === 'laps' ? '' : 'none';
+    }
+    if (page.els.categoryTimeLimitWrap) {
+      const timeLabel = page.els.categoryTimeLimitWrap.querySelector('label');
+      if (timeLabel) timeLabel.textContent = 'Лимит времени (сек)';
+      page.els.categoryTimeLimitWrap.style.display = mode === 'time' ? '' : 'none';
+    }
+  }
+
   function validateCategoryForm(body) {
     if (!body.name) return 'Введите название';
+    if (body.finish_mode !== 'time' && body.finish_mode !== 'laps') {
+      return 'Выберите режим гонки';
+    }
     if (
-      !Number.isInteger(body.laps) ||
-      body.laps < 1 ||
-      body.laps > page.constants.MAX_CATEGORY_LAPS
+      body.finish_mode === 'laps' &&
+      (!Number.isInteger(body.laps) ||
+        body.laps < 1 ||
+        body.laps > page.constants.MAX_CATEGORY_LAPS)
     ) {
       return 'Количество кругов должно быть от 1 до ' + page.constants.MAX_CATEGORY_LAPS;
+    }
+    if (
+      body.finish_mode === 'time' &&
+      (!Number.isInteger(body.time_limit_sec) ||
+        body.time_limit_sec < 1 ||
+        body.time_limit_sec > page.constants.MAX_CATEGORY_TIME_LIMIT_SEC)
+    ) {
+      return (
+        'Лимит времени должен быть от 1 до ' + page.constants.MAX_CATEGORY_TIME_LIMIT_SEC + ' сек'
+      );
     }
     if (
       !Number.isFinite(body.distance_km) ||
@@ -52,8 +102,6 @@
   function createCategoryItem(category, canEdit) {
     const item = document.createElement('div');
     const isSelected = String(page.state.selectedCatId) === String(category.id);
-    const warmupLabel =
-      category.has_warmup_lap === false || category.has_warmup_lap === 0 ? ' · без разгонного' : '';
 
     item.className = 'cat-item' + (isSelected ? ' active' : '');
     item.dataset.categoryId = String(category.id);
@@ -65,8 +113,7 @@
 
     const meta = document.createElement('div');
     meta.className = 'cat-meta';
-    meta.textContent =
-      String(category.laps) + ' кр. · ' + String(category.distance_km || 0) + ' км' + warmupLabel;
+    meta.textContent = getCategoryMeta(category);
 
     textWrap.appendChild(name);
     textWrap.appendChild(meta);
@@ -124,11 +171,15 @@
 
     page.els.categoryEditId.value = category ? String(category.id) : '';
     page.els.categoryName.value = category ? category.name || '' : '';
-    page.els.categoryLaps.value = category ? String(category.laps) : '5';
+    page.els.categoryFinishMode.value = category ? category.finish_mode || 'laps' : 'laps';
+    page.els.categoryLaps.value = category ? String(category.laps || 5) : '5';
+    page.els.categoryTimeLimit.value =
+      category && category.time_limit_sec ? String(category.time_limit_sec) : '3600';
     page.els.categoryDistance.value = category ? String(category.distance_km || 0) : '5';
     page.els.categoryWarmup.checked = category
       ? !(category.has_warmup_lap === false || category.has_warmup_lap === 0)
       : true;
+    syncCategoryModeUI();
 
     page.els.categoryModalTitle.textContent = category
       ? 'Редактировать категорию'
@@ -145,9 +196,12 @@
       return;
 
     const categoryId = page.els.categoryEditId.value;
+    const finishMode = page.els.categoryFinishMode.value || 'laps';
     const body = {
       name: page.els.categoryName.value.trim(),
+      finish_mode: finishMode,
       laps: parseInt(page.els.categoryLaps.value, 10) || 1,
+      time_limit_sec: parseInt(page.els.categoryTimeLimit.value, 10) || null,
       distance_km: parseFloat(page.els.categoryDistance.value) || 0,
       has_warmup_lap: page.els.categoryWarmup.checked,
     };
@@ -168,9 +222,7 @@
   }
 
   async function editCat(categoryId) {
-    if (
-      !(await page.ensureAuthenticated('Для редактирования категории нужен пароль администратора'))
-    )
+    if (!(await page.ensureAuthenticated('Для редактирования категории нужен пароль администратора')))
       return;
     const category = page.state.categories.find(function (item) {
       return String(item.id) === String(categoryId);
@@ -204,5 +256,7 @@
     saveCat: saveCat,
     editCat: editCat,
     deleteCat: deleteCat,
+    syncCategoryModeUI: syncCategoryModeUI,
+    getCategoryMeta: getCategoryMeta,
   };
 })();

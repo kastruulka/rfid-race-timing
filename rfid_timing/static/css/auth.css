@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgb(0 0 0 / 60%);
+  background: var(--overlay);
   backdrop-filter: blur(4px);
 }
 
@@ -23,6 +23,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-strong);
+  max-height: min(90vh, 680px);
+  overflow-y: auto;
 }
 
 .auth-close {
@@ -111,4 +113,14 @@
 [data-auth-required]:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+@media (width <= 640px) {
+  .auth-dialog {
+    padding: 22px 18px 18px;
+  }
+
+  .auth-actions {
+    flex-direction: column;
+  }
 }

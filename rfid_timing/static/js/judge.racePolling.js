@@ -1,6 +1,13 @@
 (function () {
   const page = window.JudgePage || (window.JudgePage = {});
 
+  function formatCategoryLabel(category) {
+    if (category && category.finish_mode === 'time' && category.time_limit_sec) {
+      return category.name + ' (' + category.time_limit_sec + ' сек)';
+    }
+    return category.name + ' (' + category.laps + ' кр.)';
+  }
+
   function emptyTimersText() {
     return 'Нет запущенных категорий';
   }
@@ -18,7 +25,7 @@
     (Array.isArray(cats) ? cats : []).forEach(function (cat) {
       const option = document.createElement('option');
       option.value = cat.id;
-      option.textContent = cat.name + ' (' + cat.laps + ' кр.)';
+      option.textContent = formatCategoryLabel(cat);
       page.els.raceCategory.appendChild(option);
       page.categoryNames[String(cat.id)] = cat.name;
     });
@@ -133,10 +140,10 @@
       if (!isClosed && perfRef) displayMs = elapsed + (performance.now() - perfRef);
 
       const isSelected = cid === String(selectedCatId);
-      const catName = page.categoryNames[cid] || 'РљР°С‚. ' + cid;
+      const catName = page.categoryNames[cid] || 'Кат. ' + cid;
       const isSpRun = !isClosed && page.startProtocol.isRunning(cid);
       const color = isClosed ? 'var(--text-dim)' : isSelected ? 'var(--accent)' : 'var(--green)';
-      const label = isClosed ? 'вњ“ ' + catName : catName;
+      const label = catName;
 
       let row = page.els.catTimers.querySelector('[data-cat-id="' + cid + '"]');
       if (!row) {
@@ -145,7 +152,7 @@
       }
 
       row.classList.toggle('is-selected', isSelected);
-      row.setAttribute('aria-label', 'Открыть категорию ' + label);
+      row.setAttribute('aria-label', label);
       row._labelEl.textContent = label;
       row._labelEl.style.color = color;
       row._timeEl.textContent = page.fmtMs(displayMs);
@@ -291,8 +298,9 @@
       );
 
       if (page.state.authManager) page.state.authManager.syncProtectedControls();
-      if (page.state.startMode === 'individual' && protocolTargetIds.length)
+      if (page.state.startMode === 'individual' && protocolTargetIds.length) {
         await page.startProtocol.syncStatus(protocolTargetIds, false);
+      }
     } catch {
       // ignore polling errors
     } finally {
@@ -305,16 +313,18 @@
   }
 
   function startPolling() {
-    if (!page.state.pollingRefs.log)
+    if (!page.state.pollingRefs.log) {
       page.state.pollingRefs.log = window.setInterval(
         page.actions.loadLog,
         page.constants.LOG_POLL_MS
       );
-    if (!page.state.pollingRefs.race)
+    }
+    if (!page.state.pollingRefs.race) {
       page.state.pollingRefs.race = window.setInterval(
         loadRaceStatus,
         page.constants.RACE_STATUS_POLL_MS
       );
+    }
     if (!page.state.pollingRefs.riderPanel) {
       page.state.pollingRefs.riderPanel = window.setInterval(function () {
         if (!page.state.selectedRiderId) return;

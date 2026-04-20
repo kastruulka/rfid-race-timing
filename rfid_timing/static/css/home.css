@@ -4,7 +4,7 @@
   justify-content: center;
   gap: 32px;
   padding: 20px 24px;
-  background: linear-gradient(180deg, var(--surface2) 0%, var(--bg) 100%);
+  background: linear-gradient(180deg, var(--surface2) 0%, transparent 100%);
   border-bottom: 1px solid var(--border);
 }
 
@@ -88,7 +88,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  border-bottom: 1px solid rgb(42 53 72 / 50%);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .feed-item.new-item {
@@ -325,5 +325,50 @@ th.c-right {
   .timer-bar {
     gap: 16px;
     flex-wrap: wrap;
+  }
+
+  .stat-badges {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+@media (width <= 640px) {
+  .timer-bar {
+    padding: 14px 12px;
+  }
+
+  .main-clock {
+    font-size: 30px;
+  }
+
+  .badge {
+    min-width: 68px;
+    padding: 8px 12px;
+  }
+
+  .badge-num {
+    font-size: 22px;
+  }
+
+  .feed-item {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .feed-time {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .results-table,
+  .results-scroll .results-table {
+    min-width: 760px;
+  }
+
+  .controls-bar {
+    padding: 10px 12px;
   }
 }

@@ -196,7 +196,7 @@
     } catch {
       page.state.lastLapsHash = '';
       page.els.lapsList.innerHTML =
-        '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РєСЂСѓРіРё</div>';
+        '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">Не удалось загрузить круги</div>';
     }
   }
 
@@ -217,6 +217,8 @@
     const seconds = parseFloat(document.getElementById('lap-ss-' + lapId).value.trim()) || 0;
     if (seconds >= 60 || seconds < 0) {
       page.toast('Неверное время', true);
+      page.state.lastLapsHash = '';
+      await refreshRiderPanel();
       return;
     }
     const result = await page.api.updateLap(lapId, Math.round((minutes * 60 + seconds) * 1000));
@@ -226,6 +228,8 @@
       await refreshRiderPanel();
     } else {
       page.toast(result.error || 'Ошибка', true);
+      page.state.lastLapsHash = '';
+      await refreshRiderPanel();
     }
   }
 

@@ -172,6 +172,13 @@ function deriveViewModel(data, selectedCategory) {
   };
 }
 
+function formatCategoryLabel(category) {
+  if (category.finish_mode === 'time' && category.time_limit_sec) {
+    return category.name + ' (' + category.time_limit_sec + ' сек)';
+  }
+  return category.name + ' (' + category.laps + ' кр.)';
+}
+
 function buildFeedItem(item, isNewItem) {
   const wrapper = document.createElement('div');
   wrapper.className = 'feed-item';
@@ -193,12 +200,16 @@ function buildFeedItem(item, isNewItem) {
 
   const detail = document.createElement('div');
   detail.className = 'feed-detail';
-  const lapLabel =
-    item.lap_number === 0
-      ? 'разгонный'
-      : item.is_finish_lap
-        ? 'ФИНИШ - круг ' + item.lap_number + '/' + item.laps_required
-        : 'круг ' + item.lap_number + '/' + item.laps_required;
+  let lapLabel = '';
+  if (item.lap_number === 0) {
+    lapLabel = 'разгонный';
+  } else if (item.finish_mode === 'time') {
+    lapLabel = 'круг ' + item.lap_number;
+  } else {
+    lapLabel = item.is_finish_lap
+      ? 'ФИНИШ - круг ' + item.lap_number + '/' + item.laps_required
+      : 'круг ' + item.lap_number + '/' + item.laps_required;
+  }
   appendText(detail, lapLabel + ' - ' + item.time_str);
 
   const time = document.createElement('div');
@@ -246,7 +257,12 @@ function createPenaltyTag(penaltyTimeMs) {
 function createLapsCell(result) {
   const cell = document.createElement('td');
   cell.className = 'col-laps';
-  appendText(cell, result.laps_done + '/' + result.laps_required);
+  appendText(
+    cell,
+    result.finish_mode === 'time' || result.laps_required === null
+      ? result.laps_done
+      : result.laps_done + '/' + result.laps_required
+  );
 
   if (result.extra_laps > 0) {
     const tag = document.createElement('span');
@@ -300,16 +316,18 @@ function updateResults(results) {
   clearElement(els.resultsBody);
 
   let leaderTime = null;
-  results.forEach(function (result, index) {
+  results.forEach(function (result) {
     const row = document.createElement('tr');
-    const position = result.status === 'FINISHED' ? String(index + 1) : '-';
+    const position = result.rank ? String(result.rank) : '-';
 
-    if (result.status === 'FINISHED' && leaderTime === null) {
+    if ((result.status === 'FINISHED' || result.status === 'RACING') && leaderTime === null) {
       leaderTime = result.total_time;
     }
 
     const gap =
-      result.status === 'FINISHED' && leaderTime !== null && result.total_time !== leaderTime
+      (result.status === 'FINISHED' || result.status === 'RACING') &&
+      leaderTime !== null &&
+      result.total_time !== leaderTime
         ? '+' + fmtMs(result.total_time - leaderTime)
         : '';
 
@@ -340,7 +358,13 @@ function updateCounters(counters) {
 function updateCategories(categories) {
   const nextHash = categories
     .map(function (category) {
-      return [category.id, category.name, category.laps].join(':');
+      return [
+        category.id,
+        category.name,
+        category.laps,
+        category.finish_mode || 'laps',
+        category.time_limit_sec || '',
+      ].join(':');
     })
     .join('|');
 
@@ -357,7 +381,7 @@ function updateCategories(categories) {
   categories.forEach(function (category) {
     const option = document.createElement('option');
     option.value = category.id;
-    option.textContent = category.name + ' (' + category.laps + ' кр.)';
+    option.textContent = formatCategoryLabel(category);
     els.categorySelect.appendChild(option);
   });
 

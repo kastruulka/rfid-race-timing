@@ -3,6 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('rfid-theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch {}
+      })();
+    </script>
     <title>Генератор протоколов</title>
     <link rel="stylesheet" href="/static/css/web.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/protocol.css') }}" />
@@ -15,6 +25,10 @@
       <a href="/protocol" class="active">Протокол</a>
       <a href="/settings">Настройки</a>
       <a href="/judge">Судья</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
+        <span class="sun-icon" aria-hidden="true">☀</span>
+        <span class="moon-icon" aria-hidden="true">☾</span>
+      </button>
     </nav>
 
     <div class="page">
@@ -107,6 +121,7 @@
     <script src="{{ url_for('static', filename='js/ui/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/http.js') }}"></script>
     <script src="{{ url_for('static', filename='js/files/download.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/protocol.js') }}"></script>
   </body>
 </html>

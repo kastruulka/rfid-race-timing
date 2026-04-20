@@ -1,8 +1,8 @@
 import logging
 
-from rfid_timing.app_runtime import build_runtime, install_shutdown_handlers
+from rfid_timing.app.app_runtime import build_runtime, install_shutdown_handlers
 from rfid_timing.config.config import WEB_HOST, WEB_PORT
-from rfid_timing.web import create_app
+from rfid_timing.app.web import create_app
 
 logging.basicConfig(
     level=logging.INFO,

@@ -1,5 +1,5 @@
 .page-content {
-  height: calc(100vh - var(--nav-height));
+  min-height: calc(100vh - var(--nav-height));
   display: flex;
   flex-direction: column;
   max-width: 960px;
@@ -94,7 +94,7 @@
   border-radius: 999px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 2%);
+  box-shadow: var(--shadow-inset);
   cursor: pointer;
   transition:
     background 0.2s ease,
@@ -161,5 +161,31 @@
 @media (width <= 800px) {
   .main-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (width <= 640px) {
+  .page-content {
+    padding: 10px 12px 14px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+    gap: 10px;
+    flex-direction: column;
+  }
+
+  .conn-row,
+  .mode-switch-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .bottom-bar {
+    justify-content: stretch;
+  }
+
+  .bottom-bar .btn {
+    width: 100%;
   }
 }

@@ -1,19 +1,20 @@
 <div class="protocol-header">
-  <div class="protocol-title">{{ meta.title or 'Протокол результатов' }}</div>
+  <div class="protocol-title">{{ meta.title or 'ПРОТОКОЛ РЕЗУЛЬТАТОВ' }}</div>
   {% if meta.subtitle %}
   <div class="protocol-subtitle">{{ meta.subtitle }}</div>
   {% endif %}
   <div class="protocol-meta">
-    {% if meta.date %}<span>{{ meta.date }}</span>{% endif %} {% if meta.location %}<span
-      >{{ meta.location }}</span
-    >{% endif %} {% if meta.weather %}<span>{{ meta.weather }}</span>{% endif %}
+    {% if meta.date %}<span>{{ meta.date }}</span>{% endif %}
+    {% if meta.location %}<span>{{ meta.location }}</span>{% endif %}
+    {% if meta.weather %}<span>{{ meta.weather }}</span>{% endif %}
   </div>
 </div>
 
 <div class="protocol-category">
-  {{ category.name }} -- {{ category.laps }} кр.{% if category.distance_km %}, {{
-  category.distance_km }} км/кр.{% endif %}{% if extra.is_individual_start %} · индивидуальный
-  старт{% endif %}
+  {{ category.name }} -- {% if category.finish_mode == 'time' and category.time_limit_sec %}{{
+  category.time_limit_sec }} сек{% else %}{{ category.laps }} кр.{% endif %}{% if
+  category.distance_km %}, {{ category.distance_km }} км/кр.{% endif %}{% if
+  extra.is_individual_start %} · индивидуальный старт{% endif %}
 </div>
 
 <table>
@@ -21,29 +22,41 @@
     <tr>
       {% if cols.place %}
       <th class="c" style="width: 36px">М</th>
-      {% endif %} {% if cols.number %}
+      {% endif %}
+      {% if cols.number %}
       <th class="c" style="width: 44px">№</th>
-      {% endif %} {% if cols.name %}
+      {% endif %}
+      {% if cols.name %}
       <th>Участник</th>
-      {% endif %} {% if cols.birth_year %}
+      {% endif %}
+      {% if cols.birth_year %}
       <th class="c" style="width: 44px">Год</th>
-      {% endif %} {% if cols.club %}
+      {% endif %}
+      {% if cols.club %}
       <th>Команда</th>
-      {% endif %} {% if cols.city %}
+      {% endif %}
+      {% if cols.city %}
       <th>Город</th>
-      {% endif %} {% if cols.start_time %}
+      {% endif %}
+      {% if cols.start_time %}
       <th class="c" style="width: 64px">Старт</th>
-      {% endif %} {% if cols.time %}
+      {% endif %}
+      {% if cols.time %}
       <th class="r" style="width: 72px">Время</th>
-      {% endif %} {% if cols.gap %}
+      {% endif %}
+      {% if cols.gap %}
       <th class="r" style="width: 72px">Отстав.</th>
-      {% endif %} {% if cols.warmup_lap %}
+      {% endif %}
+      {% if cols.warmup_lap %}
       <th class="r" style="width: 72px">Разгон</th>
-      {% endif %} {% if cols.laps %}
+      {% endif %}
+      {% if cols.laps %}
       <th>Круги</th>
-      {% endif %} {% if cols.speed %}
+      {% endif %}
+      {% if cols.speed %}
       <th class="r" style="width: 56px">Ср.ск.</th>
-      {% endif %} {% if cols.status %}
+      {% endif %}
+      {% if cols.status %}
       <th class="c" style="width: 56px">Статус</th>
       {% endif %}
     </tr>
@@ -55,41 +68,55 @@
     >
       {% if cols.place %}
       <td class="c mono" style="font-weight: 700">{{ r.place or '--' }}</td>
-      {% endif %} {% if cols.number %}
+      {% endif %}
+      {% if cols.number %}
       <td class="c mono" style="font-weight: 700">{{ r.number }}</td>
-      {% endif %} {% if cols.name %}
+      {% endif %}
+      {% if cols.name %}
       <td style="font-weight: 600">{{ r.name }}</td>
-      {% endif %} {% if cols.birth_year %}
+      {% endif %}
+      {% if cols.birth_year %}
       <td class="c">{{ r.birth_year or '' }}</td>
-      {% endif %} {% if cols.club %}
+      {% endif %}
+      {% if cols.club %}
       <td>{{ r.club }}</td>
-      {% endif %} {% if cols.city %}
+      {% endif %}
+      {% if cols.city %}
       <td>{{ r.city }}</td>
-      {% endif %} {% if cols.start_time %}
+      {% endif %}
+      {% if cols.start_time %}
       <td class="c mono" style="font-size: 10px">
         {{ r.start_time_abs }}{% if r.start_time_offset and r.start_time_offset != '00:00' %}<br /><span
           style="font-size: 8px; color: #999"
           >{{ r.start_time_offset }}</span
         >{% endif %}
       </td>
-      {% endif %} {% if cols.time %}
+      {% endif %}
+      {% if cols.time %}
       <td class="r mono">
         {{ r.total_time_str if r.status == 'FINISHED' else '--' }}{% if r.penalty_str %}<br /><span
           style="font-size: 8px; color: #999"
           >шт. {{ r.penalty_str }}</span
         >{% endif %}
       </td>
-      {% endif %} {% if cols.gap %}
+      {% endif %}
+      {% if cols.gap %}
       <td class="r mono">{{ r.gap_str }}</td>
-      {% endif %} {% if cols.warmup_lap %}
+      {% endif %}
+      {% if cols.warmup_lap %}
       <td class="r mono">{{ r.warmup_lap_time or '--' }}</td>
-      {% endif %} {% if cols.laps %}
+      {% endif %}
+      {% if cols.laps %}
       <td class="lap-details">
-        {{ r.lap_details | map(attribute='time') | join(' / ') if r.lap_details else '--' }}
+        {{ r.laps_display }}{% if r.laps_subnote %}<br /><span style="font-size: 8px; color: #999"
+          >{{ r.laps_subnote }}</span
+        >{% endif %}
       </td>
-      {% endif %} {% if cols.speed %}
+      {% endif %}
+      {% if cols.speed %}
       <td class="r mono">{{ r.avg_speed if r.status == 'FINISHED' else '--' }}</td>
-      {% endif %} {% if cols.status %}
+      {% endif %}
+      {% if cols.status %}
       <td class="c">{{ r.status }}</td>
       {% endif %}
     </tr>

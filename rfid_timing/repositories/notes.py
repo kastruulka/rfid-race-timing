@@ -2,7 +2,7 @@ import time
 from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database.database import Database
 
 
 class NotesRepository:

@@ -3,6 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('rfid-theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch {}
+      })();
+    </script>
     <title>Настройки</title>
     <link rel="stylesheet" href="/static/css/web.css" />
     <link rel="stylesheet" href="/static/css/auth.css" />
@@ -17,6 +27,10 @@
       <a href="/protocol">Протокол</a>
       <a href="/settings" class="active">Настройки</a>
       <a href="/judge">Судья</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
+        <span class="sun-icon" aria-hidden="true">☀</span>
+        <span class="moon-icon" aria-hidden="true">☾</span>
+      </button>
       <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
       <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
     </nav>
@@ -205,6 +219,7 @@
     <script src="{{ url_for('static', filename='js/ui/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/http.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/page-hydration.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui/auth-http.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.form.js') }}"></script>

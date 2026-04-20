@@ -16,7 +16,8 @@ class FeedRepository:
             SELECT
                 l.id as lap_id, l.lap_number, l.lap_time, l.timestamp,
                 rd.number as rider_number, rd.last_name, rd.first_name,
-                c.laps as laps_required, r.extra_laps, r.status
+                c.laps as laps_required, c.finish_mode, c.time_limit_sec,
+                r.extra_laps, r.status
             FROM lap l
             JOIN result r ON l.result_id = r.id
             JOIN rider rd ON r.rider_id = rd.id

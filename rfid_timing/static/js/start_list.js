@@ -8,6 +8,7 @@
     MAX_NUMBER: 99999,
     MAX_CATEGORY_LAPS: 1000,
     MAX_CATEGORY_DISTANCE: 1000,
+    MAX_CATEGORY_TIME_LIMIT_SEC: 86400,
   };
 
   page.state = {
@@ -28,6 +29,10 @@
     categoryEditId: document.getElementById('cat-edit-id'),
     categoryName: document.getElementById('cat-name'),
     categoryLaps: document.getElementById('cat-laps'),
+    categoryFinishMode: document.getElementById('cat-finish-mode'),
+    categoryTimeLimit: document.getElementById('cat-time-limit'),
+    categoryLapsWrap: document.getElementById('cat-laps-wrap'),
+    categoryTimeLimitWrap: document.getElementById('cat-time-limit-wrap'),
     categoryDistance: document.getElementById('cat-dist'),
     categoryWarmup: document.getElementById('cat-has-warmup'),
     categoryCancelBtn: document.getElementById('btn-close-cat-modal'),
@@ -156,6 +161,9 @@
     });
     page.els.categoryCancelBtn.addEventListener('click', page.categories.closeCatModal);
     page.els.categorySaveBtn.addEventListener('click', page.categories.saveCat);
+    if (page.els.categoryFinishMode) {
+      page.els.categoryFinishMode.addEventListener('change', page.categories.syncCategoryModeUI);
+    }
 
     page.els.categoryList.addEventListener('click', function (event) {
       const actionButton = event.target.closest('[data-action]');

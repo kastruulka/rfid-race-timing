@@ -53,7 +53,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface2);
+  background: linear-gradient(180deg, var(--surface2), var(--bg));
+  min-width: 0;
 }
 
 .preview-header {
@@ -88,12 +89,12 @@
   align-self: flex-start;
   padding: 28px 32px;
   border-radius: 4px;
-  background: #fff;
-  color: #1a1a1a;
+  background: var(--paper-bg);
+  color: var(--paper-text);
   font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   font-size: 11px;
   line-height: 1.35;
-  box-shadow: 0 4px 24px rgb(0 0 0 / 40%);
+  box-shadow: var(--shadow-soft);
 }
 
 .preview-paper .protocol-header {
@@ -107,13 +108,13 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #1a1a1a;
+  color: var(--paper-text);
 }
 
 .preview-paper .protocol-subtitle {
   margin-bottom: 2px;
   font-size: 12px;
-  color: #444;
+  color: var(--paper-muted);
 }
 
 .preview-paper .protocol-meta {
@@ -123,7 +124,7 @@
   gap: 24px;
   margin-top: 6px;
   font-size: 10px;
-  color: #666;
+  color: var(--paper-muted);
 }
 
 .preview-paper .protocol-category {
@@ -131,7 +132,7 @@
   padding-bottom: 4px;
   font-size: 14px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--paper-text);
   border-bottom: 2px solid #333;
 }
 
@@ -155,8 +156,8 @@
 
 .preview-paper td {
   padding: 4px 6px;
-  color: #1a1a1a;
-  border-bottom: 1px solid #ddd;
+  color: var(--paper-text);
+  border-bottom: 1px solid var(--paper-border);
 }
 
 .preview-paper tr:nth-child(even) td {
@@ -195,7 +196,7 @@
 
 .preview-paper .lap-details {
   font-size: 9px;
-  color: #666;
+  color: var(--paper-muted);
   font-family: monospace;
 }
 
@@ -204,7 +205,7 @@
   justify-content: space-between;
   margin-top: 28px;
   font-size: 10px;
-  color: #444;
+  color: var(--paper-muted);
 }
 
 .preview-paper .footer-line {
@@ -241,5 +242,21 @@
 
   .actions-bar {
     flex-direction: column;
+  }
+}
+
+@media (width <= 640px) {
+  .sidebar {
+    padding: 14px 12px;
+  }
+
+  .preview-header {
+    padding: 10px 12px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .preview-paper {
+    min-width: 720px;
   }
 }

@@ -2,7 +2,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database.database import Database
 
 
 class CategoriesRepository:
@@ -15,17 +15,40 @@ class CategoriesRepository:
         laps: int = 1,
         distance_km: float = 0,
         has_warmup_lap: bool = True,
+        finish_mode: str = "laps",
+        time_limit_sec: int = None,
     ) -> int:
         cur = self._db._exec(
-            "INSERT INTO category (name, laps, distance_km, has_warmup_lap) VALUES (?,?,?,?)",
-            (name, laps, distance_km, 1 if has_warmup_lap else 0),
+            """
+            INSERT INTO category
+                (name, laps, distance_km, has_warmup_lap, finish_mode, time_limit_sec)
+            VALUES (?,?,?,?,?,?)
+            """,
+            (
+                name,
+                laps,
+                distance_km,
+                1 if has_warmup_lap else 0,
+                finish_mode,
+                time_limit_sec,
+            ),
         )
         self._db._commit()
         return cur.lastrowid
 
     def update_category(self, cid: int, **kw) -> bool:
         return self._db._update_fields(
-            "category", cid, {"name", "laps", "distance_km", "has_warmup_lap"}, **kw
+            "category",
+            cid,
+            {
+                "name",
+                "laps",
+                "distance_km",
+                "has_warmup_lap",
+                "finish_mode",
+                "time_limit_sec",
+            },
+            **kw,
         )
 
     def delete_category(self, cid: int) -> bool:

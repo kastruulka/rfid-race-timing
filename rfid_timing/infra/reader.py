@@ -3,8 +3,8 @@ import threading
 import time
 from typing import TYPE_CHECKING, Callable, Optional
 
-from ..models import TagEvent, make_tag_event
-from ..processor import TagProcessor
+from ..domain.models import TagEvent, make_tag_event
+from ..domain.processor import TagProcessor
 
 if TYPE_CHECKING:
     from sllurp.llrp import LLRPReaderClient
@@ -16,6 +16,8 @@ def dbm_to_power_index(dbm: float) -> int:
 
 
 class RFIDReader:
+    STOP_JOIN_TIMEOUT_SEC = 5.0
+
     def __init__(
         self,
         ip: str,
@@ -37,12 +39,27 @@ class RFIDReader:
         self._client: Optional["LLRPReaderClient"] = None
         self._thread: Optional[threading.Thread] = None
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._status_lock = threading.Lock()
+        self._status = "stopped"
+        self._last_error = ""
 
         self.processor = TagProcessor(
             rssi_window_sec=rssi_window_sec,
             min_lap_time_sec=min_lap_time_sec,
             on_pass=self._on_processor_pass,
         )
+
+    def _set_runtime_status(self, status: str, last_error: str = "") -> None:
+        with self._status_lock:
+            self._status = status
+            self._last_error = last_error
+
+    def get_runtime_status(self) -> dict:
+        with self._status_lock:
+            return {
+                "status": self._status,
+                "last_error": self._last_error,
+            }
 
     def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
         event = make_tag_event(epc, timestamp, rssi, antenna)
@@ -80,6 +97,8 @@ class RFIDReader:
     def _reader_loop(self):
         from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient
 
+        self._set_runtime_status("running")
+
         config = LLRPReaderConfig()
         config.antennas = list(self.antennas)
 
@@ -108,7 +127,8 @@ class RFIDReader:
             self._client.connect()
             self._logger.info("Ридер подключен, ожидание меток...")
             self._client.join(None)
-        except Exception:
+        except Exception as exc:
+            self._set_runtime_status("error", str(exc))
             self._logger.exception("Ошибка в потоке ридера")
         finally:
             if self._client is not None:
@@ -118,19 +138,33 @@ class RFIDReader:
                     self._logger.debug(
                         "Reader disconnect during cleanup failed: %s", exc
                     )
-            self._logger.info("Поток ридера завершён")
+            if self.get_runtime_status()["status"] != "error":
+                self._set_runtime_status("stopped")
+            self._logger.info("Поток ридера завершен")
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
             return
+        self._set_runtime_status("starting")
         self.processor.start()
         self._thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
+        self._set_runtime_status("stopping")
         self.processor.stop()
         if self._client is not None:
             try:
                 self._client.disconnect()
             except Exception as exc:
                 self._logger.debug("Reader disconnect during stop failed: %s", exc)
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=self.STOP_JOIN_TIMEOUT_SEC)
+            if thread.is_alive():
+                self._set_runtime_status("error", "thread stop timeout")
+                self._logger.warning("RFIDReader thread did not stop within timeout")
+                return
+        self._thread = None
+        self._client = None
+        self._set_runtime_status("stopped")

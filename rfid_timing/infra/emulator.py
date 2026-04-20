@@ -4,16 +4,19 @@ import threading
 import time
 from typing import Callable, Dict, List, Optional
 
-from ..models import TagEvent, make_tag_event
-from ..processor import TagProcessor
+from ..domain.models import TagEvent, make_tag_event
+from ..domain.processor import TagProcessor
 
 logger = logging.getLogger(__name__)
 
 EMULATOR_POLL_INTERVAL_SEC = 0.2
 EMULATOR_FIRST_PASS_GRACE_SEC = 3.5
+EMULATOR_SPEED_RANGE_KMH = (24.0, 38.0)
 
 
 class EmulatorReader:
+    STOP_JOIN_TIMEOUT_SEC = 5.0
+
     def __init__(
         self,
         on_event: Callable[[TagEvent], None],
@@ -30,12 +33,27 @@ class EmulatorReader:
         self._stop_flag = False
         self._thread = None
         self._profiles: Dict[str, Dict] = {}
+        self._status_lock = threading.Lock()
+        self._status = "stopped"
+        self._last_error = ""
 
         self.processor = TagProcessor(
             rssi_window_sec=rssi_window_sec,
             min_lap_time_sec=min_lap_time_sec,
             on_pass=self._on_processor_pass,
         )
+
+    def _set_runtime_status(self, status: str, last_error: str = "") -> None:
+        with self._status_lock:
+            self._status = status
+            self._last_error = last_error
+
+    def get_runtime_status(self) -> dict:
+        with self._status_lock:
+            return {
+                "status": self._status,
+                "last_error": self._last_error,
+            }
 
     def _get_epc_list(self) -> list[str]:
         if self._db:
@@ -95,15 +113,25 @@ class EmulatorReader:
         choices = [ant for ant in self._antennas if ant != primary]
         return random.choice(choices) if choices else primary
 
+    def _base_pace_from_category(self, category: Dict) -> float:
+        min_gap = float(self.processor.min_lap_time_sec)
+        lap_distance_km = float(category.get("distance_km") or 0)
+        if lap_distance_km <= 0:
+            return max(min_gap + 2.0, min_gap * random.uniform(1.15, 1.85))
+
+        target_speed_kmh = random.uniform(*EMULATOR_SPEED_RANGE_KMH)
+        pace_by_distance = lap_distance_km / target_speed_kmh * 3600.0
+        realistic_pace = pace_by_distance * random.uniform(0.94, 1.08)
+        return max(min_gap + 2.0, realistic_pace)
+
     def _create_profile(self, entry: Dict, now: float) -> Dict:
         rider = entry["rider"]
         result = entry["result"]
         category = entry.get("category") or {}
 
-        min_gap = float(self.processor.min_lap_time_sec)
-        base_pace = max(min_gap + 2.0, min_gap * random.uniform(1.15, 1.85))
+        base_pace = self._base_pace_from_category(category)
         consistency = random.uniform(0.035, 0.10)
-        fatigue_per_lap = random.uniform(0.08, 0.45)
+        fatigue_per_lap = max(0.4, base_pace * random.uniform(0.01, 0.04))
         primary_antenna = random.choice(self._antennas)
         start_time_sec = float(result["start_time"]) / 1000.0
         has_warmup = bool(category.get("has_warmup_lap", 1))
@@ -266,50 +294,71 @@ class EmulatorReader:
             time.sleep(sleep_for)
 
     def _run_loop(self):
-        if self._db:
-            self._run_realistic_loop()
-            return
+        self._set_runtime_status("running")
+        try:
+            if self._db:
+                self._run_realistic_loop()
+                return
 
-        logger.info("Emulator started in fallback mode")
-        lap = 1
+            logger.info("Emulator started in fallback mode")
+            lap = 1
 
-        while not self._stop_flag:
-            current_epcs = self._get_epc_list()
+            while not self._stop_flag:
+                current_epcs = self._get_epc_list()
 
-            if not current_epcs:
-                for _ in range(50):
+                if not current_epcs:
+                    for _ in range(50):
+                        if self._stop_flag:
+                            break
+                        time.sleep(0.1)
+                    continue
+
+                logger.info("Simulated lap %s (%s tags)", lap, len(current_epcs))
+
+                current_riders = list(current_epcs)
+                random.shuffle(current_riders)
+
+                for epc in current_riders:
+                    if self._stop_flag:
+                        break
+                    self._simulate_pass(epc)
+                    time.sleep(random.uniform(1.0, 10.0))
+
+                sleep_time = self.processor.min_lap_time_sec + random.uniform(2.0, 5.0)
+                logger.info("Waiting %.1f sec before next simulated lap", sleep_time)
+
+                for _ in range(int(sleep_time * 10)):
                     if self._stop_flag:
                         break
                     time.sleep(0.1)
-                continue
 
-            logger.info("Simulated lap %s (%s tags)", lap, len(current_epcs))
-
-            current_riders = list(current_epcs)
-            random.shuffle(current_riders)
-
-            for epc in current_riders:
-                if self._stop_flag:
-                    break
-                self._simulate_pass(epc)
-                time.sleep(random.uniform(1.0, 10.0))
-
-            sleep_time = self.processor.min_lap_time_sec + random.uniform(2.0, 5.0)
-            logger.info("Waiting %.1f sec before next simulated lap", sleep_time)
-
-            for _ in range(int(sleep_time * 10)):
-                if self._stop_flag:
-                    break
-                time.sleep(0.1)
-
-            lap += 1
+                lap += 1
+        except Exception as exc:
+            self._set_runtime_status("error", str(exc))
+            logger.exception("Emulator loop failed")
+        finally:
+            if self.get_runtime_status()["status"] != "error":
+                self._set_runtime_status("stopped")
 
     def start(self):
+        if self._thread is not None and self._thread.is_alive():
+            return
         self.processor.start()
         self._stop_flag = False
+        self._set_runtime_status("starting")
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop_flag = True
+        self._set_runtime_status("stopping")
         self.processor.stop()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=self.STOP_JOIN_TIMEOUT_SEC)
+            if thread.is_alive():
+                self._set_runtime_status("error", "thread stop timeout")
+                logger.warning("EmulatorReader thread did not stop within timeout")
+                return
+        self._thread = None
+        self._set_runtime_status("stopped")

@@ -3,7 +3,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from ..database import Database
+    from ..database.database import Database
 
 logger = logging.getLogger(__name__)
 
