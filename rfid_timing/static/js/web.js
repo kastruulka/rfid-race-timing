@@ -200,7 +200,7 @@ function buildFeedItem(item, isNewItem) {
 
   const detail = document.createElement('div');
   detail.className = 'feed-detail';
-  let lapLabel = '';
+  let lapLabel;
   if (item.lap_number === 0) {
     lapLabel = 'разгонный';
   } else if (item.finish_mode === 'time') {

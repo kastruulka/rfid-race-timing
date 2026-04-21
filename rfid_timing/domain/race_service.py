@@ -1,5 +1,4 @@
 import time
-from typing import Dict, List
 
 from ..database.database import Database
 from .timing import (

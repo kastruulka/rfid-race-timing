@@ -26,6 +26,7 @@ const els = {
   previewEmpty: document.getElementById('preview-empty'),
   generatePreviewButton: document.getElementById('btn-generate-preview'),
   downloadPdfButton: document.getElementById('btn-download-pdf'),
+  downloadSyncButton: document.getElementById('btn-download-sync'),
 };
 
 function getSelectedCategoryId() {
@@ -124,6 +125,16 @@ function buildPdfFilename() {
   return safeCategory + '-' + safeDate + '.pdf';
 }
 
+function buildSyncFilename() {
+  const option = getSelectedCategoryOption();
+  const categoryLabel =
+    option && option.value ? option.textContent.replace(/\s*\(.*/, '').trim() : 'sync-export';
+  const dateLabel = els.date.value.trim() || new Date().toISOString().slice(0, 10);
+  const safeCategory = sanitizeFilenamePart(categoryLabel, '_');
+  const safeDate = sanitizeFilenamePart(dateLabel, '-');
+  return safeCategory + '-' + safeDate + '.json';
+}
+
 function formatCategoryLabel(category) {
   if (category && category.finish_mode === 'time' && category.time_limit_sec) {
     return category.name + ' (' + category.time_limit_sec + ' сек)';
@@ -204,9 +215,34 @@ async function downloadPDF() {
   }
 }
 
+async function downloadSync() {
+  const body = getProtocolRequestBody();
+  if (!ensureCategorySelected(body.category_id)) return;
+
+  try {
+    const result = await window.httpClient.fetchBlob('/api/protocol/sync-export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category_id: body.category_id }),
+    });
+
+    if (!result.ok) {
+      toast(getErrorMessage(result, 'Ошибка экспорта JSON Sync'), true);
+      return;
+    }
+
+    window.downloadBlob(result.data, buildSyncFilename());
+  } catch {
+    toast('Ошибка сети при загрузке JSON Sync', true);
+  }
+}
+
 function bindUi() {
   els.generatePreviewButton.addEventListener('click', generatePreview);
   els.downloadPdfButton.addEventListener('click', downloadPDF);
+  if (els.downloadSyncButton) {
+    els.downloadSyncButton.addEventListener('click', downloadSync);
+  }
 }
 
 async function init() {

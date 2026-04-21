@@ -1,11 +1,19 @@
 import io
+import json
 import logging
 
 from flask import jsonify, render_template, send_file
 
 from ..database.database import Database
-from ..utils.formatters import fmt_gap, fmt_ms, fmt_speed, fmt_start_offset, fmt_start_time
 from ..http.request_helpers import get_json_body, require_int
+from ..integrations.sync_payload import build_sync_export_payload
+from ..utils.formatters import (
+    fmt_gap,
+    fmt_ms,
+    fmt_speed,
+    fmt_start_offset,
+    fmt_start_time,
+)
 from .timing import (
     calc_total_time_with_penalty,
     get_finish_mode,
@@ -53,7 +61,9 @@ def _estimate_time_mode_distance_km(
         return distance_km
 
     last_counted_lap = counted_laps[-1]
-    elapsed_at_last_lap_ms = int(last_counted_lap["timestamp"]) - int(float(start_time_ms))
+    elapsed_at_last_lap_ms = int(last_counted_lap["timestamp"]) - int(
+        float(start_time_ms)
+    )
     partial_elapsed_ms = elapsed_without_penalty_ms - elapsed_at_last_lap_ms
     if partial_elapsed_ms <= 0:
         return distance_km
@@ -123,7 +133,9 @@ def build_protocol_data(db: Database, category_id: int):
             (
                 {
                     "number": lap["lap_number"],
-                    "time": fmt_ms(int(lap["lap_time"]) if lap.get("lap_time") else None),
+                    "time": fmt_ms(
+                        int(lap["lap_time"]) if lap.get("lap_time") else None
+                    ),
                 }
                 for lap in laps
                 if lap["lap_number"] == 0
@@ -142,7 +154,9 @@ def build_protocol_data(db: Database, category_id: int):
 
         rider_start_ms = int(r["start_time"]) if r.get("start_time") else None
         if finish_mode == "time":
-            distance_total = _estimate_time_mode_distance_km(category, r, laps, total_time)
+            distance_total = _estimate_time_mode_distance_km(
+                category, r, laps, total_time
+            )
         else:
             effective_laps = category["laps"] + (r.get("extra_laps") or 0)
             distance_total = (category.get("distance_km") or 0) * effective_laps
@@ -174,7 +188,9 @@ def build_protocol_data(db: Database, category_id: int):
                 "total_time": total_time,
                 "total_time_str": fmt_ms(total_time),
                 "penalty_time_ms": penalty_time_ms,
-                "penalty_str": ("+" + fmt_ms(penalty_time_ms)) if penalty_time_ms else "",
+                "penalty_str": ("+" + fmt_ms(penalty_time_ms))
+                if penalty_time_ms
+                else "",
                 "gap": gap,
                 "gap_str": fmt_gap(gap),
                 "avg_speed": fmt_speed(distance_total, total_time),
@@ -182,7 +198,9 @@ def build_protocol_data(db: Database, category_id: int):
                 "warmup_lap_time": warmup_lap["time"] if warmup_lap else "",
                 "lap_details": lap_details,
                 "laps_display": (
-                    " / ".join(item["time"] for item in lap_details) if lap_details else "--"
+                    " / ".join(item["time"] for item in lap_details)
+                    if lap_details
+                    else "--"
                 ),
                 "laps_subnote": (
                     (
@@ -190,7 +208,11 @@ def build_protocol_data(db: Database, category_id: int):
                         + "финиш по лимиту с учетом штрафа"
                     )
                     if finished_by_penalty_limit
-                    else (f"{laps_done} кр." if finish_mode == "time" and laps_done else "")
+                    else (
+                        f"{laps_done} кр."
+                        if finish_mode == "time" and laps_done
+                        else ""
+                    )
                 ),
                 "start_time_abs": fmt_start_time(rider_start_ms),
                 "start_time_offset": fmt_start_offset(rider_start_ms, first_start_ms),
@@ -300,3 +322,27 @@ def register_protocol(app, db: Database, engine=None):
         except Exception as exc:
             logger.exception("protocol_pdf failed")
             return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/protocol/sync-export", methods=["POST"])
+    def api_protocol_sync_export():
+        data, err = get_json_body()
+        if err:
+            return err
+        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+        if err:
+            return err
+
+        try:
+            payload = build_sync_export_payload(db, category_id=cat_id)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+
+        category = db.get_category(cat_id)
+        category_name = category["name"] if category else f"category-{cat_id}"
+        json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        return send_file(
+            io.BytesIO(json_bytes),
+            mimetype="application/json",
+            as_attachment=True,
+            download_name=f"sync-export-{category_name}.json",
+        )

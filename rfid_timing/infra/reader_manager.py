@@ -72,7 +72,9 @@ class ReaderManager:
         with self._lock:
             old_reader = self._reader
             old_mode = self._mode_for_reader(old_reader)
-            logger.info("Restarting reader runtime (reason=%s, old_mode=%s)", reason, old_mode)
+            logger.info(
+                "Restarting reader runtime (reason=%s, old_mode=%s)", reason, old_mode
+            )
 
             if old_reader is not None:
                 try:
@@ -86,7 +88,9 @@ class ReaderManager:
                     )
                 except Exception as exc:
                     self._set_manager_status("error", str(exc))
-                    logger.warning("Stop failed during restart (reason=%s): %s", reason, exc)
+                    logger.warning(
+                        "Stop failed during restart (reason=%s): %s", reason, exc
+                    )
                 self._reader = None
 
             self._set_manager_status("starting")
@@ -94,14 +98,20 @@ class ReaderManager:
                 self._create_reader()
                 new_mode = self._mode_for_reader(self._reader)
                 if self._reader:
-                    logger.info("Starting %s after restart (reason=%s)", new_mode, reason)
+                    logger.info(
+                        "Starting %s after restart (reason=%s)", new_mode, reason
+                    )
                     self._reader.start()
                     runtime = self._reader_runtime_status(self._reader)
                     self._set_manager_status(
                         runtime["status"],
                         runtime.get("last_error", ""),
                     )
-                    logger.info("Started %s after restart (status=%s)", new_mode, runtime["status"])
+                    logger.info(
+                        "Started %s after restart (status=%s)",
+                        new_mode,
+                        runtime["status"],
+                    )
                 else:
                     new_mode = "none"
                     self._set_manager_status("stopped")
@@ -140,7 +150,11 @@ class ReaderManager:
             mode = self._mode_for_reader(self._reader)
             runtime = self._reader_runtime_status(self._reader)
             status = runtime["status"] if self._reader is not None else self._status
-            last_error = runtime.get("last_error", "") if self._reader is not None else self._last_error
+            last_error = (
+                runtime.get("last_error", "")
+                if self._reader is not None
+                else self._last_error
+            )
             return {
                 "running": status in {"starting", "running", "stopping"},
                 "mode": mode,

@@ -222,7 +222,9 @@
   }
 
   async function editCat(categoryId) {
-    if (!(await page.ensureAuthenticated('Для редактирования категории нужен пароль администратора')))
+    if (
+      !(await page.ensureAuthenticated('Для редактирования категории нужен пароль администратора'))
+    )
       return;
     const category = page.state.categories.find(function (item) {
       return String(item.id) === String(categoryId);

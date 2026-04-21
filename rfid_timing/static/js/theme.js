@@ -38,7 +38,9 @@
     root.dataset.theme = theme;
     try {
       localStorage.setItem(storageKey, theme);
-    } catch {}
+    } catch {
+      // Ignore storage write failures (private mode, restricted storage, etc.).
+    }
     syncResolvedTheme();
   }
 

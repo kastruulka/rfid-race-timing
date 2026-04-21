@@ -276,8 +276,10 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
                         )
 
                 finish_mode = (
-                    _get_field(row, col_map, "category_finish_mode") or "laps"
-                ).strip().lower()
+                    (_get_field(row, col_map, "category_finish_mode") or "laps")
+                    .strip()
+                    .lower()
+                )
                 if finish_mode not in {"laps", "time"}:
                     result.warnings.append(
                         f"Строка {i}: неверный режим финиша '{finish_mode}' для категории '{cat_name}', использовано значение laps"

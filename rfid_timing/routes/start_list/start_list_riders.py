@@ -3,7 +3,11 @@ import io
 
 from flask import Response, jsonify, request
 
-from ...integrations.csv_import import import_riders, parse_csv_text, sanitize_for_export
+from ...integrations.csv_import import (
+    import_riders,
+    parse_csv_text,
+    sanitize_for_export,
+)
 from ...database.database import Database
 from ...app.race_engine import RaceEngine
 from ...http.request_helpers import get_json_body
@@ -135,7 +139,9 @@ def register_start_list_rider_routes(
                     sanitize_for_export(
                         category.get("has_warmup_lap", "") if category else ""
                     ),
-                    sanitize_for_export(category.get("finish_mode", "") if category else ""),
+                    sanitize_for_export(
+                        category.get("finish_mode", "") if category else ""
+                    ),
                     sanitize_for_export(
                         category.get("time_limit_sec", "") if category else ""
                     ),

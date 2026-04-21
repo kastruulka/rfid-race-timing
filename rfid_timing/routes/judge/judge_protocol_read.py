@@ -1,7 +1,10 @@
 from flask import jsonify
 
 from ...database.database import Database
-from ...services.start_protocol.start_protocol_service import format_protocol_entry, get_protocol_entries
+from ...services.start_protocol.start_protocol_service import (
+    format_protocol_entry,
+    get_protocol_entries,
+)
 from .judge_protocol_shared import parse_query_category_ids
 
 

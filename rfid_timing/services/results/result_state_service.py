@@ -1,5 +1,3 @@
-from typing import Dict, Optional
-
 from ...database.database import Database
 from ...domain.timing import (
     build_dnf_result_update,
@@ -71,11 +69,13 @@ class ResultStateService:
         ]
         finished_ids = {result["result_id"] for result in finished}
         for result in results:
-            if result["result_id"] not in finished_ids and result.get("place") is not None:
+            if (
+                result["result_id"] not in finished_ids
+                and result.get("place") is not None
+            ):
                 self.db.update_result(result["result_id"], place=None)
 
         for place, result in enumerate(finished, start=1):
             self.db.update_result(result["result_id"], place=place)
 
         return len(finished)
-

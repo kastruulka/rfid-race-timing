@@ -55,8 +55,9 @@
     del.className = 'li-delete';
     del.dataset.action = 'delete-penalty';
     del.dataset.penaltyId = String(item.id);
-    del.title = 'Отменить';
-    del.textContent = '✕';
+    del.setAttribute('aria-label', 'Отменить решение');
+    del.title = 'Отменить решение';
+    del.textContent = '×';
 
     row.appendChild(badge);
     row.appendChild(info);
@@ -157,7 +158,9 @@
     del.className = 'note-del';
     del.dataset.action = 'delete-note';
     del.dataset.noteId = String(note.id);
-    del.textContent = '✕';
+    del.setAttribute('aria-label', 'Удалить заметку');
+    del.title = 'Удалить заметку';
+    del.textContent = '×';
 
     row.appendChild(textWrap);
     row.appendChild(time);

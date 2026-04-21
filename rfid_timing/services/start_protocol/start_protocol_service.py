@@ -81,9 +81,7 @@ def normalize_protocol_entries(
             rider_id = int(entry.get("rider_id"))
             category_id = int(entry.get("category_id"))
             if category_id not in allowed_ids:
-                raise ValueError(
-                    "Участник добавлен из категории вне выбранного набора"
-                )
+                raise ValueError("Участник добавлен из категории вне выбранного набора")
             rider = db.get_rider(rider_id)
             if not rider or int(rider.get("category_id") or 0) != category_id:
                 raise ValueError(
@@ -258,4 +256,3 @@ def apply_launch_plan(db: Database, launch_plan: list[LaunchPlanEntry]) -> None:
             actual_time=None,
             status="PLANNED",
         )
-

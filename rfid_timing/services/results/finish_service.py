@@ -70,7 +70,9 @@ class FinishService:
             if result["status"] != "RACING":
                 continue
             if result.get("finish_time"):
-                self.result_states.set_finished(result["id"], int(result["finish_time"]))
+                self.result_states.set_finished(
+                    result["id"], int(result["finish_time"])
+                )
                 newly_finished += 1
             else:
                 self.result_states.set_dnf(result["id"], judge_stop_reason)

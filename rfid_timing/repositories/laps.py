@@ -87,7 +87,9 @@ class LapsRepository:
     def renumber_laps(self, result_id: int):
         result = self._db.get_result_by_id(result_id)
         category = self._db.get_category(result["category_id"]) if result else None
-        has_warmup_lap = True if category is None else bool(category.get("has_warmup_lap", 1))
+        has_warmup_lap = (
+            True if category is None else bool(category.get("has_warmup_lap", 1))
+        )
         laps = self.get_laps(result_id)
         for i, lap in enumerate(laps):
             if has_warmup_lap:

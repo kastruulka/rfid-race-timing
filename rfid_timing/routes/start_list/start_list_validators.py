@@ -60,9 +60,7 @@ def validate_category_payload(data: dict) -> tuple[dict | None, tuple | None]:
     if finish_mode == "laps" and not (1 <= laps <= MAX_CATEGORY_LAPS):
         return None, (
             jsonify(
-                {
-                    "error": f"Количество кругов должно быть от 1 до {MAX_CATEGORY_LAPS}"
-                }
+                {"error": f"Количество кругов должно быть от 1 до {MAX_CATEGORY_LAPS}"}
             ),
             400,
         )

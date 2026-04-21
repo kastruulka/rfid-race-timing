@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: dark;
+
   --bg: #0a0e17;
   --surface: #111827;
   --surface2: #1a2234;
@@ -46,15 +47,16 @@
 
 html[data-theme='light'] {
   color-scheme: light;
+
   --bg: #f3f7fb;
-  --surface: #ffffff;
+  --surface: #fff;
   --surface2: #eef3f9;
   --surface3: #dde7f3;
   --border: #ced9e5;
   --text: #102033;
   --text-dim: #5e7187;
   --accent: #0ea5e9;
-  --accent-contrast: #ffffff;
+  --accent-contrast: #fff;
   --accent-glow: rgb(14 165 233 / 12%);
   --green: #16a34a;
   --green-glow: rgb(22 163 74 / 12%);
@@ -77,15 +79,16 @@ html[data-theme='light'] {
 @media (prefers-color-scheme: light) {
   html:not([data-theme='dark']) {
     color-scheme: light;
+
     --bg: #f3f7fb;
-    --surface: #ffffff;
+    --surface: #fff;
     --surface2: #eef3f9;
     --surface3: #dde7f3;
     --border: #ced9e5;
     --text: #102033;
     --text-dim: #5e7187;
     --accent: #0ea5e9;
-    --accent-contrast: #ffffff;
+    --accent-contrast: #fff;
     --accent-glow: rgb(14 165 233 / 12%);
     --green: #16a34a;
     --green-glow: rgb(22 163 74 / 12%);

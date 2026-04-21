@@ -182,9 +182,8 @@ class LapService:
             )
             if self.on_finish:
                 self.on_finish(lap_data)
-        elif (
-            is_time_limit_mode(category)
-            and total_time_ms >= int(get_time_limit_ms(category) or 0)
+        elif is_time_limit_mode(category) and total_time_ms >= int(
+            get_time_limit_ms(category) or 0
         ):
             finish_time_ms = calc_finish_time(timestamp_ms, penalty_time_ms)
             self.result_states.set_finished(result["id"], finish_time_ms)

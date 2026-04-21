@@ -38,7 +38,9 @@ def is_rider_time_limit_reached(
     limit_ms = get_time_limit_ms(category)
     if limit_ms is None or rider_started_at_ms is None:
         return False
-    total_elapsed_ms = int(timestamp_ms) - int(rider_started_at_ms) + int(penalty_time_ms or 0)
+    total_elapsed_ms = (
+        int(timestamp_ms) - int(rider_started_at_ms) + int(penalty_time_ms or 0)
+    )
     return total_elapsed_ms >= limit_ms
 
 
