@@ -8,7 +8,7 @@ from sllurp.llrp import LLRPReaderConfig, LLRPReaderClient, LLRP_DEFAULT_PORT
 READER_IP = "169.254.1.1"
 READER_PORT = LLRP_DEFAULT_PORT
 
-# Логирование для отладки
+# логирование для отладки
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

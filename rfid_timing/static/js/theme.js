@@ -39,7 +39,7 @@
     try {
       localStorage.setItem(storageKey, theme);
     } catch {
-      // Ignore storage write failures (private mode, restricted storage, etc.).
+      // ignore
     }
     syncResolvedTheme();
   }

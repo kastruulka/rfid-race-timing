@@ -262,8 +262,7 @@ def result_sort_key(r: Dict) -> tuple:
         return (order, -laps, total)
 
     if status == "FINISHED":
-        ft = r.get("finish_time") or total
-        return (order, ft)
+        return (order, total, r.get("number") or 0)
 
     return (order, 0)
 

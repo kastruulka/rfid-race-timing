@@ -10,11 +10,14 @@
   </div>
 </div>
 
+{% for section in sections %} {% set category = section.category %} {% set rows = section.rows %} {%
+set extra = section.extra %}
 <div class="protocol-category">
-  {{ category.name }} -- {% if category.finish_mode == 'time' and category.time_limit_sec %}{{
-  category.time_limit_sec }} сек{% else %}{{ category.laps }} кр.{% endif %}{% if
-  category.distance_km %}, {{ category.distance_km }} км/кр.{% endif %}{% if
-  extra.is_individual_start %} · индивидуальный старт{% endif %}
+  {% if section.combined %} {{ section.title }}{% if section.category_names %} -- {{
+  section.category_names|join(', ') }}{% endif %} {% else %} {{ category.name }} -- {% if
+  category.finish_mode == 'time' and category.time_limit_sec %}{{ category.time_limit_sec }} сек{%
+  else %}{{ category.laps }} кр.{% endif %}{% if category.distance_km %}, {{ category.distance_km }}
+  км/кр.{% endif %}{% if extra.is_individual_start %} · индивидуальный старт{% endif %} {% endif %}
 </div>
 
 <table>
@@ -26,6 +29,8 @@
       <th class="c" style="width: 44px">№</th>
       {% endif %} {% if cols.name %}
       <th>Участник</th>
+      {% endif %} {% if cols.category %}
+      <th>Категория</th>
       {% endif %} {% if cols.birth_year %}
       <th class="c" style="width: 44px">Год</th>
       {% endif %} {% if cols.club %}
@@ -33,7 +38,7 @@
       {% endif %} {% if cols.city %}
       <th>Город</th>
       {% endif %} {% if cols.start_time %}
-      <th class="c" style="width: 64px">Старт</th>
+      <th class="c" style="width: 84px">Старт</th>
       {% endif %} {% if cols.time %}
       <th class="r" style="width: 72px">Время</th>
       {% endif %} {% if cols.gap %}
@@ -60,17 +65,21 @@
       <td class="c mono" style="font-weight: 700">{{ r.number }}</td>
       {% endif %} {% if cols.name %}
       <td style="font-weight: 600">{{ r.name }}</td>
+      {% endif %} {% if cols.category %}
+      <td>{{ r.category_name }}</td>
       {% endif %} {% if cols.birth_year %}
       <td class="c">{{ r.birth_year or '' }}</td>
       {% endif %} {% if cols.club %}
       <td>{{ r.club }}</td>
       {% endif %} {% if cols.city %}
       <td>{{ r.city }}</td>
-      {% endif %} {% if cols.start_time %}
+      {% endif %} {% if cols.start_time %} {% set start_display = r.start_time_display or
+      r.start_time_abs %} {% set start_offset_display = r.start_time_offset_display or
+      r.start_time_offset %}
       <td class="c mono" style="font-size: 10px">
-        {{ r.start_time_abs }}{% if r.start_time_offset and r.start_time_offset != '00:00' %}<br /><span
-          style="font-size: 8px; color: #999"
-          >{{ r.start_time_offset }}</span
+        {{ start_display }}{% if start_offset_display and start_offset_display != '00:00' and
+        start_offset_display != '00:00.0' %}<br /><span style="font-size: 8px; color: #999"
+          >{{ start_offset_display }}</span
         >{% endif %}
       </td>
       {% endif %} {% if cols.time %}
@@ -99,8 +108,7 @@
     {% endfor %}
   </tbody>
 </table>
-
-{% if meta.chief_judge or meta.secretary %}
+{% endfor %} {% if meta.chief_judge or meta.secretary %}
 <div class="footer">
   <div>
     {% if meta.chief_judge %}

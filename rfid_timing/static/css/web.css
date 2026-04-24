@@ -238,6 +238,14 @@ small {
   flex: 1;
 }
 
+.topnav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .theme-toggle {
   position: relative;
   display: inline-flex;
@@ -772,6 +780,10 @@ textarea {
     flex: 0 0 34px;
   }
 
+  .topnav-actions {
+    gap: 8px;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }
@@ -793,6 +805,10 @@ textarea {
   .topnav {
     gap: 10px;
     padding-inline: 10px;
+  }
+
+  .topnav-actions {
+    gap: 6px;
   }
 
   .card {

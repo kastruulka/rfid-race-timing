@@ -104,6 +104,12 @@ class Database:
         self.feed_repo = FeedRepository(self)
         self.category_reset_service = CategoryResetService(self)
 
+    def get_sync_participant_starts(self) -> List[Dict]:
+        return list(getattr(self, "_last_sync_participant_starts", []))
+
+    def get_sync_pass_events(self) -> List[Dict]:
+        return list(getattr(self, "_last_sync_pass_events", []))
+
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             conn = sqlite3.connect(self._db_path, timeout=10.0)
@@ -462,6 +468,9 @@ class Database:
     def close_race(self, race_id: int = None):
         self.race_repo.close_race(race_id=race_id)
 
+    def close_open_races(self) -> int:
+        return self.race_repo.close_open_races()
+
     def is_race_closed(self, race_id: int = None) -> bool:
         return self.race_repo.is_race_closed(race_id=race_id)
 
@@ -631,6 +640,12 @@ class Database:
 
     def get_result_by_rider(self, rider_id: int, race_id: int = None) -> Optional[Dict]:
         return self.results_repo.get_result_by_rider(rider_id=rider_id, race_id=race_id)
+
+    def has_active_unfinished_race(self, rider_id: int, race_id: int = None) -> bool:
+        return self.results_repo.has_active_unfinished_race(
+            rider_id=rider_id,
+            race_id=race_id,
+        )
 
     def get_result_by_id(self, result_id: int) -> Optional[Dict]:
         return self.results_repo.get_result_by_id(result_id)

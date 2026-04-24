@@ -115,7 +115,7 @@
         });
       });
     } catch {
-      // ignore polling errors
+      // ignore
     }
   }
 

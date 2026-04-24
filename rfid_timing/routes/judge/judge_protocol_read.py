@@ -29,9 +29,6 @@ def register_judge_protocol_read_routes(app, db: Database):
         has_planned = any(
             entry["status"] in {"PLANNED", "STARTING"} for entry in entries
         )
-        has_started = any(entry["status"] == "STARTED" for entry in entries)
-        if not has_planned and not has_started:
-            return jsonify({"running": False})
 
         return jsonify(
             {

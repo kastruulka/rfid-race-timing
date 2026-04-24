@@ -338,7 +338,7 @@ function updateResults(results) {
     row.appendChild(createTextCell('col-pos', position));
     row.appendChild(createTextCell('col-num', result.number));
     row.appendChild(createTextCell('col-name', result.name));
-    row.appendChild(createTextCell('col-club', result.club || ''));
+    row.appendChild(createTextCell('col-club', result.club || '—'));
     row.appendChild(createLapsCell(result));
     row.appendChild(createTextCell('col-lastlap', fmtMs(result.last_lap_time)));
     row.appendChild(timeCell);

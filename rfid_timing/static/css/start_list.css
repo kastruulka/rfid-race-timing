@@ -22,6 +22,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 74px;
+  padding: 10px 18px;
+  box-sizing: border-box;
 }
 
 .cat-list {
@@ -79,7 +82,9 @@
   gap: 10px;
   flex-wrap: wrap;
   flex-shrink: 0;
+  min-height: 74px;
   padding: 10px 18px;
+  box-sizing: border-box;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }

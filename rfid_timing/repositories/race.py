@@ -28,6 +28,15 @@ class RaceRepository:
         )
         self._db._commit()
 
+    def close_open_races(self) -> int:
+        now = self._db._normalize_db_value("closed_at", time.time())
+        cur = self._db._exec(
+            "UPDATE race SET closed_at=? WHERE closed_at IS NULL",
+            (now,),
+        )
+        self._db._commit()
+        return int(cur.rowcount or 0)
+
     def is_race_closed(self, race_id: int = None) -> bool:
         race_id = race_id or self.get_current_race_id()
         if race_id is None:

@@ -12,7 +12,9 @@ from ..utils.formatters import (
     fmt_ms,
     fmt_speed,
     fmt_start_offset,
+    fmt_start_offset_precise,
     fmt_start_time,
+    fmt_start_time_precise,
 )
 from .timing import (
     calc_total_time_with_penalty,
@@ -29,6 +31,17 @@ def _calculate_preview_places(results: list[dict]) -> dict[int, int]:
     places = {}
     place = 1
     for result in ranked:
+        if result.get("status") in {"DNF", "DSQ", "DNS"}:
+            continue
+        places[result["id"]] = place
+        place += 1
+    return places
+
+
+def _calculate_places_from_sorted(results: list[dict]) -> dict[int, int]:
+    places = {}
+    place = 1
+    for result in results:
         if result.get("status") in {"DNF", "DSQ", "DNS"}:
             continue
         places[result["id"]] = place
@@ -103,7 +116,9 @@ def build_protocol_data(db: Database, category_id: int):
         enriched_results.append(enriched)
 
     preview_places = _calculate_preview_places(enriched_results)
-    start_times = {int(r["start_time"]) for r in results if r.get("start_time")}
+    start_times = {
+        int(result["start_time"]) for result in results if result.get("start_time")
+    }
     is_individual_start = len(start_times) > 1
     first_start_ms = min(start_times) if start_times else None
 
@@ -111,18 +126,18 @@ def build_protocol_data(db: Database, category_id: int):
     leader_time = None
     time_limit_ms = get_time_limit_ms(category) if finish_mode == "time" else None
 
-    for r in sort_results(enriched_results):
-        laps = db.get_laps(r["id"])
-        laps_done = r["laps_done"]
-        penalty_time_ms = r.get("penalty_time_ms") or 0
-        total_time = r["total_time"]
+    for result in sort_results(enriched_results):
+        laps = db.get_laps(result["id"])
+        laps_done = result["laps_done"]
+        penalty_time_ms = result.get("penalty_time_ms") or 0
+        total_time = result["total_time"]
 
-        if r["status"] in {"RACING", "FINISHED"} and leader_time is None:
+        if result["status"] in {"RACING", "FINISHED"} and leader_time is None:
             leader_time = total_time
 
         gap = None
         if (
-            r["status"] in {"RACING", "FINISHED"}
+            result["status"] in {"RACING", "FINISHED"}
             and leader_time is not None
             and total_time is not None
             and total_time != leader_time
@@ -152,18 +167,18 @@ def build_protocol_data(db: Database, category_id: int):
             if lap["lap_number"] > 0
         ]
 
-        rider_start_ms = int(r["start_time"]) if r.get("start_time") else None
+        rider_start_ms = int(result["start_time"]) if result.get("start_time") else None
         if finish_mode == "time":
             distance_total = _estimate_time_mode_distance_km(
-                category, r, laps, total_time
+                category, result, laps, total_time
             )
         else:
-            effective_laps = category["laps"] + (r.get("extra_laps") or 0)
+            effective_laps = category["laps"] + (result.get("extra_laps") or 0)
             distance_total = (category.get("distance_km") or 0) * effective_laps
 
         finished_by_penalty_limit = (
             finish_mode == "time"
-            and r["status"] == "FINISHED"
+            and result["status"] == "FINISHED"
             and penalty_time_ms > 0
             and total_time is not None
             and time_limit_ms is not None
@@ -172,21 +187,25 @@ def build_protocol_data(db: Database, category_id: int):
 
         rows.append(
             {
-                "place": preview_places.get(r["id"], ""),
-                "number": r["number"],
-                "last_name": r["last_name"],
-                "first_name": r.get("first_name", ""),
-                "name": f"{r['last_name']} {r.get('first_name', '')}".strip(),
-                "birth_year": r.get("birth_year") or "",
-                "club": r.get("club", ""),
-                "city": r.get("city", ""),
-                "status": r["status"],
+                "id": result["id"],
+                "place": preview_places.get(result["id"], ""),
+                "number": result["number"],
+                "last_name": result["last_name"],
+                "first_name": result.get("first_name", ""),
+                "name": f"{result['last_name']} {result.get('first_name', '')}".strip(),
+                "birth_year": result.get("birth_year") or "",
+                "club": result.get("club", ""),
+                "city": result.get("city", ""),
+                "category_id": category["id"],
+                "category_name": category["name"],
+                "status": result["status"],
                 "laps_done": laps_done,
                 "laps_required": category["laps"] if finish_mode == "laps" else None,
                 "finish_mode": finish_mode,
                 "time_limit_sec": category.get("time_limit_sec"),
                 "total_time": total_time,
                 "total_time_str": fmt_ms(total_time),
+                "finish_time": result.get("finish_time"),
                 "penalty_time_ms": penalty_time_ms,
                 "penalty_str": ("+" + fmt_ms(penalty_time_ms))
                 if penalty_time_ms
@@ -215,7 +234,12 @@ def build_protocol_data(db: Database, category_id: int):
                     )
                 ),
                 "start_time_abs": fmt_start_time(rider_start_ms),
+                "start_time_abs_precise": fmt_start_time_precise(rider_start_ms),
                 "start_time_offset": fmt_start_offset(rider_start_ms, first_start_ms),
+                "start_time_offset_precise": fmt_start_offset_precise(
+                    rider_start_ms, first_start_ms
+                ),
+                "start_time_ms": rider_start_ms,
             }
         )
 
@@ -231,6 +255,7 @@ def _build_columns(cols_raw: dict, is_individual_start: bool) -> dict:
         "place",
         "number",
         "name",
+        "category",
         "birth_year",
         "club",
         "city",
@@ -251,6 +276,210 @@ def _build_columns(cols_raw: dict, is_individual_start: bool) -> dict:
     return cols
 
 
+def _parse_category_ids(raw_ids) -> list[int]:
+    if raw_ids is None:
+        return []
+
+    if isinstance(raw_ids, str):
+        raw_values = [part.strip() for part in raw_ids.split(",")]
+    elif isinstance(raw_ids, (list, tuple)):
+        raw_values = raw_ids
+    else:
+        raw_values = [raw_ids]
+
+    category_ids = []
+    seen = set()
+    for raw_value in raw_values:
+        if raw_value in (None, ""):
+            continue
+        try:
+            category_id = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if category_id <= 0 or category_id in seen:
+            continue
+        seen.add(category_id)
+        category_ids.append(category_id)
+    return category_ids
+
+
+def _resolve_protocol_category_ids(
+    db: Database, data: dict
+) -> tuple[list[int], str | None]:
+    scope = str(data.get("scope") or "single").strip().lower()
+    all_categories = db.get_categories()
+
+    if scope == "all":
+        category_ids = [int(category["id"]) for category in all_categories]
+        if not category_ids:
+            return [], "Категории не найдены"
+        return category_ids, None
+
+    if scope == "selected":
+        category_ids = _parse_category_ids(data.get("category_ids"))
+        if not category_ids:
+            return [], "Выберите хотя бы одну категорию"
+        available_ids = {int(category["id"]) for category in all_categories}
+        filtered_ids = [
+            category_id for category_id in category_ids if category_id in available_ids
+        ]
+        if not filtered_ids:
+            return [], "Выбранные категории не найдены"
+        return filtered_ids, None
+
+    cat_id, err = require_int(data, "category_id", "Категория не выбрана")
+    if err:
+        return [], "Категория не выбрана"
+    return [cat_id], None
+
+
+def _build_protocol_sections(db: Database, category_ids: list[int]) -> list[dict]:
+    sections = []
+    for category_id in category_ids:
+        category, rows, extra = build_protocol_data(db, category_id)
+        if not category:
+            continue
+        sections.append({"category": category, "rows": rows, "extra": extra})
+    return sections
+
+
+def _combined_effective_total_ms(
+    row: dict, earliest_start_ms: int | None
+) -> int | None:
+    total_time = row.get("total_time")
+    if total_time is not None:
+        return int(total_time)
+
+    finish_time = row.get("finish_time")
+    start_time_ms = row.get("start_time_ms")
+    if finish_time is not None and start_time_ms is not None:
+        return int(finish_time) - int(start_time_ms)
+
+    return None
+
+
+def _combined_progress_sort_key(row: dict) -> tuple:
+    status = row.get("status", "DNS")
+    number = row.get("number") or 0
+    progress_ms = row.get("combined_effective_total_ms")
+
+    if row.get("finish_mode") == "time" and status in {"RACING", "FINISHED"}:
+        return (0, -(row.get("laps_done", 0) or 0), progress_ms or 10**18, number)
+
+    if status == "FINISHED":
+        return (0, progress_ms or 10**18, number)
+
+    if status == "RACING":
+        return (
+            1,
+            -(row.get("laps_done", 0) or 0),
+            progress_ms or 10**18,
+            number,
+        )
+
+    status_order = {"DNF": 2, "DSQ": 3, "DNS": 4}
+    return (status_order.get(status, 5), 0, number)
+
+
+def _sort_combined_protocol_rows(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=_combined_progress_sort_key)
+
+
+def _combined_progress_gap_ms(row: dict, leader_row: dict | None) -> int | None:
+    if leader_row is None:
+        return None
+    if row.get("status") not in {"RACING", "FINISHED"}:
+        return None
+
+    row_progress = row.get("combined_effective_total_ms")
+    leader_progress = leader_row.get("combined_effective_total_ms")
+
+    if (
+        row_progress is None
+        or leader_progress is None
+        or row_progress == leader_progress
+    ):
+        return None
+
+    return int(row_progress) - int(leader_progress)
+
+
+def _build_combined_protocol_section(sections: list[dict], title: str) -> dict:
+    merged_rows = []
+    category_names = []
+    start_times = set()
+
+    for section in sections:
+        category = section["category"]
+        extra = section.get("extra", {})
+        category_names.append(category["name"])
+        if extra.get("first_start_ms") is not None:
+            start_times.add(int(extra["first_start_ms"]))
+
+        for row in section["rows"]:
+            merged_rows.append(dict(row))
+
+    earliest_start_ms = min(start_times) if start_times else None
+    for row in merged_rows:
+        row["combined_effective_total_ms"] = _combined_effective_total_ms(
+            row, earliest_start_ms
+        )
+        row["start_time_display"] = row.get("start_time_abs_precise") or row.get(
+            "start_time_abs"
+        )
+        row["start_time_offset_display"] = row.get(
+            "start_time_offset_precise"
+        ) or row.get("start_time_offset")
+
+    ranked_rows = _sort_combined_protocol_rows(merged_rows)
+    preview_places = _calculate_places_from_sorted(ranked_rows)
+
+    leader_time = None
+    for row in ranked_rows:
+        if row["status"] in {"RACING", "FINISHED"}:
+            leader_time = row
+            break
+
+    for row in ranked_rows:
+        row["place"] = preview_places.get(row["id"], "")
+        gap = _combined_progress_gap_ms(row, leader_time)
+        row["gap"] = gap
+        row["gap_str"] = fmt_gap(gap)
+
+    return {
+        "combined": True,
+        "title": title,
+        "category_names": category_names,
+        "rows": ranked_rows,
+        "extra": {
+            "is_individual_start": len(start_times) > 1,
+            "combined": True,
+        },
+    }
+
+
+def _render_protocol_html(
+    meta: dict, sections: list[dict], columns_raw: dict, template_name: str
+):
+    has_multiple_categories = len(sections) > 1 or any(
+        section.get("combined") for section in sections
+    )
+    has_individual_start = any(
+        section.get("extra", {}).get("is_individual_start", False)
+        for section in sections
+    )
+    cols = _build_columns(columns_raw, has_individual_start)
+    if has_multiple_categories:
+        cols["category"] = columns_raw.get("category", True)
+    return render_template(template_name, meta=meta, sections=sections, cols=cols)
+
+
+def _build_protocol_pdf_name(sections: list[dict]) -> str:
+    if len(sections) == 1 and not sections[0].get("combined"):
+        return f"protocol_{sections[0]['category']['name']}.pdf"
+    return "protocol_all_categories.pdf"
+
+
 def register_protocol(app, db: Database, engine=None):
     @app.route("/protocol")
     def protocol_page():
@@ -261,24 +490,27 @@ def register_protocol(app, db: Database, engine=None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
-        if err:
-            return err
 
-        category, rows, extra = build_protocol_data(db, cat_id)
-        if not category:
-            return jsonify({"error": "Категория не найдена"}), 404
+        category_ids, error_message = _resolve_protocol_category_ids(db, data)
+        if error_message:
+            return jsonify({"error": error_message}), 400
 
-        cols = _build_columns(
-            data.get("columns", {}), extra.get("is_individual_start", False)
-        )
-        html = render_template(
-            "protocol_content.html",
+        sections = _build_protocol_sections(db, category_ids)
+        if not sections:
+            return jsonify({"error": "Категории не найдены"}), 404
+        if len(category_ids) > 1:
+            title = (
+                "Общий зачет по выбранным категориям"
+                if str(data.get("scope") or "").lower() == "selected"
+                else "Общий зачет по всем категориям"
+            )
+            sections = [_build_combined_protocol_section(sections, title)]
+
+        html = _render_protocol_html(
             meta=data.get("meta", {}),
-            category=category,
-            rows=rows,
-            cols=cols,
-            extra=extra,
+            sections=sections,
+            columns_raw=data.get("columns", {}),
+            template_name="protocol_content.html",
         )
         return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
@@ -287,24 +519,27 @@ def register_protocol(app, db: Database, engine=None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
-        if err:
-            return err
 
-        category, rows, extra = build_protocol_data(db, cat_id)
-        if not category:
-            return jsonify({"error": "Категория не найдена"}), 404
+        category_ids, error_message = _resolve_protocol_category_ids(db, data)
+        if error_message:
+            return jsonify({"error": error_message}), 400
 
-        cols = _build_columns(
-            data.get("columns", {}), extra.get("is_individual_start", False)
-        )
-        html = render_template(
-            "protocol_pdf.html",
+        sections = _build_protocol_sections(db, category_ids)
+        if not sections:
+            return jsonify({"error": "Категории не найдены"}), 404
+        if len(category_ids) > 1:
+            title = (
+                "Общий зачет по выбранным категориям"
+                if str(data.get("scope") or "").lower() == "selected"
+                else "Общий зачет по всем категориям"
+            )
+            sections = [_build_combined_protocol_section(sections, title)]
+
+        html = _render_protocol_html(
             meta=data.get("meta", {}),
-            category=category,
-            rows=rows,
-            cols=cols,
-            extra=extra,
+            sections=sections,
+            columns_raw=data.get("columns", {}),
+            template_name="protocol_pdf.html",
         )
 
         try:
@@ -315,7 +550,7 @@ def register_protocol(app, db: Database, engine=None):
                 io.BytesIO(pdf),
                 mimetype="application/pdf",
                 as_attachment=True,
-                download_name=f"protocol_{category['name']}.pdf",
+                download_name=_build_protocol_pdf_name(sections),
             )
         except ImportError:
             return jsonify({"error": "WeasyPrint не установлен"}), 500
@@ -328,21 +563,26 @@ def register_protocol(app, db: Database, engine=None):
         data, err = get_json_body()
         if err:
             return err
-        cat_id, err = require_int(data, "category_id", "Категория не выбрана")
-        if err:
-            return err
+        category_ids, error_message = _resolve_protocol_category_ids(db, data)
+        if error_message:
+            return jsonify({"error": error_message}), 400
 
         try:
-            payload = build_sync_export_payload(db, category_id=cat_id)
+            payload = build_sync_export_payload(db, category_ids=category_ids)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 404
 
-        category = db.get_category(cat_id)
-        category_name = category["name"] if category else f"category-{cat_id}"
+        if len(category_ids) == 1:
+            category = db.get_category(category_ids[0])
+            export_name = (
+                category["name"] if category else f"category-{category_ids[0]}"
+            )
+        else:
+            export_name = "all-categories"
         json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         return send_file(
             io.BytesIO(json_bytes),
             mimetype="application/json",
             as_attachment=True,
-            download_name=f"sync-export-{category_name}.json",
+            download_name=f"sync-export-{export_name}.json",
         )

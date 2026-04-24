@@ -80,6 +80,7 @@ def register_settings_system_routes(app, db: Database):
             return jsonify({"ok": False, "error": "База данных недоступна"}), 500
 
         try:
+            db.close_open_races()
             race_id = db.create_race(label="reset")
         except sqlite3.Error as exc:
             logger.exception("Не удалось создать новую гоночную сессию")

@@ -104,6 +104,8 @@ def register_judge_protocol_mutation_routes(
         queue_entries = []
         for category_id in category_ids:
             for rider in db.get_riders(category_id=category_id):
+                if db.has_active_unfinished_race(rider["id"]):
+                    continue
                 queue_entries.append(
                     {
                         "rider_id": rider["id"],

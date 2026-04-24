@@ -132,6 +132,21 @@ class ResultsRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def has_active_unfinished_race(self, rider_id: int, race_id: int = None) -> bool:
+        row = self._db._exec(
+            """
+            SELECT 1
+            FROM result res
+            JOIN race r ON r.id = res.race_id
+            WHERE res.rider_id = ?
+              AND res.status = 'RACING'
+              AND r.closed_at IS NULL
+            LIMIT 1
+            """,
+            (rider_id,),
+        ).fetchone()
+        return row is not None
+
     def get_result_by_id(self, result_id: int) -> Optional[Dict]:
         row = self._db._exec("SELECT * FROM result WHERE id=?", (result_id,)).fetchone()
         return dict(row) if row else None

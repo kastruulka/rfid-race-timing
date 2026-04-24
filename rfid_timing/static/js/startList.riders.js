@@ -94,13 +94,13 @@
 
       row.appendChild(createCell(rider.first_name || ''));
       row.appendChild(createCell(rider.birth_year || '—', 'c mono'));
-      row.appendChild(createCell(rider.city || ''));
-      row.appendChild(createCell(rider.club || ''));
+      row.appendChild(createCell(rider.city || '—'));
+      row.appendChild(createCell(rider.club || '—'));
       row.appendChild(createCell(rider.category_name || '—'));
 
       epcCell.className = 'epc-col' + (hasEpc ? ' bound' : '');
       epcCell.title = rider.epc || '';
-      epcCell.textContent = hasEpc ? rider.epc : '-';
+      epcCell.textContent = hasEpc ? rider.epc : '—';
       row.appendChild(epcCell);
 
       actionsWrap.className = 'actions-col';

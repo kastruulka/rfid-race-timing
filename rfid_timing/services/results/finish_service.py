@@ -83,6 +83,7 @@ class FinishService:
 
         self.calculate_places(category_id)
         self.db.close_category(category_id)
+        self.db.clear_start_protocol(category_id)
 
         final_results = self.db.get_results_by_category(category_id)
         finished = sum(1 for result in final_results if result["status"] == "FINISHED")

@@ -13,10 +13,72 @@ def _normalize_timestamp_ms(value: Any) -> int | None:
         return None
 
     timestamp = int(value)
-    # Older penalty records may still be stored in seconds.
     if timestamp < 100_000_000_000:
         return timestamp * 1000
     return timestamp
+
+
+def _normalize_public_penalty_type(value: Any) -> str:
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return ""
+    normalized = raw_value.upper()
+    aliases = {
+        "DSQ": "DSQ",
+        "DISQUALIFIED": "DSQ",
+        "DNF": "DNF",
+        "DNS": "DNS",
+        "WARNING": "WARNING",
+        "TIME_PENALTY": "TIME_PENALTY",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _normalize_category_ids(category_ids: list[int] | None) -> list[int]:
+    if not category_ids:
+        return []
+    normalized = []
+    seen = set()
+    for raw_value in category_ids:
+        try:
+            category_id = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if category_id <= 0 or category_id in seen:
+            continue
+        seen.add(category_id)
+        normalized.append(category_id)
+    return normalized
+
+
+def _resolve_export_category_ids(
+    db: Database,
+    category_id: int | None = None,
+    category_ids: list[int] | None = None,
+) -> list[int]:
+    selected_ids = _normalize_category_ids(category_ids)
+    if category_id is not None:
+        try:
+            single_category_id = int(category_id)
+        except (TypeError, ValueError):
+            single_category_id = None
+        if single_category_id and single_category_id not in selected_ids:
+            selected_ids.insert(0, single_category_id)
+
+    if not selected_ids:
+        raise ValueError("Категория не найдена")
+
+    available_categories = {
+        int(category["id"]): category for category in db.get_categories()
+    }
+    resolved_ids = [
+        category_id
+        for category_id in selected_ids
+        if category_id in available_categories
+    ]
+    if not resolved_ids:
+        raise ValueError("Категория не найдена")
+    return resolved_ids
 
 
 def _build_start_records(
@@ -123,7 +185,7 @@ def _build_penalty_records(
             "race_id": int(row["race_id"]),
             "user_id": int(row["user_id"]),
             "category_id": int(row["category_id"]),
-            "type": row["type"],
+            "type": _normalize_public_penalty_type(row["type"]),
             "value": float(row["value"] or 0),
             "reason": row["reason"] or "",
             "created_at": _normalize_timestamp_ms(row["created_at"]),
@@ -189,25 +251,82 @@ def _build_result_records(
 
 def build_sync_export_payload(
     db: Database,
-    category_id: int,
+    category_id: int | None = None,
+    category_ids: list[int] | None = None,
     source_device_id: str = DEFAULT_SOURCE_DEVICE_ID,
 ) -> dict[str, Any]:
     race_id = db.get_current_race_id()
     if race_id is None:
         raise ValueError("Активная гонка не найдена")
 
-    category = db.get_category(category_id)
-    if not category:
-        raise ValueError("Категория не найдена")
+    export_category_ids = _resolve_export_category_ids(
+        db, category_id=category_id, category_ids=category_ids
+    )
+
+    available_categories = {
+        int(category["id"]): category for category in db.get_categories()
+    }
+    export_categories = [
+        available_categories[category_id] for category_id in export_category_ids
+    ]
+
+    starts = []
+    pass_events = []
+    penalties = []
+    results = []
+    for category in export_categories:
+        current_category_id = int(category["id"])
+        starts.extend(_build_start_records(db, race_id, current_category_id))
+        pass_events.extend(_build_pass_event_records(db, race_id, current_category_id))
+        penalties.extend(_build_penalty_records(db, race_id, current_category_id))
+        results.extend(_build_result_records(db, race_id, current_category_id))
+
+    starts.sort(key=lambda item: (item["start_time"], item["number"], item["user_id"]))
+    pass_events.sort(
+        key=lambda item: (
+            item["event_time"],
+            item["category_id"],
+            item["user_id"],
+            item["lap"],
+        )
+    )
+    penalties.sort(
+        key=lambda item: (
+            item["created_at"] or 0,
+            item["category_id"],
+            item["user_id"],
+            item["type"],
+        )
+    )
+    results.sort(
+        key=lambda item: (
+            item["category_id"],
+            {"FINISHED": 0, "RACING": 1, "DNS": 2, "DNF": 3, "DSQ": 4}.get(
+                item["status"], 5
+            ),
+            item["place"] is None,
+            item["place"] if item["place"] is not None else 10**9,
+            item["finish_time"] if item["finish_time"] is not None else 10**18,
+            item["user_id"],
+        )
+    )
 
     return {
         "schema_version": SYNC_SCHEMA_VERSION,
         "source_device_id": source_device_id,
         "race_id": race_id,
-        "starts": _build_start_records(db, race_id, category_id),
-        "pass_events": _build_pass_event_records(db, race_id, category_id),
-        "penalties": _build_penalty_records(db, race_id, category_id),
-        "results": _build_result_records(db, race_id, category_id),
+        "category_ids": export_category_ids,
+        "categories": [
+            {
+                "id": int(category["id"]),
+                "name": category["name"],
+            }
+            for category in export_categories
+        ],
+        "starts": starts,
+        "pass_events": pass_events,
+        "penalties": penalties,
+        "results": results,
     }
 
 
@@ -221,6 +340,9 @@ def ingest_sync_payload(
     previous_hash = getattr(db, "_last_sync_import_hash", None)
     is_duplicate = previous_hash == file_hash
     db._last_sync_import_hash = file_hash
+    if not is_duplicate:
+        db._last_sync_participant_starts = list(payload.get("starts", []))
+        db._last_sync_pass_events = list(payload.get("pass_events", []))
     return {
         "ok": True,
         "duplicate": is_duplicate,

@@ -485,12 +485,15 @@
       <a href="/protocol">Протокол</a>
       <a href="/settings">Настройки</a>
       <a href="/judge" class="active">Судья</a>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
-        <span class="sun-icon" aria-hidden="true">☀</span>
-        <span class="moon-icon" aria-hidden="true">☾</span>
-      </button>
-      <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
-      <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
+      <div class="nav-spacer"></div>
+      <div class="topnav-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
+          <span class="sun-icon" aria-hidden="true">☀</span>
+          <span class="moon-icon" aria-hidden="true">☾</span>
+        </button>
+        <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+        <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
+      </div>
     </nav>
 
     <div
@@ -1019,12 +1022,23 @@
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/ui/auth-http.js"></script>
     <script src="/static/js/judge.state.js"></script>
+    <script src="/static/js/judge.dom.js"></script>
     <script src="/static/js/judge.api.js"></script>
+    <script src="/static/js/judge.massStart.js"></script>
     <script src="/static/js/judge.riderSearch.js"></script>
+    <script src="/static/js/judge.startProtocol.scope.js"></script>
+    <script src="/static/js/judge.startProtocol.state.js"></script>
+    <script src="/static/js/judge.startProtocol.queue.js"></script>
+    <script src="/static/js/judge.startProtocol.ui.js"></script>
+    <script src="/static/js/judge.startProtocol.actions.js"></script>
+    <script src="/static/js/judge.startProtocol.runtime.js"></script>
     <script src="/static/js/judge.startProtocol.js"></script>
     <script src="/static/js/judge.riderPanel.js"></script>
     <script src="/static/js/judge.racePolling.js"></script>
     <script src="/static/js/judge.logNotes.js"></script>
+    <script src="/static/js/judge.sync.js"></script>
+    <script src="/static/js/judge.actions.js"></script>
+    <script src="/static/js/judge.bootstrap.js"></script>
     <script src="/static/js/judge.js"></script>
   </body>
 </html>

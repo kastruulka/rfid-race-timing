@@ -15,6 +15,7 @@
     </script>
     <title>Генератор протоколов</title>
     <link rel="stylesheet" href="/static/css/web.css" />
+    <link rel="stylesheet" href="/static/css/auth.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/protocol.css') }}" />
   </head>
   <body>
@@ -25,21 +26,43 @@
       <a href="/protocol" class="active">Протокол</a>
       <a href="/settings">Настройки</a>
       <a href="/judge">Судья</a>
-      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
-        <span class="sun-icon" aria-hidden="true">☀</span>
-        <span class="moon-icon" aria-hidden="true">☾</span>
-      </button>
+      <div class="nav-spacer"></div>
+      <div class="topnav-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">
+          <span class="sun-icon" aria-hidden="true">☀</span>
+          <span class="moon-icon" aria-hidden="true">☾</span>
+        </button>
+        <button class="btn btn-sm btn-login-trigger" id="login-btn" type="button">Войти</button>
+        <button class="btn btn-sm btn-logout hidden" id="logout-btn" type="button">Выйти</button>
+      </div>
     </nav>
 
     <div class="page">
       <div class="sidebar">
         <h2><span>Генератор</span> протоколов</h2>
 
-        <div class="section-title">Категория</div>
+        <div class="section-title">Охват</div>
         <div class="form-row">
+          <label>Режим генерации</label>
+          <select id="p-scope">
+            <option value="single">Одна категория</option>
+            <option value="selected">Выбранные категории</option>
+            <option value="all">Все категории</option>
+          </select>
+        </div>
+        <div class="form-row" id="p-category-single-wrap">
+          <label>Категория</label>
           <select id="p-category">
             <option value="">-- Выберите категорию --</option>
           </select>
+        </div>
+        <div class="form-row hidden" id="p-category-multi-wrap">
+          <label>Выбранные категории</label>
+          <div class="category-pick-toolbar">
+            <button class="btn btn-sm" type="button" id="btn-select-all-categories">Все</button>
+            <button class="btn btn-sm" type="button" id="btn-clear-all-categories">Снять</button>
+          </div>
+          <div class="category-pick-list" id="p-category-multi"></div>
         </div>
 
         <div class="section-title">Метаданные гонки</div>
@@ -123,6 +146,17 @@
     <script src="{{ url_for('static', filename='js/ui/http.js') }}"></script>
     <script src="{{ url_for('static', filename='js/files/download.js') }}"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
     <script src="{{ url_for('static', filename='js/protocol.js') }}"></script>
+    <script>
+      (() => {
+        const authManager = window.createAuthManager({
+          toast: window.showToast,
+          loginButtonId: 'login-btn',
+          logoutButtonId: 'logout-btn',
+        });
+        authManager.checkAuth();
+      })();
+    </script>
   </body>
 </html>

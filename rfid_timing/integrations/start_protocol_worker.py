@@ -89,6 +89,32 @@ class StartProtocolWorker:
         planned_time: float,
         category_id: int,
     ) -> None:
+        current_entry = next(
+            (
+                entry
+                for entry in self._db.get_start_protocol(category_id)
+                if int(entry["id"]) == int(entry_id)
+            ),
+            None,
+        )
+        if current_entry is None:
+            return
+
+        current_status = current_entry.get("status")
+        current_planned_time = current_entry.get("planned_time")
+        if current_status != "STARTING" or int(current_planned_time or 0) != int(
+            planned_time or 0
+        ):
+            logger.info(
+                "protocol worker skipped stale entry category=%s rider=%s entry=%s status=%s planned=%s",
+                category_id,
+                rider_id,
+                entry_id,
+                current_status,
+                current_planned_time,
+            )
+            return
+
         try:
             body, status = actions.action_individual_start(
                 self._engine,
