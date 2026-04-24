@@ -25,9 +25,21 @@ class AppRuntime:
     reader_mgr: ReaderManager
 
 
-def make_event_handler(event_store: EventStore, engine: RaceEngine) -> Callable:
+def make_raw_event_handler(event_store: EventStore, raw_logger: RawLogger) -> Callable:
     def on_new_event(event):
         event_store.add_event(event)
+        raw_logger.log_raw(
+            event.timestamp,
+            event.epc,
+            event.rssi if isinstance(event.rssi, (int, float)) else 0,
+            event.antenna if isinstance(event.antenna, int) else 0,
+        )
+
+    return on_new_event
+
+
+def make_processed_event_handler(engine: RaceEngine) -> Callable:
+    def on_new_event(event):
         engine.on_tag_pass(
             epc=event.epc,
             timestamp=event.timestamp,
@@ -55,7 +67,8 @@ def build_runtime() -> AppRuntime:
 
     reader_mgr = ReaderManager(
         config_state=config_state,
-        on_event=make_event_handler(event_store, engine),
+        on_event=make_processed_event_handler(engine),
+        on_raw_event=make_raw_event_handler(event_store, raw_logger),
         db=db,
     )
 

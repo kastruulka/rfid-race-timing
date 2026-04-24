@@ -84,10 +84,12 @@ class LapService:
             if self.finalize_time_limit_category and result.get("category_id"):
                 self.finalize_time_limit_category(result["category_id"], timestamp_ms)
             logger.info(
-                "#%d %s - skip lap after category time limit (%s sec)",
+                "#%d %s - skip lap after category time limit (%s sec, ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 int((get_time_limit_ms(category) or 0) / 1000),
+                antenna,
+                rssi,
             )
             return None
 
@@ -98,10 +100,12 @@ class LapService:
 
         if last_lap is None and lap_time_ms < self.min_start_to_first_pass_ms:
             logger.info(
-                "#%d %s - skip false first pass %.1f sec after start",
+                "#%d %s - skip false first pass %.1f sec after start (ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 lap_time_ms / 1000.0,
+                antenna,
+                rssi,
             )
             return None
 
@@ -124,19 +128,23 @@ class LapService:
 
         if lap_number == 0:
             logger.info(
-                "#%d %s - warmup lap (%.1f sec)",
+                "#%d %s - warmup lap (%.1f sec, ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 lap_time_ms / 1000.0,
+                antenna,
+                rssi,
             )
         else:
             logger.info(
-                "#%d %s - lap %d/%d (%.1f sec)",
+                "#%d %s - lap %d/%d (%.1f sec, ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 lap_number,
                 total_required,
                 lap_time_ms / 1000.0,
+                antenna,
+                rssi,
             )
 
         lap_data = {
@@ -171,11 +179,13 @@ class LapService:
                 else ""
             )
             logger.info(
-                "#%d %s - FINISH! Total time: %.1f sec%s",
+                "#%d %s - FINISH! Total time: %.1f sec%s (ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 total_time_ms / 1000.0,
                 penalty_info,
+                antenna,
+                rssi,
             )
             self.raw_logger.log_event(
                 "FINISH",
@@ -192,10 +202,12 @@ class LapService:
             lap_data["status"] = "FINISHED"
 
             logger.info(
-                "#%d %s - FINISH by time limit with penalties: %.1f sec",
+                "#%d %s - FINISH by time limit with penalties: %.1f sec (ant=%s, rssi=%s)",
                 rider["number"],
                 rider["last_name"],
                 total_time_ms / 1000.0,
+                antenna,
+                rssi,
             )
             self.raw_logger.log_event(
                 "FINISH",

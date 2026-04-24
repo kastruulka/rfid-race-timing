@@ -20,6 +20,7 @@ class EmulatorReader:
     def __init__(
         self,
         on_event: Callable[[TagEvent], None],
+        on_raw_event: Optional[Callable[[TagEvent], None]] = None,
         epc_list: Optional[list[str]] = None,
         db=None,
         antennas: Optional[List[int]] = None,
@@ -30,6 +31,7 @@ class EmulatorReader:
         self._db = db
         self._antennas = list(antennas or [1, 2, 3, 4])
         self.on_event = on_event
+        self.on_raw_event = on_raw_event
         self._stop_flag = False
         self._thread = None
         self._profiles: Dict[str, Dict] = {}
@@ -108,6 +110,11 @@ class EmulatorReader:
 
     def _on_processor_pass(self, epc: str, timestamp: float, rssi: float, antenna: int):
         self.on_event(make_tag_event(epc, timestamp, round(rssi, 1), antenna))
+
+    def _emit_raw_read(self, epc: str, timestamp: float, rssi: float, antenna: int):
+        if not self.on_raw_event:
+            return
+        self.on_raw_event(make_tag_event(epc, timestamp, round(rssi, 1), antenna))
 
     def _choose_secondary_antenna(self, primary: int) -> int:
         if len(self._antennas) <= 1:
@@ -214,16 +221,15 @@ class EmulatorReader:
                 fade += random.uniform(2.0, 6.0)
             rssi = profile["peak_rssi"] - fade + random.uniform(-2.0, 2.0)
             ts = burst_start + burst_duration * progress
+            self._emit_raw_read(epc, ts, rssi, antenna)
             self.processor.feed(epc, rssi, antenna, timestamp=ts)
 
         if random.random() < 0.08:
             shadow_ts = time.time() - random.uniform(0.02, 0.15)
-            self.processor.feed(
-                epc,
-                profile["peak_rssi"] - random.uniform(10.0, 18.0),
-                self._choose_secondary_antenna(primary),
-                timestamp=shadow_ts,
-            )
+            shadow_ant = self._choose_secondary_antenna(primary)
+            shadow_rssi = profile["peak_rssi"] - random.uniform(10.0, 18.0)
+            self._emit_raw_read(epc, shadow_ts, shadow_rssi, shadow_ant)
+            self.processor.feed(epc, shadow_rssi, shadow_ant, timestamp=shadow_ts)
 
     def _process_due_pass(self, entry: Dict, profile: Dict):
         epc = entry["epc"]
@@ -253,7 +259,10 @@ class EmulatorReader:
             if self._stop_flag:
                 break
             noise = random.uniform(-5.0, 5.0)
-            self.processor.feed(epc, base_rssi + noise, antenna, timestamp=time.time())
+            ts = time.time()
+            rssi = base_rssi + noise
+            self._emit_raw_read(epc, ts, rssi, antenna)
+            self.processor.feed(epc, rssi, antenna, timestamp=ts)
             time.sleep(random.uniform(0.01, 0.05))
 
     def _run_realistic_loop(self):

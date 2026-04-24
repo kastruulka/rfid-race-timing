@@ -24,6 +24,7 @@ class RFIDReader:
         port: int,
         finish_antennas: set[int],
         on_event: Callable[[TagEvent], None],
+        on_raw_event: Optional[Callable[[TagEvent], None]] = None,
         tx_power: float = 30.0,
         antennas: list[int] = None,
         rssi_window_sec: float = 0.5,
@@ -33,6 +34,7 @@ class RFIDReader:
         self.port = port
         self.finish_antennas = finish_antennas
         self.on_event = on_event
+        self.on_raw_event = on_raw_event
         self.tx_power = tx_power
         self.antennas = antennas or [1, 2, 3, 4]
 
@@ -83,14 +85,17 @@ class RFIDReader:
                 epc = str(epc)
 
             ant = tag.get("AntennaID", "N/A")
-            if isinstance(ant, int) and ant not in self.finish_antennas:
-                continue
-
             rssi_raw = tag.get("PeakRSSI", "N/A")
             try:
                 rssi = float(rssi_raw)
             except (ValueError, TypeError):
                 rssi = -100.0
+
+            if self.on_raw_event:
+                self.on_raw_event(make_tag_event(epc, now, rssi, ant))
+
+            if isinstance(ant, int) and ant not in self.finish_antennas:
+                continue
 
             self.processor.feed(epc, rssi, ant, timestamp=now)
 

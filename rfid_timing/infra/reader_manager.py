@@ -11,9 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 class ReaderManager:
-    def __init__(self, config_state: ConfigState, on_event: Callable, db=None):
+    def __init__(
+        self,
+        config_state: ConfigState,
+        on_event: Callable,
+        on_raw_event: Callable | None = None,
+        db=None,
+    ):
         self._config = config_state
         self._on_event = on_event
+        self._on_raw_event = on_raw_event
         self._db = db
         self._reader = None
         self._lock = threading.Lock()
@@ -188,6 +195,7 @@ class ReaderManager:
             )
             self._reader = EmulatorReader(
                 on_event=self._on_event,
+                on_raw_event=self._on_raw_event,
                 db=self._db,
                 antennas=antennas,
                 rssi_window_sec=rssi_window_sec,
@@ -209,6 +217,7 @@ class ReaderManager:
                 port=reader_port,
                 finish_antennas=set(antennas),
                 on_event=self._on_event,
+                on_raw_event=self._on_raw_event,
                 tx_power=tx_power,
                 antennas=antennas,
                 rssi_window_sec=rssi_window_sec,
