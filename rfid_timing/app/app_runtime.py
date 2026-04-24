@@ -39,8 +39,8 @@ def make_event_handler(event_store: EventStore, engine: RaceEngine) -> Callable:
 
 
 def ensure_race_session(db: Database, engine: RaceEngine):
-    if db.get_current_race_id() is None:
-        db.create_race(label="auto")
+    if db.race_repo.get_current_race_id() is None:
+        db.race_repo.create_race(label="auto")
         logger.info("Создана новая пустая гоночная сессия")
 
 
@@ -71,7 +71,7 @@ def build_runtime() -> AppRuntime:
 
 def install_shutdown_handlers(runtime: AppRuntime):
     def shutdown(*_args):
-        print("\nОстановка приложения...")
+        logger.info("Остановка приложения...")
         runtime.reader_mgr.stop()
         runtime.raw_logger.close()
         sys.exit(0)

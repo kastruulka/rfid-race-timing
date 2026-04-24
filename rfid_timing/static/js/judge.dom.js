@@ -116,13 +116,6 @@
     return true;
   };
 
-  function formatCategoryLabel(category) {
-    if (category && category.finish_mode === 'time' && category.time_limit_sec) {
-      return category.name + ' (' + category.time_limit_sec + ' сек)';
-    }
-    return category.name + ' (' + category.laps + ' кр.)';
-  }
-
   function emptyTimersText() {
     return 'Нет запущенных категорий';
   }
@@ -132,7 +125,7 @@
     (Array.isArray(categories) ? categories : []).forEach(function (cat) {
       const option = document.createElement('option');
       option.value = cat.id;
-      option.textContent = formatCategoryLabel(cat);
+      option.textContent = window.formatCategoryLabel(cat);
       page.els.raceCategory.appendChild(option);
     });
   }
@@ -212,8 +205,14 @@
       return;
     }
 
-    const emptyNode = page.els.catTimers.querySelector('[data-empty-timers]');
-    if (emptyNode) emptyNode.remove();
+    Array.from(page.els.catTimers.children).forEach(function (node) {
+      const isManagedEmptyState = node.hasAttribute && node.hasAttribute('data-empty-timers');
+      const isLegacyEmptyState =
+        !node.hasAttribute('data-cat-id') &&
+        node.textContent &&
+        node.textContent.indexOf('Нет запущенных категорий') !== -1;
+      if (isManagedEmptyState || isLegacyEmptyState) node.remove();
+    });
 
     const selectedCatId = page.getCatId();
     const activeIds = new Set(
@@ -230,13 +229,25 @@
       const cid = String(entry[0]);
       const elapsed = entry[1];
       const isClosed = page.state.catTimerClosed[cid] || false;
-      const perfRef = page.state.catTimerPerf[cid];
+      let perfRef = page.state.catTimerPerf[cid];
+      if (!isClosed && (perfRef === null || perfRef === undefined)) {
+        perfRef = performance.now();
+        page.state.catTimerPerf[cid] = perfRef;
+      }
       let displayMs = elapsed;
       if (!isClosed && perfRef) displayMs = elapsed + (performance.now() - perfRef);
 
       const isSelected = cid === String(selectedCatId);
       const catName = page.categoryNames[cid] || 'Кат. ' + cid;
-      const isSpRun = !isClosed && page.startProtocol.isRunning(cid);
+      const hasPendingProtocol =
+        page.startProtocol && typeof page.startProtocol.hasPendingEntries === 'function'
+          ? page.startProtocol.hasPendingEntries([cid])
+          : false;
+      const isProtocolRunning =
+        page.startProtocol && typeof page.startProtocol.isRunning === 'function'
+          ? page.startProtocol.isRunning(cid)
+          : false;
+      const showSpBadge = !isClosed && (hasPendingProtocol || isProtocolRunning);
       const color = isClosed ? 'var(--text-dim)' : isSelected ? 'var(--accent)' : 'var(--green)';
       let row = page.els.catTimers.querySelector('[data-cat-id="' + cid + '"]');
       if (!row) {
@@ -251,7 +262,7 @@
       row._timeEl.textContent = page.fmtMs(displayMs);
       row._timeEl.style.color = color;
       row._statusEl.style.display = isClosed ? '' : 'none';
-      row._badgeEl.style.display = isSpRun ? '' : 'none';
+      row._badgeEl.style.display = showSpBadge ? '' : 'none';
     });
   }
 

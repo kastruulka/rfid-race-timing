@@ -68,7 +68,7 @@ class LapsRepository:
         return True
 
     def recalc_lap_timestamps(self, result_id: int):
-        result = self._db.get_result_by_id(result_id)
+        result = self._db.results_repo.get_result_by_id(result_id)
         if not result:
             return
         laps = self.get_laps(result_id)
@@ -82,11 +82,17 @@ class LapsRepository:
         self._db._commit()
         if result["status"] == "FINISHED" and laps:
             penalty_ms = result.get("penalty_time_ms") or 0
-            self._db.update_result(result_id, finish_time=current_ts + penalty_ms)
+            self._db.results_repo.update_result(
+                result_id, finish_time=current_ts + penalty_ms
+            )
 
     def renumber_laps(self, result_id: int):
-        result = self._db.get_result_by_id(result_id)
-        category = self._db.get_category(result["category_id"]) if result else None
+        result = self._db.results_repo.get_result_by_id(result_id)
+        category = (
+            self._db.categories_repo.get_category(result["category_id"])
+            if result
+            else None
+        )
         has_warmup_lap = (
             True if category is None else bool(category.get("has_warmup_lap", 1))
         )

@@ -16,28 +16,30 @@ class ResultStateService:
         self.db = db
 
     def set_finished(self, result_id: int, finish_time_ms: int) -> None:
-        self.db.update_result(result_id, **build_finished_result_update(finish_time_ms))
+        self.db.results_repo.update_result(
+            result_id, **build_finished_result_update(finish_time_ms)
+        )
 
     def set_racing(self, result_id: int) -> None:
-        self.db.update_result(result_id, **build_racing_result_update())
+        self.db.results_repo.update_result(result_id, **build_racing_result_update())
 
     def set_dnf(self, result_id: int, reason: str) -> None:
-        self.db.update_result(result_id, **build_dnf_result_update(reason))
+        self.db.results_repo.update_result(result_id, **build_dnf_result_update(reason))
 
     def set_dsq(self, result_id: int, reason: str = "") -> None:
-        self.db.update_result(result_id, **build_dsq_result_update(reason))
+        self.db.results_repo.update_result(result_id, **build_dsq_result_update(reason))
 
     def sync_projected_state(self, result_id: int) -> None:
-        result = self.db.get_result_by_id(result_id)
+        result = self.db.results_repo.get_result_by_id(result_id)
         if not result:
             return
 
-        category = self.db.get_category(result.get("category_id"))
-        last_lap = self.db.get_last_lap(result_id)
+        category = self.db.categories_repo.get_category(result.get("category_id"))
+        last_lap = self.db.laps_repo.get_last_lap(result_id)
         derived = derive_result_state(
             result,
             category,
-            laps_done=self.db.count_laps(result_id),
+            laps_done=self.db.laps_repo.count_laps(result_id),
             last_lap_ts=last_lap["timestamp"] if last_lap else None,
         )
 
@@ -48,9 +50,35 @@ class ResultStateService:
         if result.get("status") == "FINISHED" or result.get("finish_time") is not None:
             self.set_racing(result_id)
 
+    def restore_projected_state(self, result_id: int) -> None:
+        result = self.db.results_repo.get_result_by_id(result_id)
+        if not result:
+            return
+
+        category = self.db.categories_repo.get_category(result.get("category_id"))
+        last_lap = self.db.laps_repo.get_last_lap(result_id)
+        projected = dict(result)
+        projected["status"] = "RACING"
+        projected["finish_time"] = None
+
+        derived = derive_result_state(
+            projected,
+            category,
+            laps_done=self.db.laps_repo.count_laps(result_id),
+            last_lap_ts=last_lap["timestamp"] if last_lap else None,
+        )
+
+        if derived["status"] == "FINISHED":
+            self.set_finished(result_id, int(derived["finish_time"]))
+            return
+
+        self.set_racing(result_id)
+
     def assign_places(self, category_id: int) -> int:
         results = []
-        for row in self.db.get_results_with_lap_summary(category_id=category_id):
+        for row in self.db.results_repo.get_results_with_lap_summary(
+            category_id=category_id
+        ):
             enriched = dict(row)
             enriched["finish_mode"] = get_finish_mode(
                 {
@@ -73,9 +101,9 @@ class ResultStateService:
                 result["result_id"] not in finished_ids
                 and result.get("place") is not None
             ):
-                self.db.update_result(result["result_id"], place=None)
+                self.db.results_repo.update_result(result["result_id"], place=None)
 
         for place, result in enumerate(finished, start=1):
-            self.db.update_result(result["result_id"], place=place)
+            self.db.results_repo.update_result(result["result_id"], place=place)
 
         return len(finished)

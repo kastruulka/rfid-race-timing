@@ -50,7 +50,9 @@ class LapService:
 
         category_id = result.get("category_id")
         category_state = (
-            self.db.get_category_state(category_id) if category_id is not None else None
+            self.db.category_state_repo.get_category_state(category_id)
+            if category_id is not None
+            else None
         )
         started_at = (
             category_state.get("started_at")
@@ -68,9 +70,9 @@ class LapService:
         rssi: float = 0,
         antenna: int = 0,
     ) -> Optional[Dict]:
-        current_laps = self.db.count_laps(result["id"])
-        last_lap = self.db.get_last_lap(result["id"])
-        category = self.db.get_category(result["category_id"])
+        current_laps = self.db.laps_repo.count_laps(result["id"])
+        last_lap = self.db.laps_repo.get_last_lap(result["id"])
+        category = self.db.categories_repo.get_category(result["category_id"])
         has_warmup_lap = (
             True if category is None else bool(category.get("has_warmup_lap", 1))
         )
@@ -109,7 +111,7 @@ class LapService:
             lap_number = current_laps + 1
 
         segment_data = json.dumps({str(lap_number): timestamp_ms})
-        self.db.record_lap(
+        self.db.laps_repo.record_lap(
             result_id=result["id"],
             lap_number=lap_number,
             timestamp=timestamp_ms,
@@ -219,10 +221,10 @@ class LapService:
             logger.debug("Unknown tag: %s", epc)
             return
 
-        result = self.db.get_result_by_rider(rider["id"])
+        result = self.db.results_repo.get_result_by_rider(rider["id"])
         if not result or result["status"] != "RACING":
             return
-        if result.get("category_id") and self.db.is_category_closed(
+        if result.get("category_id") and self.db.category_state_repo.is_category_closed(
             result["category_id"]
         ):
             return
@@ -240,14 +242,14 @@ class LapService:
         if timestamp is None:
             timestamp = time.time() * 1000
 
-        rider = self.db.get_rider(rider_id)
+        rider = self.db.riders_repo.get_rider(rider_id)
         if not rider:
             return None
 
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if not result or result["status"] != "RACING":
             return None
-        if result.get("category_id") and self.db.is_category_closed(
+        if result.get("category_id") and self.db.category_state_repo.is_category_closed(
             result["category_id"]
         ):
             return None

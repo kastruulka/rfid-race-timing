@@ -29,10 +29,10 @@ class StartService:
             return False
         if result.get("finish_time") is not None:
             return False
-        if self.db.count_laps(result["id"]) > 0:
+        if self.db.laps_repo.count_laps(result["id"]) > 0:
             return False
         state = (
-            self.db.get_category_state(result.get("category_id"))
+            self.db.category_state_repo.get_category_state(result.get("category_id"))
             if result.get("category_id")
             else None
         )
@@ -65,19 +65,19 @@ class StartService:
     def _validate_mass_start_category(
         self, category_id: int
     ) -> tuple[Dict[str, Any], list[Dict]]:
-        category = self.db.get_category(category_id)
+        category = self.db.categories_repo.get_category(category_id)
         if not category:
             raise ValueError(f"Категория {category_id} не найдена")
-        if self.db.is_category_closed(category_id):
+        if self.db.category_state_repo.is_category_closed(category_id):
             raise ValueError(f"Категория '{category['name']}' уже завершена")
-        category_state = self.db.get_category_state(category_id)
+        category_state = self.db.category_state_repo.get_category_state(category_id)
         if category_state and category_state.get("started_at") is not None:
             raise ValueError(f"Категория '{category['name']}' уже запущена")
 
-        riders = self.db.get_riders(category_id=category_id)
+        riders = self.db.riders_repo.get_riders(category_id=category_id)
         available_to_start = 0
         for rider in riders:
-            existing = self.db.get_result_by_rider(rider["id"])
+            existing = self.db.results_repo.get_result_by_rider(rider["id"])
             if existing and not self.is_prestart_result(
                 existing, category_id=category_id
             ):
@@ -102,9 +102,9 @@ class StartService:
 
         started = 0
         for rider in riders:
-            existing = self.db.get_result_by_rider(rider["id"])
+            existing = self.db.results_repo.get_result_by_rider(rider["id"])
             if existing and self.is_prestart_result(existing, category_id=category_id):
-                self.db.update_result(
+                self.db.results_repo.update_result(
                     existing["id"],
                     category_id=category_id,
                     start_time=start_time,
@@ -117,7 +117,7 @@ class StartService:
                 continue
             if existing:
                 continue
-            self.db.create_result(
+            self.db.results_repo.create_result(
                 rider_id=rider["id"],
                 category_id=category_id,
                 start_time=start_time,
@@ -125,7 +125,7 @@ class StartService:
             )
             started += 1
 
-        self.db.set_category_started(category_id, start_time)
+        self.db.category_state_repo.set_category_started(category_id, start_time)
         self.raw_logger.log_event("MASS_START", details=f"cat={category['name']}")
 
         info = {
@@ -187,19 +187,21 @@ class StartService:
         if start_time is None:
             start_time = time.time() * 1000
 
-        rider = self.db.get_rider(rider_id)
+        rider = self.db.riders_repo.get_rider(rider_id)
         if not rider:
             raise ValueError(f"Участник {rider_id} не найден")
 
         category_id = rider["category_id"]
-        category = self.db.get_category(category_id) if category_id else None
-        if category_id and self.db.is_category_closed(category_id):
+        category = (
+            self.db.categories_repo.get_category(category_id) if category_id else None
+        )
+        if category_id and self.db.category_state_repo.is_category_closed(category_id):
             raise ValueError(
                 f"Категория '{category['name'] if category else category_id}' уже завершена"
             )
 
         if category_id:
-            category_state = self.db.get_category_state(category_id)
+            category_state = self.db.category_state_repo.get_category_state(category_id)
             started_at = (
                 category_state.get("started_at")
                 if category_state and category_state.get("started_at") is not None
@@ -214,11 +216,11 @@ class StartService:
                     f"Лимит времени для категории '{category['name'] if category else category_id}' уже истек"
                 )
 
-        existing = self.db.get_result_by_rider(rider_id)
+        existing = self.db.results_repo.get_result_by_rider(rider_id)
         if existing and existing["status"] == "RACING":
             if not self.is_prestart_result(existing, category_id=category_id):
                 raise ValueError(f"Участник #{rider['number']} уже в гонке")
-            self.db.update_result(
+            self.db.results_repo.update_result(
                 existing["id"],
                 category_id=category_id,
                 start_time=start_time,
@@ -228,7 +230,7 @@ class StartService:
                 dnf_reason="",
             )
         elif existing and self.is_prestart_result(existing, category_id=category_id):
-            self.db.update_result(
+            self.db.results_repo.update_result(
                 existing["id"],
                 category_id=category_id,
                 start_time=start_time,
@@ -238,14 +240,14 @@ class StartService:
                 dnf_reason="",
             )
         else:
-            self.db.create_result(
+            self.db.results_repo.create_result(
                 rider_id=rider_id,
                 category_id=category_id,
                 start_time=start_time,
                 status="RACING",
             )
         if category_id:
-            self.db.set_category_started(category_id, start_time)
+            self.db.category_state_repo.set_category_started(category_id, start_time)
 
         self.raw_logger.log_event(
             "INDIVIDUAL_START",

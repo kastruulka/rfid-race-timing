@@ -8,7 +8,7 @@ class CategoryResetService:
             return {"error": "no race"}
 
         with self._db._transaction():
-            deleted_notes = self._db.delete_notes_by_category(
+            deleted_notes = self._db.notes_repo.delete_notes_by_category(
                 category_id=category_id,
                 race_id=race_id,
             )

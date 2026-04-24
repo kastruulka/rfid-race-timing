@@ -23,7 +23,7 @@ def register_start_list_rider_routes(
     @app.route("/api/riders", methods=["GET"])
     def api_riders_list():
         cat_id = request.args.get("category_id", type=int)
-        riders = db.get_riders_with_category(category_id=cat_id)
+        riders = db.riders_repo.get_riders_with_category(category_id=cat_id)
         return jsonify(riders)
 
     @app.route("/api/riders", methods=["POST"])
@@ -37,20 +37,20 @@ def register_start_list_rider_routes(
             return err
         number = payload["number"]
 
-        existing = db.get_rider_by_number(number)
+        existing = db.riders_repo.get_rider_by_number(number)
         if existing:
             return jsonify({"error": f"Номер {number} уже занят"}), 400
 
         epc = payload["epc"]
         if epc:
-            epc_existing = db.get_rider_by_epc(epc)
+            epc_existing = db.riders_repo.get_rider_by_epc(epc)
             if epc_existing:
                 return (
                     jsonify({"error": f"EPC уже привязан к #{epc_existing['number']}"}),
                     400,
                 )
 
-        rid = db.add_rider(**payload)
+        rid = db.riders_repo.add_rider(**payload)
 
         if engine:
             engine.reload_epc_map()
@@ -67,19 +67,19 @@ def register_start_list_rider_routes(
         if err:
             return err
 
-        existing = db.get_rider_by_number(payload["number"])
+        existing = db.riders_repo.get_rider_by_number(payload["number"])
         if existing and existing["id"] != rid:
             return jsonify({"error": f"Номер {payload['number']} уже занят"}), 400
 
         if payload["epc"]:
-            epc_existing = db.get_rider_by_epc(payload["epc"])
+            epc_existing = db.riders_repo.get_rider_by_epc(payload["epc"])
             if epc_existing and epc_existing["id"] != rid:
                 return (
                     jsonify({"error": f"EPC уже привязан к #{epc_existing['number']}"}),
                     400,
                 )
 
-        db.update_rider(rid, **payload)
+        db.riders_repo.update_rider(rid, **payload)
 
         if engine:
             engine.reload_epc_map()
@@ -89,7 +89,7 @@ def register_start_list_rider_routes(
     @app.route("/api/riders/<int:rid>", methods=["DELETE"])
     @require_admin
     def api_riders_delete(rid):
-        ok = db.delete_rider(rid)
+        ok = db.riders_repo.delete_rider(rid)
         if not ok:
             return jsonify({"error": "Не удалось удалить участника"}), 400
         if engine:
@@ -98,9 +98,9 @@ def register_start_list_rider_routes(
 
     @app.route("/api/riders/export")
     def api_riders_export():
-        riders = db.get_riders_with_category()
+        riders = db.riders_repo.get_riders_with_category()
         categories_by_id = {
-            category["id"]: category for category in db.get_categories()
+            category["id"]: category for category in db.categories_repo.get_categories()
         }
         output = io.StringIO()
         writer = csv.writer(output)

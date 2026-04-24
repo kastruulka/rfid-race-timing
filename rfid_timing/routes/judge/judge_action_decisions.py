@@ -23,7 +23,7 @@ def register_judge_decision_routes(
 ):
     @app.route("/api/judge/rider-status/<int:rid>", methods=["GET"])
     def api_judge_rider_status(rid):
-        result = db.get_result_by_rider(rid)
+        result = db.results_repo.get_result_by_rider(rid)
         if not result:
             return jsonify({"status": "DNS", "total_time_ms": None, "dnf_reason": ""})
         total_time_ms = None
@@ -160,7 +160,7 @@ def register_judge_decision_routes(
     @app.route("/api/judge/log", methods=["GET"])
     def api_judge_log():
         try:
-            return jsonify(db.get_penalties_by_race())
+            return jsonify(db.penalties_repo.get_penalties_by_race())
         except Exception as e:
             logger.exception("judge_log failed")
             return safe_error(e, "judge_log")

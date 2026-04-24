@@ -19,6 +19,8 @@
         startedSet: new Set(),
         pausedDelayMs: null,
         categoryIds: (categoryIds || []).map(String),
+        statusSyncInFlight: false,
+        lastOverdueSyncAt: 0,
       };
     }
     if (Array.isArray(categoryIds) && categoryIds.length) {

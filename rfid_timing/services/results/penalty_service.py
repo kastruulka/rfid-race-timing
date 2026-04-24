@@ -30,7 +30,7 @@ class PenaltyService:
         return rider["number"] if rider else fallback
 
     def _notify_log(self, event: str, rider_id: int, **extra):
-        rider = self.db.get_rider(rider_id)
+        rider = self.db.riders_repo.get_rider(rider_id)
         num = self._rider_number(rider, rider_id)
         epc = self._rider_epc(rider)
         details_parts = [f"rider={num}"]
@@ -42,7 +42,9 @@ class PenaltyService:
         if not result:
             return False
         category_id = result.get("category_id")
-        return bool(category_id and self.db.is_category_closed(category_id))
+        return bool(
+            category_id and self.db.category_state_repo.is_category_closed(category_id)
+        )
 
     def _sync_finish_state(self, result_id: int):
         self.result_states.sync_projected_state(result_id)
@@ -54,7 +56,7 @@ class PenaltyService:
         reason_text: str = "",
         on_status_change=None,
     ) -> bool:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if self._is_result_category_closed(result):
             return False
         if not result or result["status"] not in ("RACING", "DNS", "FINISHED"):
@@ -62,7 +64,7 @@ class PenaltyService:
 
         reason = DNF_REASONS.get(reason_code, reason_text or reason_code)
         self.result_states.set_dnf(result["id"], reason)
-        self.db.add_penalty(result["id"], "DNF", value=0, reason=reason)
+        self.db.penalties_repo.add_penalty(result["id"], "DNF", value=0, reason=reason)
 
         rider, num = self._notify_log("DNF", rider_id, reason=reason)
         logger.info("#%d — DNF: %s", num, reason)
@@ -84,14 +86,14 @@ class PenaltyService:
         reason: str = "",
         on_status_change=None,
     ) -> bool:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if self._is_result_category_closed(result):
             return False
         if not result:
             return False
 
         self.result_states.set_dsq(result["id"], reason)
-        self.db.add_penalty(result["id"], "DSQ", reason=reason)
+        self.db.penalties_repo.add_penalty(result["id"], "DSQ", reason=reason)
 
         rider, num = self._notify_log("DSQ", rider_id, reason=reason)
         logger.info("#%d — DSQ: %s", num, reason)
@@ -110,15 +112,15 @@ class PenaltyService:
     def add_time_penalty(
         self, rider_id: int, seconds: float, reason: str = ""
     ) -> Optional[Dict]:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if self._is_result_category_closed(result):
             return None
         if not result:
             return None
-        pid = self.db.add_penalty(
+        pid = self.db.penalties_repo.add_penalty(
             result["id"], "TIME_PENALTY", value=seconds, reason=reason
         )
-        self.db.recalc_penalties(result["id"])
+        self.db.penalties_repo.recalc_penalties(result["id"])
         self._sync_finish_state(result["id"])
 
         _, num = self._notify_log("TIME_PENALTY", rider_id, sec=seconds, reason=reason)
@@ -128,13 +130,15 @@ class PenaltyService:
     def add_extra_lap(
         self, rider_id: int, laps: int = 1, reason: str = ""
     ) -> Optional[Dict]:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if self._is_result_category_closed(result):
             return None
         if not result:
             return None
-        pid = self.db.add_penalty(result["id"], "EXTRA_LAP", value=laps, reason=reason)
-        self.db.recalc_penalties(result["id"])
+        pid = self.db.penalties_repo.add_penalty(
+            result["id"], "EXTRA_LAP", value=laps, reason=reason
+        )
+        self.db.penalties_repo.recalc_penalties(result["id"])
         self._sync_finish_state(result["id"])
 
         _, num = self._notify_log("EXTRA_LAP", rider_id, laps=laps, reason=reason)
@@ -142,36 +146,41 @@ class PenaltyService:
         return {"id": pid, "type": "EXTRA_LAP", "value": laps, "reason": reason}
 
     def add_warning(self, rider_id: int, reason: str = "") -> Optional[Dict]:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if self._is_result_category_closed(result):
             return None
         if not result:
             return None
-        pid = self.db.add_penalty(result["id"], "WARNING", value=0, reason=reason)
+        pid = self.db.penalties_repo.add_penalty(
+            result["id"], "WARNING", value=0, reason=reason
+        )
 
         _, num = self._notify_log("WARNING", rider_id, reason=reason)
         logger.info("#%d — предупреждение: %s", num, reason)
         return {"id": pid, "type": "WARNING", "value": 0, "reason": reason}
 
     def remove_penalty(self, penalty_id: int) -> bool:
-        penalty = self.db.get_penalty_by_id(penalty_id)
+        penalty = self.db.penalties_repo.get_penalty_by_id(penalty_id)
         if not penalty:
             return False
 
         result_id = penalty["result_id"]
-        result = self.db.get_result_by_id(result_id)
+        result = self.db.results_repo.get_result_by_id(result_id)
         if self._is_result_category_closed(result):
             return False
         penalty_type = penalty["type"]
 
-        self.db.delete_penalty(penalty_id)
-        self.db.recalc_penalties(result_id)
-        self._sync_finish_state(result_id)
+        self.db.penalties_repo.delete_penalty(penalty_id)
+        self.db.penalties_repo.recalc_penalties(result_id)
 
         if penalty_type in ("DNF", "DSQ"):
-            result = self.db.get_result_by_id(result_id)
-            if result and result["status"] == penalty_type:
-                self.result_states.set_racing(result_id)
+            self.result_states.restore_projected_state(result_id)
+        else:
+            self._sync_finish_state(result_id)
+
+        refreshed_result = self.db.results_repo.get_result_by_id(result_id)
+        if refreshed_result and refreshed_result.get("category_id"):
+            self.result_states.assign_places(refreshed_result["category_id"])
 
         logger.info(
             "Штраф #%d (%s) удалён, пересчёт result #%d",
@@ -182,7 +191,7 @@ class PenaltyService:
         return True
 
     def get_rider_penalties(self, rider_id: int) -> list:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if not result:
             return []
-        return self.db.get_penalties(result["id"])
+        return self.db.penalties_repo.get_penalties(result["id"])

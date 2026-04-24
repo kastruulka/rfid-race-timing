@@ -166,7 +166,7 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
         return result
 
     cat_cache: Dict[str, Dict] = {}
-    for category in db.get_categories():
+    for category in db.categories_repo.get_categories():
         cat_cache[category["name"].lower().strip()] = dict(category)
 
     for i, row in enumerate(reader, start=2):
@@ -198,7 +198,7 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
             result.skipped += 1
             continue
 
-        if db.get_rider_by_number(number):
+        if db.riders_repo.get_rider_by_number(number):
             result.warnings.append(f"Строка {i}: номер {number} уже есть")
             result.skipped += 1
             continue
@@ -306,7 +306,7 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
                     else:
                         time_limit_sec = 3600
 
-                cat_id = db.add_category(
+                cat_id = db.categories_repo.add_category(
                     name=cat_name,
                     laps=laps,
                     distance_km=distance_km,
@@ -314,16 +314,16 @@ def import_riders(db: Database, csv_text: str) -> ImportResult:
                     finish_mode=finish_mode,
                     time_limit_sec=time_limit_sec,
                 )
-                category = db.get_category(cat_id)
+                category = db.categories_repo.get_category(cat_id)
                 cat_cache[cat_key] = dict(category)
             else:
                 cat_id = category["id"]
 
-        if epc and db.get_rider_by_epc(epc):
+        if epc and db.riders_repo.get_rider_by_epc(epc):
             result.warnings.append(f"Строка {i}: EPC '{epc}' уже привязан - пропущен")
             epc = None
 
-        db.add_rider(
+        db.riders_repo.add_rider(
             number=number,
             last_name=last_name,
             first_name=first_name,

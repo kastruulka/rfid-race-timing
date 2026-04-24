@@ -69,7 +69,8 @@ def _resolve_export_category_ids(
         raise ValueError("Категория не найдена")
 
     available_categories = {
-        int(category["id"]): category for category in db.get_categories()
+        int(category["id"]): category
+        for category in db.categories_repo.get_categories()
     }
     resolved_ids = [
         category_id
@@ -255,7 +256,7 @@ def build_sync_export_payload(
     category_ids: list[int] | None = None,
     source_device_id: str = DEFAULT_SOURCE_DEVICE_ID,
 ) -> dict[str, Any]:
-    race_id = db.get_current_race_id()
+    race_id = db.race_repo.get_current_race_id()
     if race_id is None:
         raise ValueError("Активная гонка не найдена")
 
@@ -264,7 +265,8 @@ def build_sync_export_payload(
     )
 
     available_categories = {
-        int(category["id"]): category for category in db.get_categories()
+        int(category["id"]): category
+        for category in db.categories_repo.get_categories()
     }
     export_categories = [
         available_categories[category_id] for category_id in export_category_ids
@@ -337,12 +339,16 @@ def ingest_sync_payload(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     file_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-    previous_hash = getattr(db, "_last_sync_import_hash", None)
+    previous_hash = db.sync_read_repo.get_last_import_hash()
     is_duplicate = previous_hash == file_hash
-    db._last_sync_import_hash = file_hash
     if not is_duplicate:
-        db._last_sync_participant_starts = list(payload.get("starts", []))
-        db._last_sync_pass_events = list(payload.get("pass_events", []))
+        db.sync_write_repo.save_import_snapshot(
+            file_hash=file_hash,
+            participant_starts=list(payload.get("starts", [])),
+            pass_events=list(payload.get("pass_events", [])),
+        )
+    else:
+        db.sync_write_repo.set_last_import_hash(file_hash)
     return {
         "ok": True,
         "duplicate": is_duplicate,

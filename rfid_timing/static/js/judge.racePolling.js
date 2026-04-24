@@ -31,15 +31,18 @@
     return catId ? [catId] : [];
   }
 
-  async function syncProtocolStatus(catId, protocolTargetIds) {
+  function syncProtocolStatus(catId, protocolTargetIds) {
     if (page.state.startMode === 'individual' && protocolTargetIds.length) {
-      await page.startProtocol.syncStatus(protocolTargetIds, false);
+      Promise.resolve(page.startProtocol.syncStatus(protocolTargetIds, false)).catch(function () {
+        // Ignore protocol status sync failures so race-state polling keeps running.
+      });
       return;
     }
     if (!catId) page.startProtocol.updateUI();
   }
 
   async function loadRaceStatus() {
+    startTimerTick();
     if (page.state.raceStatusRequestInFlight) {
       page.state.raceStatusReloadRequested = true;
       return;
@@ -59,7 +62,7 @@
       page.dom.updateCategoryTimers();
 
       if (!catId) {
-        await syncProtocolStatus(catId, protocolTargetIds);
+        syncProtocolStatus(catId, protocolTargetIds);
         page.dom.applyEmptyRaceStatusView();
         return;
       }
@@ -70,7 +73,7 @@
         lifecycle: raceView.lifecycle,
         protocolTargetIds: protocolTargetIds,
       });
-      await syncProtocolStatus(catId, protocolTargetIds);
+      syncProtocolStatus(catId, protocolTargetIds);
     } catch {
       // ignore
     } finally {

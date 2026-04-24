@@ -1,6 +1,22 @@
 (function () {
   const page = window.JudgePage || (window.JudgePage = {});
 
+  function getStoredProtocolInterval(key) {
+    if (!key) return null;
+    const storageKey = 'sp_interval_' + key;
+    try {
+      const localValue = localStorage.getItem(storageKey);
+      if (localValue) return localValue;
+    } catch {
+      // Ignore storage read failures.
+    }
+    try {
+      return sessionStorage.getItem(storageKey);
+    } catch {
+      return null;
+    }
+  }
+
   async function syncStatus(params, targetOrCategoryId, silent) {
     let target = targetOrCategoryId;
     if (!target || typeof target !== 'object' || Array.isArray(target)) {
@@ -16,6 +32,9 @@
       };
     }
     if (!target.key) {
+      if (page.startProtocol && typeof page.startProtocol.ensureCountdownTick === 'function') {
+        page.startProtocol.ensureCountdownTick();
+      }
       params.updateUI();
       return;
     }
@@ -23,12 +42,17 @@
     const data = page.getResponseData(await page.api.getStartProtocolStatus(target.payload));
     const state = params.getState(target.key, target.categoryIds);
     const prevStarted = new Set(state.startedSet || []);
+    const nowMs = Date.now();
+    const perfNow = performance.now();
 
     if (!data || (!data.running && !Array.isArray(data.planned))) {
       state.running = false;
       state.planned = null;
       state.startedSet = new Set();
       params.saveAllStates();
+      if (page.startProtocol && typeof page.startProtocol.ensureCountdownTick === 'function') {
+        page.startProtocol.ensureCountdownTick();
+      }
       params.renderList();
       params.updateUI();
       return;
@@ -65,6 +89,24 @@
 
     if (state.running) state.pausedDelayMs = null;
 
+    state.planned.forEach(function (entry) {
+      if (entry.status !== 'STARTED') return;
+      const categoryId = String(entry.category_id || '');
+      const actualTime = entry.actual_time || entry.planned_time || nowMs;
+      if (!categoryId) return;
+      const needsTimerBackfill =
+        page.state.catTimerElapsed[categoryId] === undefined ||
+        page.state.catTimerElapsed[categoryId] === null;
+      const isNewStartedRider = !prevStarted.has(entry.rider_id);
+
+      if (!needsTimerBackfill && !isNewStartedRider) return;
+
+      page.setCategoryLifecycleOverride(categoryId, { started: true, closed: false });
+      page.state.catTimerElapsed[categoryId] = Math.max(0, nowMs - actualTime);
+      page.state.catTimerPerf[categoryId] = perfNow;
+      page.state.catTimerClosed[categoryId] = false;
+    });
+
     if (!silent) {
       state.planned.forEach(function (entry) {
         if (entry.status === 'STARTED' && !prevStarted.has(entry.rider_id)) {
@@ -74,6 +116,12 @@
     }
 
     params.saveAllStates();
+    if (page.startProtocol && typeof page.startProtocol.ensureCountdownTick === 'function') {
+      page.startProtocol.ensureCountdownTick();
+    }
+    if (page.dom && typeof page.dom.updateCategoryTimers === 'function') {
+      page.dom.updateCategoryTimers();
+    }
     params.renderList();
     params.updateUI();
   }
@@ -105,6 +153,9 @@
       : [];
 
     await params.syncStatus(target, true);
+    if (page.startProtocol && typeof page.startProtocol.ensureCountdownTick === 'function') {
+      page.startProtocol.ensureCountdownTick();
+    }
     params.renderList();
   }
 
@@ -185,7 +236,7 @@
       page.syncCurrentCategoryLifecycle(page.getCatId());
     }
     if (target.key) {
-      const saved = sessionStorage.getItem('sp_interval_' + target.key);
+      const saved = getStoredProtocolInterval(target.key);
       if (saved) page.els.spInterval.value = saved;
     } else {
       page.state.spEntries = [];

@@ -73,6 +73,6 @@ class PenaltiesRepository:
                 total_time_ms += int(penalty["value"] * 1000)
             elif penalty["type"] == "EXTRA_LAP":
                 total_extra_laps += int(penalty["value"])
-        self._db.update_result(
+        self._db.results_repo.update_result(
             result_id, penalty_time_ms=total_time_ms, extra_laps=total_extra_laps
         )

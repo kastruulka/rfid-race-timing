@@ -526,7 +526,10 @@
         <div class="cat-timers-card">
           <div class="card-title" style="color: var(--green)">Таймеры категорий</div>
           <div id="cat-timers">
-            <div style="font-size: 11px; color: var(--text-dim); padding: 4px 0">
+            <div
+              data-empty-timers="true"
+              style="font-size: 11px; color: var(--text-dim); padding: 4px 0"
+            >
               Нет запущенных категорий
             </div>
           </div>
@@ -1018,6 +1021,7 @@
     <script src="/static/js/ui/toast.js"></script>
     <script src="/static/js/ui/http.js"></script>
     <script src="/static/js/ui/page-hydration.js"></script>
+    <script src="/static/js/categoryLabel.js"></script>
     <script src="/static/js/theme.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/ui/auth-http.js"></script>
@@ -1037,6 +1041,10 @@
     <script src="/static/js/judge.racePolling.js"></script>
     <script src="/static/js/judge.logNotes.js"></script>
     <script src="/static/js/judge.sync.js"></script>
+    <script src="/static/js/judge.actions.helpers.js"></script>
+    <script src="/static/js/judge.actions.rider.js"></script>
+    <script src="/static/js/judge.actions.race.js"></script>
+    <script src="/static/js/judge.actions.bind.js"></script>
     <script src="/static/js/judge.actions.js"></script>
     <script src="/static/js/judge.bootstrap.js"></script>
     <script src="/static/js/judge.js"></script>

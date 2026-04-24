@@ -15,24 +15,24 @@ def build_race_state(
     category_id: int = None,
 ) -> dict:
     now_ms = int(time.time() * 1000)
-    categories = db.get_categories()
-    race_closed = db.is_race_closed()
+    categories = db.categories_repo.get_categories()
+    race_closed = db.race_repo.is_race_closed()
 
     category_states = _build_category_states(db, now_ms)
 
-    start_time_ms = db.get_earliest_start_time()
+    start_time_ms = db.race_repo.get_earliest_start_time()
 
     all_results = _build_results(db, now_ms, category_id)
 
     feed = _build_feed(db, category_id)
 
-    status = db.get_status_counts(category_id=category_id)
+    status = db.results_repo.get_status_counts(category_id=category_id)
 
     cat_closed = False
     cat_started = False
     if category_id:
-        cat_closed = db.is_category_closed(category_id)
-        cs = db.get_category_state(category_id)
+        cat_closed = db.category_state_repo.is_category_closed(category_id)
+        cs = db.category_state_repo.get_category_state(category_id)
         cat_started = cs is not None and cs.get("started_at") is not None
 
     return {
@@ -59,7 +59,7 @@ def build_race_state(
 
 def _build_category_states(db: Database, now_ms: int) -> dict:
     states = {}
-    for cs in db.get_all_category_states():
+    for cs in db.category_state_repo.get_all_category_states():
         cid = cs["category_id"]
         started = cs.get("started_at")
         closed = cs.get("closed_at")
@@ -82,9 +82,10 @@ def _build_results(
     now_ms: int,
     category_id: int = None,
 ) -> list:
-    rows = db.get_results_with_lap_summary(category_id=category_id)
+    rows = db.results_repo.get_results_with_lap_summary(category_id=category_id)
     category_states = {
-        state["category_id"]: state for state in db.get_all_category_states()
+        state["category_id"]: state
+        for state in db.category_state_repo.get_all_category_states()
     }
 
     all_results = []
@@ -167,7 +168,7 @@ def _build_results(
 
 def _build_feed(db: Database, category_id: int = None) -> list:
     feed = []
-    for item in db.get_feed_history(limit=50, category_id=category_id):
+    for item in db.feed_repo.get_feed_history(limit=50, category_id=category_id):
         ts_sec = item["timestamp"] / 1000.0
         lap_number = item["lap_number"]
         finish_mode = get_finish_mode(item)

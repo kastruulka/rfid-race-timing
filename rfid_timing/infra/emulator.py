@@ -57,7 +57,7 @@ class EmulatorReader:
 
     def _get_epc_list(self) -> list[str]:
         if self._db:
-            epc_map = self._db.get_epc_map()
+            epc_map = self._db.riders_repo.get_epc_map()
             if epc_map:
                 return list(epc_map.keys())
         return list(self._static_epc_list)
@@ -66,11 +66,11 @@ class EmulatorReader:
         if not self._db:
             return []
 
-        race_id = self._db.get_current_race_id()
+        race_id = self._db.race_repo.get_current_race_id()
         if race_id is None:
             return []
 
-        epc_map = self._db.get_epc_map()
+        epc_map = self._db.riders_repo.get_epc_map()
         if not epc_map:
             return []
 
@@ -80,14 +80,16 @@ class EmulatorReader:
             rider_data["epc"] = epc
             riders_by_id[rider_data["id"]] = rider_data
 
-        categories = {c["id"]: c for c in self._db.get_categories()}
+        categories = {c["id"]: c for c in self._db.categories_repo.get_categories()}
         active_entries: List[Dict] = []
 
         for category_id, category in categories.items():
-            if self._db.is_category_closed(category_id, race_id):
+            if self._db.category_state_repo.is_category_closed(category_id, race_id):
                 continue
 
-            for result in self._db.get_results_by_category(category_id, race_id):
+            for result in self._db.results_repo.get_results_by_category(
+                category_id, race_id
+            ):
                 if result.get("status") != "RACING" or not result.get("start_time"):
                     continue
                 rider = riders_by_id.get(result["rider_id"])

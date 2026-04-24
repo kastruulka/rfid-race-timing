@@ -95,7 +95,7 @@ def register_judge_runtime_routes(
         finish_time_ms = data.get("finish_time_ms")
         if finish_time_ms is None:
             return jsonify({"error": "Участник или время не указаны"}), 400
-        result = db.get_result_by_rider(rid)
+        result = db.results_repo.get_result_by_rider(rid)
         if not result or result["status"] != "FINISHED":
             return jsonify({"error": "Участник не FINISHED"}), 400
         start = result.get("start_time") or 0
@@ -115,15 +115,15 @@ def register_judge_runtime_routes(
 
     @app.route("/api/judge/rider-laps/<int:rid>", methods=["GET"])
     def api_judge_rider_laps(rid):
-        result = db.get_result_by_rider(rid)
+        result = db.results_repo.get_result_by_rider(rid)
         if not result:
             return jsonify([])
-        return jsonify(db.get_laps(result["id"]))
+        return jsonify(db.laps_repo.get_laps(result["id"]))
 
     @app.route("/api/judge/lap/<int:lap_id>", methods=["PUT"])
     @require_admin
     def api_judge_update_lap(lap_id):
-        lap = db.get_lap_by_id(lap_id)
+        lap = db.laps_repo.get_lap_by_id(lap_id)
         if not lap:
             return jsonify({"error": "Круг не найден"}), 404
         err = check_lap_category_not_closed(db, lap)
@@ -135,10 +135,12 @@ def register_judge_runtime_routes(
         lap_time_ms = data.get("lap_time_ms")
         if lap_time_ms is None:
             return jsonify({"error": "Время не указано"}), 400
-        result = db.get_result_by_id(lap["result_id"])
-        category = db.get_category(result["category_id"]) if result else None
+        result = db.results_repo.get_result_by_id(lap["result_id"])
+        category = (
+            db.categories_repo.get_category(result["category_id"]) if result else None
+        )
         if category and is_time_limit_mode(category):
-            laps = db.get_laps(lap["result_id"])
+            laps = db.laps_repo.get_laps(lap["result_id"])
             candidate_times = []
             for current_lap in laps:
                 if current_lap["id"] == lap_id:
@@ -154,8 +156,8 @@ def register_judge_runtime_routes(
                     ),
                     400,
                 )
-        db.update_lap(lap_id, lap_time=int(lap_time_ms), source="EDITED")
-        db.recalc_lap_timestamps(lap["result_id"])
+        db.laps_repo.update_lap(lap_id, lap_time=int(lap_time_ms), source="EDITED")
+        db.laps_repo.recalc_lap_timestamps(lap["result_id"])
         if result:
             result_states.sync_projected_state(result["id"])
             if result.get("category_id"):
@@ -165,15 +167,15 @@ def register_judge_runtime_routes(
     @app.route("/api/judge/lap/<int:lap_id>", methods=["DELETE"])
     @require_admin
     def api_judge_delete_lap(lap_id):
-        lap = db.get_lap_by_id(lap_id)
+        lap = db.laps_repo.get_lap_by_id(lap_id)
         if not lap:
             return jsonify({"error": "Круг не найден"}), 404
         err = check_lap_category_not_closed(db, lap)
         if err:
             return err
-        result = db.get_result_by_id(lap["result_id"])
-        db.delete_lap(lap_id)
-        db.renumber_laps(lap["result_id"])
+        result = db.results_repo.get_result_by_id(lap["result_id"])
+        db.laps_repo.delete_lap(lap_id)
+        db.laps_repo.renumber_laps(lap["result_id"])
         if result:
             result_states.sync_projected_state(result["id"])
             if result.get("category_id"):
@@ -192,9 +194,9 @@ def register_judge_runtime_routes(
         rid, err = require_int(data, "rider_id", "Участник не выбран")
         if err:
             return err
-        rider = db.get_rider(rid)
+        rider = db.riders_repo.get_rider(rid)
         if rider and rider.get("category_id"):
-            if db.is_category_closed(rider["category_id"]):
+            if db.category_state_repo.is_category_closed(rider["category_id"]):
                 return jsonify({"error": "Категория закрыта"}), 400
         body, status = actions.action_manual_lap(engine, rid)
         return jsonify(body), status
@@ -202,7 +204,7 @@ def register_judge_runtime_routes(
     @app.route("/api/judge/notes", methods=["GET"])
     def api_judge_notes_list():
         try:
-            return jsonify(db.get_notes())
+            return jsonify(db.notes_repo.get_notes())
         except Exception as e:
             logger.exception("judge_notes_list failed")
             return safe_error(e, "judge_notes_list")
@@ -217,11 +219,11 @@ def register_judge_runtime_routes(
         if not text:
             return jsonify({"error": "Текст заметки пуст"}), 400
         rid = data.get("rider_id")
-        nid = db.add_note(text=text, rider_id=int(rid) if rid else None)
+        nid = db.notes_repo.add_note(text=text, rider_id=int(rid) if rid else None)
         return jsonify({"ok": True, "id": nid})
 
     @app.route("/api/judge/notes/<int:nid>", methods=["DELETE"])
     @require_admin
     def api_judge_notes_delete(nid):
-        db.delete_note(nid)
+        db.notes_repo.delete_note(nid)
         return jsonify({"ok": True})

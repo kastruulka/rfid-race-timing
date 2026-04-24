@@ -9,9 +9,9 @@ from .start_list_validators import validate_category_payload
 def register_start_list_category_routes(app, db: Database):
     @app.route("/api/categories", methods=["GET"])
     def api_categories_list():
-        cats = db.get_categories()
+        cats = db.categories_repo.get_categories()
         for category in cats:
-            riders = db.get_riders(category_id=category["id"])
+            riders = db.riders_repo.get_riders(category_id=category["id"])
             category["rider_count"] = len(riders)
         return jsonify(cats)
 
@@ -24,7 +24,7 @@ def register_start_list_category_routes(app, db: Database):
         payload, err = validate_category_payload(data)
         if err:
             return err
-        cid = db.add_category(**payload)
+        cid = db.categories_repo.add_category(**payload)
         return jsonify({"ok": True, "id": cid})
 
     @app.route("/api/categories/<int:cid>", methods=["PUT"])
@@ -36,13 +36,13 @@ def register_start_list_category_routes(app, db: Database):
         payload, err = validate_category_payload(data)
         if err:
             return err
-        db.update_category(cid, **payload)
+        db.categories_repo.update_category(cid, **payload)
         return jsonify({"ok": True})
 
     @app.route("/api/categories/<int:cid>", methods=["DELETE"])
     @require_admin
     def api_categories_delete(cid):
-        ok = db.delete_category(cid)
+        ok = db.categories_repo.delete_category(cid)
         if not ok:
             return (
                 jsonify(

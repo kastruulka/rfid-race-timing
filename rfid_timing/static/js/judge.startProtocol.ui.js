@@ -1,6 +1,20 @@
 (function () {
   const page = window.JudgePage || (window.JudgePage = {});
 
+  function requestOverdueStatusSync(target, state) {
+    if (!target || !target.key || !state) return;
+    const now = Date.now();
+    if (state.statusSyncInFlight) return;
+    if (now - (state.lastOverdueSyncAt || 0) < 1000) return;
+    if (!page.startProtocol || typeof page.startProtocol.syncStatus !== 'function') return;
+
+    state.statusSyncInFlight = true;
+    state.lastOverdueSyncAt = now;
+    Promise.resolve(page.startProtocol.syncStatus(target, true)).finally(function () {
+      state.statusSyncInFlight = false;
+    });
+  }
+
   function renderCategoryOptions(params) {
     const listEl = params.listEl;
     const categoryNames = params.categoryNames || {};
@@ -226,6 +240,15 @@
     if (state.running) remain = Math.max(0, (next.planned_time || 0) - Date.now());
     else if (state.pausedDelayMs !== null && state.pausedDelayMs !== undefined) {
       remain = Math.max(0, state.pausedDelayMs);
+    }
+
+    if (
+      state.running &&
+      next.planned_time !== null &&
+      next.planned_time !== undefined &&
+      next.planned_time <= Date.now() - 250
+    ) {
+      requestOverdueStatusSync(target, state);
     }
 
     const sec = remain > 0 ? Math.floor((remain + 999) / 1000) : 0;

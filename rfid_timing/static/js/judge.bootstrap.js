@@ -1,6 +1,62 @@
 (function () {
   const page = window.JudgePage || (window.JudgePage = {});
 
+  function getStoredProtocolInterval(key) {
+    if (!key) return null;
+    const storageKey = 'sp_interval_' + key;
+    try {
+      const localValue = localStorage.getItem(storageKey);
+      if (localValue) return localValue;
+    } catch {
+      // Ignore storage read failures.
+    }
+    try {
+      return sessionStorage.getItem(storageKey);
+    } catch {
+      return null;
+    }
+  }
+
+  function persistProtocolInterval(key, value) {
+    if (!key) return;
+    const storageKey = 'sp_interval_' + key;
+    try {
+      localStorage.setItem(storageKey, value);
+    } catch {
+      // Ignore storage write failures.
+    }
+    try {
+      sessionStorage.setItem(storageKey, value);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }
+
+  function getProtocolIntervalTargetKey() {
+    const ids =
+      page.startProtocol && page.startProtocol.getTargetCategoryIds
+        ? page.startProtocol.getTargetCategoryIds()
+        : page.getCatId()
+          ? [page.getCatId()]
+          : [];
+    if (!ids.length) return '';
+    return ids.length === 1 ? String(ids[0]) : 'multi:' + ids.join(',');
+  }
+
+  function getStoredJudgeStartMode() {
+    try {
+      const localValue = localStorage.getItem('judge_start_mode');
+      if (localValue) return localValue;
+    } catch {
+      // Ignore storage read failures.
+    }
+    try {
+      return sessionStorage.getItem('judge_start_mode');
+    } catch {
+      return null;
+    }
+  }
+
   function bind() {
     page.judgeActions.bindActionButtons();
     page.judgeActions.bindSubmitShortcuts();
@@ -23,29 +79,13 @@
       if (page.state.startMode === 'individual') page.startProtocol.switchToCategory();
     });
     page.els.spInterval.addEventListener('change', function () {
-      const ids =
-        page.startProtocol && page.startProtocol.getTargetCategoryIds
-          ? page.startProtocol.getTargetCategoryIds()
-          : page.getCatId()
-            ? [page.getCatId()]
-            : [];
-      if (ids.length) {
-        const key = ids.length === 1 ? String(ids[0]) : 'multi:' + ids.join(',');
-        sessionStorage.setItem('sp_interval_' + key, this.value);
-      }
+      const key = getProtocolIntervalTargetKey();
+      if (key) persistProtocolInterval(key, this.value);
       page.startProtocol.renderList();
     });
     page.els.spInterval.addEventListener('input', function () {
-      const ids =
-        page.startProtocol && page.startProtocol.getTargetCategoryIds
-          ? page.startProtocol.getTargetCategoryIds()
-          : page.getCatId()
-            ? [page.getCatId()]
-            : [];
-      if (ids.length) {
-        const key = ids.length === 1 ? String(ids[0]) : 'multi:' + ids.join(',');
-        sessionStorage.setItem('sp_interval_' + key, this.value);
-      }
+      const key = getProtocolIntervalTargetKey();
+      if (key) persistProtocolInterval(key, this.value);
       page.startProtocol.renderList();
     });
   }
@@ -69,12 +109,18 @@
       page.racePolling.stopPolling();
       return;
     }
+    page.racePolling.startTimerTick();
+    page.startProtocol.ensureCountdownTick();
+    page.dom.updateCategoryTimers();
     page.racePolling.loadRaceStatus();
     page.logNotes.loadLog();
     page.racePolling.startPolling();
   }
 
   async function init() {
+    const savedMode = getStoredJudgeStartMode() || 'mass';
+    page.judgeRaceActions.setStartMode(savedMode, { persist: false, syncProtocol: false });
+
     page.state.authManager = createAuthManager({
       toast: page.toast,
       loginButtonId: 'login-btn',
@@ -102,13 +148,6 @@
       ]);
       page.startProtocol.restoreAllStates();
 
-      const initCat = page.getCatId();
-      if (initCat) {
-        const saved = sessionStorage.getItem('sp_interval_' + initCat);
-        if (saved) page.els.spInterval.value = saved;
-      }
-
-      const savedMode = sessionStorage.getItem('judge_start_mode');
       const savedMassScope = sessionStorage.getItem('judge_mass_start_scope');
       const savedIndividualScope = sessionStorage.getItem('judge_individual_start_scope');
       const savedProtocolRunMode = sessionStorage.getItem('judge_sp_run_mode');
@@ -121,7 +160,11 @@
       }
       page.massStart.updateScopeUI();
       if (page.startProtocol.updateScopeUI) page.startProtocol.updateScopeUI();
-      if (savedMode === 'individual') page.judgeActions.setStartMode('individual');
+      page.judgeRaceActions.setStartMode(savedMode, { persist: false, syncProtocol: false });
+      const intervalKey = getProtocolIntervalTargetKey();
+      const savedInterval = getStoredProtocolInterval(intervalKey);
+      if (savedInterval) page.els.spInterval.value = savedInterval;
+      await page.startProtocol.loadProtocol();
       if (savedMode === 'individual') page.startProtocol.updateUI();
       page.massStart.updateControls();
 

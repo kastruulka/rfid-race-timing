@@ -82,7 +82,7 @@ def register_judge_protocol_mutation_routes(
                 for category_id in category_ids:
                     scheduler.stop_category(category_id)
             if len(category_ids) == 1:
-                db.clear_start_protocol(category_ids[0])
+                db.start_protocol_repo.clear_start_protocol(category_ids[0])
             else:
                 clear_protocol_for_categories(db, category_ids)
                 db._commit()
@@ -103,8 +103,10 @@ def register_judge_protocol_mutation_routes(
         interval = float(data.get("interval_sec", 30))
         queue_entries = []
         for category_id in category_ids:
-            for rider in db.get_riders(category_id=category_id):
-                if db.has_active_unfinished_race(rider["id"]):
+            if db.category_state_repo.is_category_closed(category_id):
+                continue
+            for rider in db.riders_repo.get_riders(category_id=category_id):
+                if db.results_repo.has_active_unfinished_race(rider["id"]):
                     continue
                 queue_entries.append(
                     {
@@ -173,7 +175,9 @@ def register_judge_protocol_mutation_routes(
 
         first_entry = format_protocol_entry(remaining_entries[0])
         first_entry["planned_time"] = now_ms
-        db.update_start_protocol_entry(first_entry["entry_id"], status="STARTING")
+        db.start_protocol_repo.update_start_protocol_entry(
+            first_entry["entry_id"], status="STARTING"
+        )
 
         try:
             body, status = actions.action_individual_start(
@@ -189,7 +193,7 @@ def register_judge_protocol_mutation_routes(
             reset_entries_to_waiting(db, remaining_entries, scheduler, category_ids)
             return jsonify(body), status
 
-        db.update_start_protocol_entry(
+        db.start_protocol_repo.update_start_protocol_entry(
             first_entry["entry_id"],
             actual_time=now_ms,
             status="STARTED",
@@ -249,7 +253,7 @@ def register_judge_protocol_mutation_routes(
         entry_id = data.get("entry_id")
         actual_time = start_time or (time.time() * 1000)
         if entry_id:
-            db.update_start_protocol_entry(
+            db.start_protocol_repo.update_start_protocol_entry(
                 int(entry_id),
                 actual_time=actual_time,
                 status="STARTED",

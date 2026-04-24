@@ -30,7 +30,7 @@ def get_protocol_entries(db: Database, category_ids: list[int]) -> list[dict]:
     if not category_ids:
         return []
 
-    race_id = db.get_current_race_id()
+    race_id = db.race_repo.get_current_race_id()
     if race_id is None:
         return []
 
@@ -55,7 +55,7 @@ def get_protocol_entries(db: Database, category_ids: list[int]) -> list[dict]:
 def clear_protocol_for_categories(db: Database, category_ids: list[int]) -> None:
     if not category_ids:
         return
-    race_id = db.get_current_race_id()
+    race_id = db.race_repo.get_current_race_id()
     if race_id is None:
         return
     placeholders = ",".join("?" for _ in category_ids)
@@ -82,7 +82,7 @@ def normalize_protocol_entries(
             category_id = int(entry.get("category_id"))
             if category_id not in allowed_ids:
                 raise ValueError("Участник добавлен из категории вне выбранного набора")
-            rider = db.get_rider(rider_id)
+            rider = db.riders_repo.get_rider(rider_id)
             if not rider or int(rider.get("category_id") or 0) != category_id:
                 raise ValueError(
                     "Участник не найден или не принадлежит выбранной категории"
@@ -104,7 +104,7 @@ def normalize_protocol_entries(
 
     category_id = category_ids[0]
     for index, rider_id in enumerate(rider_ids, start=1):
-        rider = db.get_rider(int(rider_id))
+        rider = db.riders_repo.get_rider(int(rider_id))
         if not rider or int(rider.get("category_id") or 0) != category_id:
             raise ValueError(
                 "Участник не найден или не принадлежит выбранной категории"
@@ -130,7 +130,7 @@ def reset_entries_to_waiting(
     for entry in entries:
         if entry.get("status") == "STARTED":
             continue
-        db.update_start_protocol_entry(
+        db.start_protocol_repo.update_start_protocol_entry(
             entry["id"],
             planned_time=None,
             actual_time=None,
@@ -144,7 +144,7 @@ def save_protocol_entries(
     queue_entries: list[dict],
     interval_sec: float,
 ) -> int:
-    race_id = db.get_current_race_id()
+    race_id = db.race_repo.get_current_race_id()
     with db._transaction():
         clear_protocol_for_categories(db, category_ids)
         for index, entry in enumerate(queue_entries, start=1):
@@ -172,7 +172,7 @@ def save_protocol_preserving_started(
     queue_entries: list[dict],
     interval_sec: float,
 ) -> int:
-    race_id = db.get_current_race_id()
+    race_id = db.race_repo.get_current_race_id()
     existing_entries = get_protocol_entries(db, category_ids)
     started_entries = [
         entry for entry in existing_entries if entry.get("status") == "STARTED"
@@ -250,7 +250,7 @@ def build_launch_plan(
 
 def apply_launch_plan(db: Database, launch_plan: list[LaunchPlanEntry]) -> None:
     for planned_entry in launch_plan:
-        db.update_start_protocol_entry(
+        db.start_protocol_repo.update_start_protocol_entry(
             planned_entry.entry_id,
             planned_time=planned_entry.planned_time,
             actual_time=None,

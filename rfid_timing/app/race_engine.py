@@ -51,7 +51,7 @@ class RaceEngine:
         return self.starts.is_prestart_result(result, category_id)
 
     def reload_epc_map(self):
-        self._epc_map = self.db.get_epc_map()
+        self._epc_map = self.db.riders_repo.get_epc_map()
         logger.info("EPC map loaded: %d tags bound", len(self._epc_map))
 
     def _get_rider_by_epc(self, epc: str) -> Optional[Dict]:
@@ -143,4 +143,4 @@ class RaceEngine:
         return self.finishes.reset_category(category_id)
 
     def get_race_status(self, category_id: int = None) -> Dict[str, int]:
-        return self.db.get_status_counts(category_id=category_id)
+        return self.db.results_repo.get_status_counts(category_id=category_id)

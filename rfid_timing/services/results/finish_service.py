@@ -22,13 +22,13 @@ class FinishService:
     def finalize_time_limit_category(
         self, category_id: int, now_ms: int | None = None
     ) -> int:
-        category = self.db.get_category(category_id)
+        category = self.db.categories_repo.get_category(category_id)
         if not category or not is_time_limit_mode(category):
             return 0
-        if self.db.is_category_closed(category_id):
+        if self.db.category_state_repo.is_category_closed(category_id):
             return 0
 
-        category_state = self.db.get_category_state(category_id)
+        category_state = self.db.category_state_repo.get_category_state(category_id)
         started_at = (
             category_state.get("started_at")
             if category_state and category_state.get("started_at") is not None
@@ -44,7 +44,7 @@ class FinishService:
             return 0
 
         finalized = 0
-        for result in self.db.get_results_by_category(category_id):
+        for result in self.db.results_repo.get_results_by_category(category_id):
             if result["status"] != "RACING":
                 continue
             penalty_time_ms = result.get("penalty_time_ms") or 0
@@ -55,13 +55,13 @@ class FinishService:
 
     def finalize_time_limit_categories(self, now_ms: int | None = None) -> int:
         total = 0
-        for category in self.db.get_categories():
+        for category in self.db.categories_repo.get_categories():
             total += self.finalize_time_limit_category(category["id"], now_ms=now_ms)
         return total
 
     def finish_all(self, category_id: int) -> dict:
         self.finalize_time_limit_category(category_id)
-        results = self.db.get_results_by_category(category_id)
+        results = self.db.results_repo.get_results_by_category(category_id)
         newly_finished = 0
         newly_dnf = 0
         judge_stop_reason = "Гонка завершена судьёй"
@@ -76,23 +76,23 @@ class FinishService:
                 newly_finished += 1
             else:
                 self.result_states.set_dnf(result["id"], judge_stop_reason)
-                self.db.add_penalty(
+                self.db.penalties_repo.add_penalty(
                     result["id"], "DNF", value=0, reason=judge_stop_reason
                 )
                 newly_dnf += 1
 
         self.calculate_places(category_id)
-        self.db.close_category(category_id)
-        self.db.clear_start_protocol(category_id)
+        self.db.category_state_repo.close_category(category_id)
+        self.db.start_protocol_repo.clear_start_protocol(category_id)
 
-        final_results = self.db.get_results_by_category(category_id)
+        final_results = self.db.results_repo.get_results_by_category(category_id)
         finished = sum(1 for result in final_results if result["status"] == "FINISHED")
         dnf_count = sum(
             1 for result in final_results if result["status"] in ("DNF", "DSQ")
         )
 
-        if self.db.are_all_categories_closed():
-            self.db.close_race()
+        if self.db.category_state_repo.are_all_categories_closed():
+            self.db.race_repo.close_race()
             logger.info("Все категории завершены — гонка закрыта")
 
         logger.info(
@@ -111,21 +111,21 @@ class FinishService:
         }
 
     def unfinish_rider(self, rider_id: int) -> bool:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if not result or result["status"] != "FINISHED":
             return False
 
         category_id = result.get("category_id")
-        if category_id and self.db.is_category_closed(category_id):
+        if category_id and self.db.category_state_repo.is_category_closed(category_id):
             return False
 
-        last_lap = self.db.get_last_lap(result["id"])
+        last_lap = self.db.laps_repo.get_last_lap(result["id"])
         if last_lap:
-            self.db.delete_lap(last_lap["id"])
+            self.db.laps_repo.delete_lap(last_lap["id"])
 
         self.result_states.set_racing(result["id"])
 
-        rider = self.db.get_rider(rider_id)
+        rider = self.db.riders_repo.get_rider(rider_id)
         logger.info(
             "#%d %s — финиш отменён, возврат в RACING",
             rider["number"] if rider else rider_id,
@@ -139,13 +139,15 @@ class FinishService:
         return True
 
     def edit_finish_time(self, rider_id: int, new_finish_time_ms: int) -> bool:
-        result = self.db.get_result_by_rider(rider_id)
+        result = self.db.results_repo.get_result_by_rider(rider_id)
         if not result or result["status"] != "FINISHED":
             return False
 
         category_id = result.get("category_id")
-        category = self.db.get_category(category_id) if category_id else None
-        if category_id and self.db.is_category_closed(category_id):
+        category = (
+            self.db.categories_repo.get_category(category_id) if category_id else None
+        )
+        if category_id and self.db.category_state_repo.is_category_closed(category_id):
             return False
         if category and is_time_limit_mode(category):
             start_time_ms = int(float(result.get("start_time") or 0))
@@ -155,9 +157,9 @@ class FinishService:
 
         old_time = result.get("finish_time")
         penalty_ms = result.get("penalty_time_ms") or 0
-        self.db.update_result(result["id"], finish_time=new_finish_time_ms)
+        self.db.results_repo.update_result(result["id"], finish_time=new_finish_time_ms)
 
-        laps = self.db.get_laps(result["id"])
+        laps = self.db.laps_repo.get_laps(result["id"])
         if laps:
             last = laps[-1]
             new_last_ts = new_finish_time_ms - penalty_ms
@@ -167,9 +169,11 @@ class FinishService:
                 else int(float(result["start_time"]))
             )
             new_lap_time = new_last_ts - int(prev_ts)
-            self.db.update_lap(last["id"], lap_time=new_lap_time, timestamp=new_last_ts)
+            self.db.laps_repo.update_lap(
+                last["id"], lap_time=new_lap_time, timestamp=new_last_ts
+            )
 
-        rider = self.db.get_rider(rider_id)
+        rider = self.db.riders_repo.get_rider(rider_id)
         logger.info(
             "#%d %s — время финиша изменено: %s → %s",
             rider["number"] if rider else rider_id,
@@ -193,11 +197,11 @@ class FinishService:
         )
 
     def reset_category(self, category_id: int) -> Dict:
-        category = self.db.get_category(category_id)
+        category = self.db.categories_repo.get_category(category_id)
         if not category:
             raise ValueError(f"Категория {category_id} не найдена")
 
-        info = self.db.reset_category(category_id)
+        info = self.db.category_reset_service.reset_category(category_id)
 
         self.raw_logger.log_event(
             "RESET_CATEGORY",

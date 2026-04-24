@@ -5,6 +5,86 @@
     return page.state.http.requestData(url, method, body);
   }
 
+  function buildLiveUrl(url) {
+    const stamp = '_ts=' + Date.now();
+    return url + (url.includes('?') ? '&' : '?') + stamp;
+  }
+
+  function publicRequest(url, options) {
+    const opts = Object.assign({}, options || {});
+    const timeoutMs = opts.timeoutMs;
+    delete opts.timeoutMs;
+
+    if (typeof AbortController !== 'undefined' && timeoutMs && !opts.signal) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(function () {
+        controller.abort();
+      }, timeoutMs);
+      opts.signal = controller.signal;
+
+      const clearTimer = function () {
+        window.clearTimeout(timeoutId);
+      };
+
+      const requestPromise =
+        window.httpClient && typeof window.httpClient.fetchJson === 'function'
+          ? window.httpClient.fetchJson(url, Object.assign({ cache: 'no-store' }, opts))
+          : fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts)).then(
+              async function (response) {
+                let data;
+                try {
+                  data = await response.json();
+                } catch {
+                  data = null;
+                }
+                return {
+                  ok: response.ok,
+                  status: response.status,
+                  data: data,
+                  unauthorized: response.status === 401,
+                };
+              }
+            );
+
+      return requestPromise.finally(clearTimer).catch(function (error) {
+        if (error && error.name === 'AbortError') {
+          return {
+            ok: false,
+            status: 0,
+            data: null,
+            unauthorized: false,
+            aborted: true,
+          };
+        }
+        throw error;
+      });
+    }
+
+    if (window.httpClient && typeof window.httpClient.fetchJson === 'function') {
+      return window.httpClient.fetchJson(url, Object.assign({ cache: 'no-store' }, opts));
+    }
+    return fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts)).then(
+      async function (response) {
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          data = null;
+        }
+        return {
+          ok: response.ok,
+          status: response.status,
+          data: data,
+          unauthorized: response.status === 401,
+        };
+      }
+    );
+  }
+
+  function requestLiveData(url) {
+    return page.state.http.requestData(buildLiveUrl(url), { method: 'GET', cache: 'no-store' });
+  }
+
   function buildProtocolQuery(target) {
     if (!target) return '';
     if (Array.isArray(target.category_ids) && target.category_ids.length > 0) {
@@ -22,7 +102,10 @@
       return request('/api/categories', 'GET');
     },
     getRaceState: function (categoryId) {
-      return request('/api/state' + (categoryId ? '?category_id=' + categoryId : ''), 'GET');
+      return publicRequest(
+        buildLiveUrl('/api/state' + (categoryId ? '?category_id=' + categoryId : '')),
+        { method: 'GET', timeoutMs: 1500 }
+      );
     },
     getRiders: function () {
       return request('/api/riders', 'GET');
@@ -31,7 +114,7 @@
       if (typeof target !== 'object' || target === null) {
         target = { category_id: target };
       }
-      return request('/api/judge/start-protocol' + buildProtocolQuery(target), 'GET');
+      return requestLiveData('/api/judge/start-protocol' + buildProtocolQuery(target));
     },
     saveStartProtocol: function (payload, intervalSec, riderIds) {
       if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -62,7 +145,7 @@
       if (typeof target !== 'object' || target === null) {
         target = { category_id: target };
       }
-      return request('/api/judge/start-protocol/status' + buildProtocolQuery(target), 'GET');
+      return requestLiveData('/api/judge/start-protocol/status' + buildProtocolQuery(target));
     },
     launchStartProtocol: function (payload) {
       return request('/api/judge/start-protocol/launch', 'POST', payload);
@@ -97,10 +180,10 @@
       return request('/api/settings/reset-race', 'POST');
     },
     getRiderStatus: function (riderId) {
-      return request('/api/judge/rider-status/' + riderId, 'GET');
+      return requestLiveData('/api/judge/rider-status/' + riderId);
     },
     getRiderLaps: function (riderId) {
-      return request('/api/judge/rider-laps/' + riderId, 'GET');
+      return requestLiveData('/api/judge/rider-laps/' + riderId);
     },
     updateLap: function (lapId, lapTimeMs) {
       return request('/api/judge/lap/' + lapId, 'PUT', { lap_time_ms: lapTimeMs });
@@ -144,13 +227,13 @@
       return request('/api/judge/warning', 'POST', { rider_id: riderId, reason: reason });
     },
     getLog: function () {
-      return request('/api/judge/log', 'GET');
+      return requestLiveData('/api/judge/log');
     },
     deletePenalty: function (penaltyId) {
       return request('/api/judge/penalty/' + penaltyId, 'DELETE');
     },
     getNotes: function () {
-      return request('/api/judge/notes', 'GET');
+      return requestLiveData('/api/judge/notes');
     },
     addNote: function (text, riderId) {
       return request('/api/judge/notes', 'POST', { text: text, rider_id: riderId || null });

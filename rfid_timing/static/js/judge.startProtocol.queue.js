@@ -52,8 +52,13 @@
   }
 
   function hasPendingEntries(keyOrCategoryIds) {
+    const categoryIds = Array.isArray(keyOrCategoryIds)
+      ? keyOrCategoryIds.map(String)
+      : keyOrCategoryIds
+        ? [String(keyOrCategoryIds)]
+        : [];
     const key = Array.isArray(keyOrCategoryIds)
-      ? getScopeApi().getTargetKey(keyOrCategoryIds)
+      ? getScopeApi().getTargetKey(categoryIds)
       : String(keyOrCategoryIds || '');
     const state = key ? getStateApi().getState(key) : null;
     return !!(
@@ -63,7 +68,12 @@
         state.planned.some(function (entry) {
           return isPendingProtocolEntry(entry);
         })) ||
-        ((!state || !Array.isArray(state.planned)) && page.state.spEntries.length > 0))
+        ((!state || !Array.isArray(state.planned)) &&
+          page.state.spEntries.some(function (entry) {
+            const categoryMatches =
+              !categoryIds.length || categoryIds.includes(String(entry.category_id));
+            return categoryMatches && isPendingProtocolEntry(entry);
+          })))
     );
   }
 

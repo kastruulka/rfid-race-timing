@@ -172,13 +172,6 @@ function deriveViewModel(data, selectedCategory) {
   };
 }
 
-function formatCategoryLabel(category) {
-  if (category.finish_mode === 'time' && category.time_limit_sec) {
-    return category.name + ' (' + category.time_limit_sec + ' сек)';
-  }
-  return category.name + ' (' + category.laps + ' кр.)';
-}
-
 function buildFeedItem(item, isNewItem) {
   const wrapper = document.createElement('div');
   wrapper.className = 'feed-item';
@@ -381,7 +374,7 @@ function updateCategories(categories) {
   categories.forEach(function (category) {
     const option = document.createElement('option');
     option.value = category.id;
-    option.textContent = formatCategoryLabel(category);
+    option.textContent = window.formatCategoryLabel(category);
     els.categorySelect.appendChild(option);
   });
 

@@ -49,9 +49,9 @@ class StartProtocolWorker:
         self.start()
 
     def stop_category(self, category_id: int) -> None:
-        for entry in self._db.get_start_protocol(category_id):
+        for entry in self._db.start_protocol_repo.get_start_protocol(category_id):
             if entry.get("status") in {"PLANNED", "STARTING"}:
-                self._db.update_start_protocol_entry(
+                self._db.start_protocol_repo.update_start_protocol_entry(
                     int(entry["id"]),
                     planned_time=None,
                     actual_time=None,
@@ -61,8 +61,10 @@ class StartProtocolWorker:
     def _run(self) -> None:
         while not self._stop_event.is_set():
             try:
-                due_entries = self._db.claim_due_start_protocol_entries(
-                    time.time() * 1000
+                due_entries = (
+                    self._db.start_protocol_repo.claim_due_start_protocol_entries(
+                        time.time() * 1000
+                    )
                 )
                 for entry in due_entries:
                     self._start_entry(
@@ -92,7 +94,9 @@ class StartProtocolWorker:
         current_entry = next(
             (
                 entry
-                for entry in self._db.get_start_protocol(category_id)
+                for entry in self._db.start_protocol_repo.get_start_protocol(
+                    category_id
+                )
                 if int(entry["id"]) == int(entry_id)
             ),
             None,
@@ -122,7 +126,7 @@ class StartProtocolWorker:
                 start_time=planned_time,
             )
             if status == 200:
-                self._db.update_start_protocol_entry(
+                self._db.start_protocol_repo.update_start_protocol_entry(
                     entry_id,
                     actual_time=planned_time,
                     status="STARTED",
@@ -136,7 +140,7 @@ class StartProtocolWorker:
                 entry_id,
                 body.get("error"),
             )
-            self._db.update_start_protocol_entry(
+            self._db.start_protocol_repo.update_start_protocol_entry(
                 entry_id,
                 actual_time=None,
                 status="ERROR",
@@ -149,7 +153,7 @@ class StartProtocolWorker:
                 entry_id,
             )
             try:
-                self._db.update_start_protocol_entry(
+                self._db.start_protocol_repo.update_start_protocol_entry(
                     entry_id,
                     actual_time=None,
                     status="ERROR",

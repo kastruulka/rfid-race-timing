@@ -37,8 +37,8 @@ def register_settings_system_routes(app, db: Database):
             if os.path.isdir(backups_dir)
             else 0
         )
-        riders_count = len(db.get_riders()) if db else 0
-        race_id = db.get_current_race_id() if db else None
+        riders_count = len(db.riders_repo.get_riders()) if db else 0
+        race_id = db.race_repo.get_current_race_id() if db else None
 
         return jsonify(
             {
@@ -80,8 +80,8 @@ def register_settings_system_routes(app, db: Database):
             return jsonify({"ok": False, "error": "База данных недоступна"}), 500
 
         try:
-            db.close_open_races()
-            race_id = db.create_race(label="reset")
+            db.race_repo.close_open_races()
+            race_id = db.race_repo.create_race(label="reset")
         except sqlite3.Error as exc:
             logger.exception("Не удалось создать новую гоночную сессию")
             return jsonify({"ok": False, "error": str(exc)}), 500
