@@ -223,7 +223,7 @@ python live_monitor.py
 [rfid_timing/static/js/judge.api.js] | HTTP API client judge-страницы.
 [rfid_timing/static/js/judge.state.js] | Judge page state. 
 [rfid_timing/static/js/judge.dom.js] | DOM-рендер judge-панелей. 
-[rfid_timing/static/js/judge.sync.js] Post-action sync judge UI.
+[rfid_timing/static/js/judge.sync.js] | Post-action sync judge UI.
 [rfid_timing/static/js/judge.racePolling.js] | Polling `/api/state` и связанных judge endpoint-ов.
 [rfid_timing/static/js/judge.massStart.js] | Логика масстарта в judge UI.
 [rfid_timing/static/js/judge.riderPanel.js] | Панель выбранного участника. 
