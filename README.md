@@ -21,6 +21,7 @@
   - sllurp
   - python-dotenv
   - WeasyPrint
+
 Основной запуск:
 ```
 python main.py
